@@ -1,0 +1,183 @@
+/* WhatsApp Theme Core Variables */
+:root {
+  --wa-bg: #ECE5DD;
+  --wa-teal: #075E54;
+  --wa-teal-dark: #128C7E;
+  --wa-accent: #25D366;
+  --wa-bubble-plan: #DCF8C6;
+  --wa-bubble-report: #FFFFFF;
+  --border-radius-bubble: 18px;
+}
+
+/* Reset baseline defaults */
+body {
+  background-color: var(--wa-bg) !important;
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Override template root constraints to be fluid and responsive */
+#root {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  text-align: left !important;
+  border: none !important;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+/* Maximum width layout container for a mobile-first messaging feel */
+.max-width-container {
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* WhatsApp message bubbles with asymmetric tails */
+.rounded-chat-right {
+  border-radius: 18px 18px 0px 18px;
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.rounded-chat-left {
+  border-radius: 18px 18px 18px 0px;
+}
+
+/* Card item hover feedback */
+.hour-card-container {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.hour-card-container:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Current Hour Active Highlights */
+.border-now {
+  border: 2px solid var(--wa-accent) !important;
+  animation: activeBorderPulse 2.5s infinite ease-in-out;
+}
+
+/* Utility Animations */
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out forwards;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-down-toast-container {
+  animation: slideDownToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-pulse {
+  animation: pulseOpacity 2s infinite ease-in-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(15px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes slideDownToast {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -25px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@keyframes activeBorderPulse {
+  0%, 100% {
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+    border-color: var(--wa-accent) !important;
+  }
+  50% {
+    box-shadow: 0 4px 18px rgba(37, 211, 102, 0.3);
+    border-color: #1ebe5d !important;
+  }
+}
+
+@keyframes pulseOpacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+/* Interactive transitions */
+.transition-all {
+  transition: all 0.2s ease-in-out !important;
+}
+
+.transition-width {
+  transition: width 0.35s ease-out;
+}
+
+.hover-scale {
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+.hover-scale:hover {
+  transform: scale(1.03);
+}
+.hover-scale:active {
+  transform: scale(0.97);
+}
+
+/* Gear rotation micro-animation */
+.btn-settings-gear:hover i {
+  transform: rotate(45deg);
+}
+
+/* Scrollbar styles to look like WhatsApp Web */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* Date picker controls */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: opacity(0.65);
+}
+
+/* Typography Helpers */
+.fs-xs {
+  font-size: 0.75rem !important;
+}
+
+.fw-extrabold {
+  font-weight: 800 !important;
+}
