@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { formatHourString } from '../utils/helpers';
+import SuggestionHelper from './SuggestionHelper';
 
 /**
  * ReportModal handles updating the progress report and progress status for a slot.
  * Fields: Report text, Status (Completed, Pending, Missed).
  */
-export default function ReportModal({ isOpen, onClose, onSave, report }) {
+export default function ReportModal({ isOpen, onClose, onSave, report, dictionaryData }) {
   const [reportText, setReportText] = useState('');
   const [status, setStatus] = useState('Pending');
 
@@ -103,9 +104,24 @@ export default function ReportModal({ isOpen, onClose, onSave, report }) {
                     autoFocus
                     style={{ resize: 'none', fontSize: '0.95rem' }}
                   ></textarea>
-                  <div className="form-text text-muted" style={{ fontSize: '0.75rem' }}>
+                  <div className="form-text text-muted mb-2" style={{ fontSize: '0.75rem' }}>
                     Provide an update on what tasks were accomplished during this hour.
                   </div>
+
+                  {/* Suggestion Helper */}
+                  <SuggestionHelper 
+                    type="report" 
+                    status={status}
+                    currentInputText={reportText}
+                    dictionaryData={dictionaryData}
+                    onApply={(s) => setReportText(prev => {
+                      const trimmed = prev.trim();
+                      const words = trimmed.split(/\s+/).filter(Boolean);
+                      if (words.length <= 1) return s;
+                      const rest = trimmed.substring(words[0].length).trim();
+                      return s + ' ' + rest;
+                    })}
+                  />
                 </div>
               </div>
 

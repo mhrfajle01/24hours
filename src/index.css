@@ -181,3 +181,69 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .fw-extrabold {
   font-weight: 800 !important;
 }
+
+/* Vertical timeline connecting line */
+.timeline-wrapper {
+  position: relative;
+  padding-left: 3rem !important; /* Shift cards right to leave space for vertical line */
+}
+
+.timeline-wrapper::before {
+  content: '';
+  position: absolute;
+  top: 30px;
+  bottom: 60px;
+  left: 24px; /* Centered in the 48px padding area */
+  width: 2px;
+  background: var(--wa-teal);
+  opacity: 0.18;
+  z-index: 1;
+}
+
+/* Bullet node on the timeline line */
+.timeline-dot {
+  position: absolute;
+  left: -30px; /* Centered on the vertical line relative to card wrapper */
+  top: 26px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #FFFFFF;
+  border: 3px solid var(--wa-teal-dark);
+  z-index: 2;
+  transform: translateY(-50%);
+  transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.timeline-dot.completed {
+  background: #25D366;
+  border-color: #25D366;
+}
+
+.timeline-dot.pending {
+  background: #FFC107;
+  border-color: #FFC107;
+}
+
+.timeline-dot.missed {
+  background: #DC3545;
+  border-color: #DC3545;
+}
+
+.timeline-dot.active {
+  background: var(--wa-accent) !important;
+  border-color: var(--wa-accent) !important;
+  box-shadow: 0 0 0 4px rgba(37, 211, 102, 0.2);
+  animation: activeDotPulse 2s infinite ease-in-out;
+}
+
+@keyframes activeDotPulse {
+  0%, 100% {
+    transform: translateY(-50%) scale(1);
+    box-shadow: 0 0 0 0px rgba(37, 211, 102, 0.4);
+  }
+  50% {
+    transform: translateY(-50%) scale(1.25);
+    box-shadow: 0 0 0 6px rgba(37, 211, 102, 0);
+  }
+}

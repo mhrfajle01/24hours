@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import HourCard from './HourCard';
 import { getTodayDateString } from '../utils/helpers';
 
@@ -13,9 +13,32 @@ export default function Timeline({
   onEditPlan, 
   onEditReport, 
   onDelete,
-  onGenerateToday
+  onGenerateToday,
+  onInlineUpdatePlan,
+  onInlineUpdateReport,
+  dictionaryData
 }) {
   const isTodaySelected = selectedDate === getTodayDateString();
+  const currentCardRef = useRef(null);
+  const scrolledRef = useRef(false);
+
+  useEffect(() => {
+    // Only scroll once when today's data is loaded
+    if (isTodaySelected && reports.length > 0 && currentHourData && !scrolledRef.current) {
+      const timer = setTimeout(() => {
+        if (currentCardRef.current) {
+          currentCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          scrolledRef.current = true;
+        }
+      }, 500); // Small timeout to ensure rendering is complete
+      return () => clearTimeout(timer);
+    }
+  }, [isTodaySelected, reports.length, currentHourData]);
+
+  // Reset scrolledRef when date changes
+  useEffect(() => {
+    scrolledRef.current = false;
+  }, [selectedDate]);
 
   if (reports.length === 0) {
     return (
@@ -48,7 +71,7 @@ export default function Timeline({
   }
 
   return (
-    <div className="container-fluid max-width-container px-3 pb-5 mb-5">
+    <div className="container-fluid max-width-container ps-5 pe-3 pb-5 mb-5 timeline-wrapper">
       {reports.map((report) => {
         // Highlight card only if it is today and the hour/ampm matches current time
         const isCurrentHour = isTodaySelected && 
@@ -56,14 +79,25 @@ export default function Timeline({
           report.ampm === currentHourData.ampm;
 
         return (
-          <HourCard
+          <div 
             key={report.id}
-            report={report}
-            isCurrentHour={isCurrentHour}
-            onEditPlan={onEditPlan}
-            onEditReport={onEditReport}
-            onDelete={onDelete}
-          />
+            ref={isCurrentHour ? currentCardRef : null}
+            className="position-relative"
+          >
+            {/* Timeline bullet indicator outside of HourCard (avoids overflow clip) */}
+            <div className={`timeline-dot ${isCurrentHour ? 'active' : ''} ${report.status.toLowerCase()}`} />
+            
+            <HourCard
+              report={report}
+              isCurrentHour={isCurrentHour}
+              onEditPlan={onEditPlan}
+              onEditReport={onEditReport}
+              onDelete={onDelete}
+              onInlineUpdatePlan={onInlineUpdatePlan}
+              onInlineUpdateReport={onInlineUpdateReport}
+              dictionaryData={dictionaryData}
+            />
+          </div>
         );
       })}
     </div>

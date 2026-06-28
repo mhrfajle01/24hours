@@ -1,0 +1,810 @@
+[
+  {
+    "keywords": ["gym", "workout", "exercise", "train", "fitness", "ব্যায়াম", "জিম"],
+    "tag": "health",
+    "plan_bn": "জিম ও শারীরিক কসরত: স্বাস্থ্য বজায় রাখতে ওয়ার্কআউট সেশন।",
+    "plan_en": "Gym session: Focus on physical exercise and strength training.",
+    "report_bn": "সফলভাবে আজকের জিম ও ওয়ার্কআউট সম্পন্ন করেছি।",
+    "report_en": "Completed gym workout and exercise routine successfully."
+  },
+  {
+    "keywords": ["code", "coding", "program", "develop", "debug", "কোড", "কোডিং"],
+    "tag": "code",
+    "plan_bn": "কোডিং সেশন: নতুন ফিচার ইমপ্লিমেন্ট করা এবং বাগ ফিক্স করা।",
+    "plan_en": "Coding session: Implement new features and debug application.",
+    "report_bn": "কোডিং সম্পন্ন করেছি এবং বাগ ফিক্সিং ভেরিফাই করেছি।",
+    "report_en": "Wrote new code and successfully resolved existing bugs."
+  },
+  {
+    "keywords": ["read", "book", "novel", "magazine", "বই", "পড়া"],
+    "tag": "study",
+    "plan_bn": "বই পড়া: জ্ঞান বৃদ্ধি ও মন ভালো রাখতে বই পড়ার পরিকল্পনা।",
+    "plan_en": "Reading session: Read a book chapter and take key notes.",
+    "report_bn": "বই পড়ার সেশন শেষ করেছি এবং অনেক কিছু শিখেছি।",
+    "report_en": "Completed reading chapter and gained valuable insights."
+  },
+  {
+    "keywords": ["study", "learn", "course", "lecture", "পড়াশোনা", "শেখা"],
+    "tag": "study",
+    "plan_bn": "পড়াশোনা: নতুন টপিক শেখা ও লেকচার নোট রিভিশন করা।",
+    "plan_en": "Study time: Review class notes and learn new academic concepts.",
+    "report_bn": "পড়াশোনা ও সেলফ-লার্নিং সেশন সফলভাবে সম্পন্ন করেছি।",
+    "report_en": "Finished studying course material and solved practice questions."
+  },
+  {
+    "keywords": ["clean", "wash", "laundry", "organize", "পরিষ্কার", "ধোয়া"],
+    "tag": "chores",
+    "plan_bn": "ঘর পরিষ্কার ও গুছানোর কাজ: জামাকাপড় ধোয়া এবং ঘর গোছানো।",
+    "plan_en": "Cleaning chores: Tidy up the room and do laundry.",
+    "report_bn": "জামাকাপড় ধোয়া এবং ঘর গোছানোর কাজ সম্পন্ন করেছি।",
+    "report_en": "Finished room cleaning, organizing, and laundry duties."
+  },
+  {
+    "keywords": ["sleep", "nap", "rest", "bed", "ঘুম", "বিশ্রাম"],
+    "tag": "relax",
+    "plan_bn": "ঘুম ও বিশ্রাম: শরীর রিফ্রেশ করতে পর্যাপ্ত ঘুমানো।",
+    "plan_en": "Resting/Sleeping: Sleep to recover energy and stay healthy.",
+    "report_bn": "পর্যাপ্ত ঘুম এবং বিশ্রাম নিয়ে শরীর সুস্থ করেছি।",
+    "report_en": "Rested well and completed a refreshing nap/sleep cycle."
+  },
+  {
+    "keywords": ["cook", "cooking", "kitchen", "recipe", "রান্না", "রান্নাঘর"],
+    "tag": "food",
+    "plan_bn": "রান্না করা: স্বাস্থ্যকর খাবার প্রস্তুত করার প্রস্তুতি।",
+    "plan_en": "Cooking: Prepare healthy home-cooked meals for the day.",
+    "report_bn": "সুস্বাদু ও পুষ্টিকর খাবার রান্না সম্পন্ন করেছি।",
+    "report_en": "Prepared a delicious home-cooked meal in the kitchen."
+  },
+  {
+    "keywords": ["eat", "lunch", "dinner", "breakfast", "খাওয়া", "খাবার"],
+    "tag": "food",
+    "plan_bn": "খাবার খাওয়া: পরিবারের সাথে বসে খাবার উপভোগ করা।",
+    "plan_en": "Mealtime: Enjoy breakfast, lunch, or dinner with family.",
+    "report_bn": "দুপুরের/রাতের খাবার খাওয়া শেষ করেছি।",
+    "report_en": "Finished enjoying a healthy and nourishing meal."
+  },
+  {
+    "keywords": ["meeting", "call", "standup", "zoom", "মিটিং", "কল"],
+    "tag": "work",
+    "plan_bn": "মিটিং ও আলোচনা: প্রজেক্ট আপডেট নিয়ে টিমের সাথে কথা বলা।",
+    "plan_en": "Team meeting: Join discussions on project roadmap and sync status.",
+    "report_bn": "টিম মিটিং সম্পন্ন করেছি এবং কাজের আপডেট দিয়েছি।",
+    "report_en": "Joined the sync call, discussed updates, and aligned tasks."
+  },
+  {
+    "keywords": ["walk", "running", "cardio", "jog", "হাঁটা", "জগিং"],
+    "tag": "health",
+    "plan_bn": "হাঁটা ও ব্যায়াম: পার্ক বা খোলা জায়গায় হাঁটার পরিকল্পনা।",
+    "plan_en": "Outdoor walk: Go for a refreshing walk or morning jog.",
+    "report_bn": "বিকেলের/সকালের হাঁটা সম্পন্ন করে শরীর সতেজ করেছি।",
+    "report_en": "Completed outdoor walking session and refreshed mind."
+  },
+  {
+    "keywords": ["email", "mail", "inbox", "outlook", "ইমেইল", "মেইল"],
+    "tag": "work",
+    "plan_bn": "ইমেইল চেক ও রিপ্লাই: ইনবক্সের জরুরি মেইলের উত্তর দেওয়া।",
+    "plan_en": "Email management: Read client emails and reply to pending queries.",
+    "report_bn": "সব জরুরি ইমেইলের উত্তর পাঠিয়েছি এবং ইনবক্স ক্লিয়ার করেছি।",
+    "report_en": "Checked all emails and replied to important correspondences."
+  },
+  {
+    "keywords": ["game", "play", "pubg", "gaming", "খেলা", "গেম"],
+    "tag": "relax",
+    "plan_bn": "গেম খেলা: বন্ধুদের সাথে অনলাইন বা ভিডিও গেম খেলার পরিকল্পনা।",
+    "plan_en": "Gaming time: Play video games to relax and unwind.",
+    "report_bn": "বন্ধুদের সাথে গেম খেলে অবসর সময় কাটালাম।",
+    "report_en": "Enjoyed a relaxing gaming session with friends."
+  },
+  {
+    "keywords": ["movie", "series", "netflix", "watch", "সিনেমা", "নাটক"],
+    "tag": "relax",
+    "plan_bn": "সিনেমা/সিরিজ দেখা: ভালো কোনো কনটেন্ট দেখে সময় কাটানো।",
+    "plan_en": "Watch movie/series: View interesting content on Netflix or YouTube.",
+    "report_bn": "একটি উপভোগ্য সিনেমা/সিরিজের পর্ব দেখা শেষ করলাম।",
+    "report_en": "Finished watching a movie/series episode for relaxation."
+  },
+  {
+    "keywords": ["music", "song", "guitar", "গান", "গিটার"],
+    "tag": "relax",
+    "plan_bn": "গান শোনা বা চর্চা: গিটার বাজানো বা প্রিয় গান শোনার পরিকল্পনা।",
+    "plan_en": "Music session: Play instrument or listen to favorite playlist.",
+    "report_bn": "গান শুনে মন হালকা করলাম ও গিটার অনুশীলন শেষ করলাম।",
+    "report_en": "Listened to relaxing music and completed guitar practice."
+  },
+  {
+    "keywords": ["grocery", "shopping", "bazar", "বাজার", "কেনাকাটা"],
+    "tag": "chores",
+    "plan_bn": "বাজার ও কেনাকাটা: সপ্তাহের প্রয়োজনীয় বাজার করতে সুপারশপে যাওয়া।",
+    "plan_en": "Grocery shopping: Purchase household items and fresh vegetables.",
+    "report_bn": "প্রয়োজনীয় জিনিসপত্র কেনাকাটা ও বাজার শেষ করেছি।",
+    "report_en": "Completed grocery shopping and stocked up daily items."
+  },
+  {
+    "keywords": ["write", "blog", "diary", "essay", "লেখা", "ডায়েরি"],
+    "tag": "creative",
+    "plan_bn": "লেখালেখি: ডায়েরি লেখা, ব্লগ পোস্ট বা কোনো নতুন আর্টিকেল লেখা।",
+    "plan_en": "Writing session: Write diary entry, blog post, or article draft.",
+    "report_bn": "আজকের দিনলিপি বা আর্টিকেলের খসড়া লেখা সম্পন্ন করেছি।",
+    "report_en": "Wrote journal entry and drafted the planned article."
+  },
+  {
+    "keywords": ["meditation", "yoga", "breathe", "ধ্যান", "যোগব্যায়াম"],
+    "tag": "health",
+    "plan_bn": "ধ্যান ও ইয়োগা: মানসিক প্রশান্তির জন্য ১৫-৩০ মিনিট মেডিটেশন করা।",
+    "plan_en": "Meditation/Yoga: Practice mindfulness breathing and stretching.",
+    "report_bn": "মেডিটেশন সম্পন্ন করেছি এবং মানসিকভাবে শান্তি বোধ করছি।",
+    "report_en": "Finished meditation and breathing exercises successfully."
+  },
+  {
+    "keywords": ["family", "parent", "kid", "আড্ডা", "পরিবার"],
+    "tag": "social",
+    "plan_bn": "পরিবারকে সময় দেওয়া: পরিবারের সদস্যদের সাথে আড্ডা দেওয়া বা গল্প করা।",
+    "plan_en": "Family time: Connect and talk with family members.",
+    "report_bn": "পরিবারের সাথে ভালো গুণগত সময় কাটিয়েছি ও গল্প করেছি।",
+    "report_en": "Spent meaningful quality time chatting with family."
+  },
+  {
+    "keywords": ["friend", "meetup", "hangout", "বন্ধু", "আড্ডা"],
+    "tag": "social",
+    "plan_bn": "বন্ধুদের সাথে আড্ডা: চা খাওয়া এবং ভালো সময় কাটানো।",
+    "plan_en": "Hangout: Meet up with friends for coffee/tea and chat.",
+    "report_bn": "বন্ধুদের সাথে দেখা করেছি এবং চমৎকার আড্ডা দিয়েছি।",
+    "report_en": "Met up with friends, had a great conversation and coffee."
+  },
+  {
+    "keywords": ["travel", "commute", "drive", "ভ্রমণ", "যাতায়াত"],
+    "tag": "chores",
+    "plan_bn": "যাতায়াত ও ভ্রমণ: গন্তব্যে পৌঁছানোর জন্য জার্নি করা।",
+    "plan_en": "Commute: Travel to office/study destination.",
+    "report_bn": "নিরাপদে গন্তব্যে পৌঁছালাম এবং যাতায়াত শেষ করলাম।",
+    "report_en": "Completed commute safely to the destination."
+  },
+  {
+    "keywords": ["firebase", "database", "firestore", "ডাটাবেস", "ফায়ারবেস"],
+    "tag": "code",
+    "plan_bn": "ফায়ারবেস ইন্টিগ্রেশন: ডাটাবেস স্কিমা ও সিকিউরিটি রুলস কনফিগার করা।",
+    "plan_en": "Firebase setup: Configure Firestore databases and security rules.",
+    "report_bn": "ফায়ারবেস ডাটাবেস রুলস আপডেট ও কানেকশন টেস্ট শেষ করেছি।",
+    "report_en": "Configured Firestore schema and verified connection rules."
+  },
+  {
+    "keywords": ["design", "figma", "ui", "ux", "ডিজাইন", "ফিগমা"],
+    "tag": "design",
+    "plan_bn": "ইউআই ডিজাইন: ফিগমাতে নতুন ড্যাশবোর্ডের প্রোটোটাইপ তৈরি করা।",
+    "plan_en": "UI Design: Create interactive prototype of dashboard in Figma.",
+    "report_bn": "ফিগমাতে নতুন ইউআই ডিজাইন ও ভিউ স্ক্রিন কমপ্লিট করেছি।",
+    "report_en": "Completed UI designs and layout wireframes in Figma."
+  },
+  {
+    "keywords": ["test", "bug", "testing", "বাগ", "টেস্ট"],
+    "tag": "code",
+    "plan_bn": "অ্যাপ্লিকেশন টেস্টিং: বাগ খোঁজার জন্য বিভিন্ন ইউজার ফ্লো টেস্ট করা।",
+    "plan_en": "App Testing: Verify user flows to identify software bugs.",
+    "report_bn": "টেস্টিং সম্পন্ন করেছি এবং বাগ রিপোর্ট ডেভেলপারের নিকট পাঠিয়েছি।",
+    "report_en": "Completed test scenarios and documented identified issues."
+  },
+  {
+    "keywords": ["git", "github", "commit", "push", "গিট", "গিটহাব"],
+    "tag": "code",
+    "plan_bn": "কোড পুশ: গিটহাবে কোড কমিট করা এবং রিমোট ব্রাঞ্চে পুশ করা।",
+    "plan_en": "Git commit: Commit changes and push code updates to GitHub.",
+    "report_bn": "আজকের কোড সাকসেসফুলি গিটহাবে পুশ ও পিআর ক্রিয়েট করেছি।",
+    "report_en": "Committed and pushed code changes, and opened pull request."
+  },
+  {
+    "keywords": ["rest", "nap", "break", "বিরতি", "বিশ্রাম"],
+    "tag": "relax",
+    "plan_bn": "সংক্ষিপ্ত বিরতি: কাজের মাঝে কিছু সময় চোখ বন্ধ করে রেস্ট নেওয়া।",
+    "plan_en": "Short Break: Relax and take a quick rest between tasks.",
+    "report_bn": "কাজের ফাঁকে চমৎকার বিরতি নিয়ে নিজেকে রিফ্রেশ করেছি।",
+    "report_en": "Took a relaxing break and recharged energy levels."
+  },
+  {
+    "keywords": ["lunch", "dinner", "breakfast", "খাবার", "আহার"],
+    "tag": "food",
+    "plan_bn": "খাবার বিরতি: পুষ্টিকর খাবার খেয়ে শরীরের শক্তি ফিরিয়ে আনা।",
+    "plan_en": "Lunch/Dinner break: Eat nutritious food and recover energy.",
+    "report_bn": "সুন্দরভাবে দুপুরের/রাতের খাবার সম্পন্ন করেছি।",
+    "report_en": "Finished meal break and recovered productivity focus."
+  },
+  {
+    "keywords": ["tea", "coffee", "caffeine", "চা", "কফি"],
+    "tag": "relax",
+    "plan_bn": "চা/কফি বিরতি: ক্লান্তি দূর করতে এক কাপ কফি পান করা।",
+    "plan_en": "Tea/Coffee break: Sip a hot beverage to boost alertness.",
+    "report_bn": "এক কাপ কফি/চা খেয়ে অলসতা দূর করলাম।",
+    "report_en": "Enjoyed a warm cup of coffee/tea and cleared mind."
+  },
+  {
+    "keywords": ["bill", "payment", "bank", "টাকা", "বিল"],
+    "tag": "chores",
+    "plan_bn": "ইউটিলিটি বিল পরিশোধ: বিদ্যুৎ, গ্যাস বা ইন্টারনেট বিল পে করা।",
+    "plan_en": "Bill payment: Settle electricity, internet, or banking bills.",
+    "report_bn": "সব বকেয়া বিল অনলাইন মোবাইল ব্যাংকিংয়ের মাধ্যমে পরিশোধ করেছি।",
+    "report_en": "Paid utility and internet bills online successfully."
+  },
+  {
+    "keywords": ["haircut", "salon", "grooming", "সেলুন", "চুল"],
+    "tag": "chores",
+    "plan_bn": "সেলুনে যাওয়া: চুল ও দাড়ি ছেঁটে নিজেকে পরিপাটি রাখা।",
+    "plan_en": "Grooming: Visit salon/barbershop for haircut and care.",
+    "report_bn": "চুল কেটে নিজেকে ফ্রেশ ও পরিপাটি করলাম।",
+    "report_en": "Completed grooming session and haircut at salon."
+  },
+  {
+    "keywords": ["garden", "plants", "water", "বাগান", "গাছ"],
+    "tag": "chores",
+    "plan_bn": "বাগানের যত্ন: টবের গাছে জল দেওয়া এবং শুকনো পাতা পরিষ্কার করা।",
+    "plan_en": "Gardening: Water plants and trim dry branches/leaves.",
+    "report_bn": "গাছে জল দিয়েছি এবং বাগানের প্রয়োজনীয় যত্ন নিয়েছি।",
+    "report_en": "Watered all house plants and cleaned up the garden."
+  },
+  {
+    "keywords": ["homework", "assignment", "স্কুল", "হোমওয়ার্ক"],
+    "tag": "study",
+    "plan_bn": "হোমওয়ার্ক সম্পন্ন করা: পেন্ডিং অ্যাসাইনমেন্টগুলো সলভ করা।",
+    "plan_en": "Homework: Solve pending physics or math assignments.",
+    "report_bn": "সব হোমওয়ার্ক এবং প্রজেক্ট ফাইল লেখা কমপ্লিট করেছি।",
+    "report_en": "Finished all homework problems and submitted assignment."
+  },
+  {
+    "keywords": ["doctor", "medicine", "health", "ডাক্তার", "ওষুধ"],
+    "tag": "health",
+    "plan_bn": "ডাক্তার দেখানো বা ঔষধ খাওয়া: নিয়মিত চেকআপ সম্পন্ন করা।",
+    "plan_en": "Doctor appointment: Routine medical checkup and buy medicine.",
+    "report_bn": "ডাক্তারের পরামর্শ নিয়েছি এবং প্রেসক্রিপশনের ঔষধ নিয়ে এসেছি।",
+    "report_en": "Visited doctor clinic and purchased required medications."
+  },
+  {
+    "keywords": ["client", "presentation", "demo", "ক্লায়েন্ট", "ডেমো"],
+    "tag": "work",
+    "plan_bn": "ক্লায়েন্ট প্রেজেন্টেশন: নতুন প্রজেক্টের ডেমো স্ক্রিন দেখানো।",
+    "plan_en": "Client presentation: Showcase product demo slides to client.",
+    "report_bn": "সফলভাবে ক্লায়েন্টের সাথে প্রজেক্ট ডেমো শেষ করেছি।",
+    "report_en": "Completed product presentation and received client feedback."
+  },
+  {
+    "keywords": ["facebook", "youtube", "scroll", "ইনস্টাগ্রাম", "ফেসবুক"],
+    "tag": "relax",
+    "plan_bn": "সামাজিক মাধ্যম স্ক্রোলিং: বিনোদন পেতে ফানি ভিডিও দেখা।",
+    "plan_en": "Social media browsing: Relax by watching short videos on YouTube.",
+    "report_bn": "ইউটিউব ও ফেসবুক স্ক্রল করে একটু সময় কাটালাম।",
+    "report_en": "Browsed through social updates and watched viral videos."
+  },
+  {
+    "keywords": ["draw", "paint", "art", "আঁকা", "ছবি"],
+    "tag": "creative",
+    "plan_bn": "ছবি আঁকা: স্কেচবইয়ে নতুন কোনো ল্যান্ডস্কেপ আর্ট করা।",
+    "plan_en": "Artwork: Draw a scenic landscape in my sketchbook.",
+    "report_bn": "একটি সুন্দর ক্যানভাস পেইন্টিং সম্পন্ন করেছি।",
+    "report_en": "Finished painting a beautiful canvas artwork."
+  },
+  {
+    "keywords": ["commute", "traffic", "travel", "জ্যাম", "যাতায়াত"],
+    "tag": "chores",
+    "plan_bn": "অফিস ফেরত যাতায়াত: জ্যাম এড়িয়ে নিরাপদে বাড়ি ফেরা।",
+    "plan_en": "Commuting home: Navigate evening traffic to return home.",
+    "report_bn": "অফিস থেকে বাড়িতে ফেরত আসলাম এবং ফ্রেশ হলাম।",
+    "report_en": "Returned home from workspace and completed travel."
+  },
+  {
+    "keywords": ["math", "calculus", "algebra", "গণিত", "অংক"],
+    "tag": "study",
+    "plan_bn": "গণিত অনুশীলন: বীজগণিত বা ক্যালকুলাসের ৫টি বড় অংক সমাধান করা।",
+    "plan_en": "Math practice: Solve college algebra or calculus exercises.",
+    "report_bn": "জটিল ক্যালকুলাস অনুশীলনী কমপ্লিট করেছি।",
+    "report_en": "Solved all assigned math and algebra problems."
+  },
+  {
+    "keywords": ["react", "frontend", "components", "রিঅ্যাক্ট", "ফ্রন্টএন্ড"],
+    "tag": "code",
+    "plan_bn": "রিঅ্যাক্ট কম্পোনেন্ট তৈরি: ড্যাশবোর্ড স্ক্রিন রেডি করা।",
+    "plan_en": "React development: Build reusable frontend UI components.",
+    "report_bn": "ইউজার ড্যাশবোর্ডের সব রিঅ্যাক্ট কম্পোনেন্ট রেডি করেছি।",
+    "report_en": "Completed coding frontend component modules in React."
+  },
+  {
+    "keywords": ["sql", "database", "query", "ডাটাবেস", "কুয়েরি"],
+    "tag": "code",
+    "plan_bn": "এসকিউএল কোয়েরি অপ্টিমাইজেশন: ইনডেক্সিং এবং রিলেশনাল কুয়েরি চেক।",
+    "plan_en": "Database optimization: Run SQL queries and verify index paths.",
+    "report_bn": "ডাটাবেস কোয়েরি অপ্টিমাইজ করে স্পিড ডাবল করেছি।",
+    "report_en": "Optimized slow relational database queries successfully."
+  },
+  {
+    "keywords": ["market", "buy", "bazar", "বাজার", "দোকান"],
+    "tag": "chores",
+    "plan_bn": "বাজার করা: রান্নাঘরের জন্য তরতাজা শাকসবজি কেনা।",
+    "plan_en": "Kitchen bazar: Buy fresh vegetables and chicken from local market.",
+    "report_bn": "তরতাজা সবজি বাজার করা শেষ করেছি।",
+    "report_en": "Purchased fresh raw materials and kitchen foodstuff."
+  },
+  {
+    "keywords": ["call", "skype", "whatsapp", "ফোন", "কল"],
+    "tag": "social",
+    "plan_bn": "গ্রুপ কল: পুরনো বন্ধুদের সাথে দূরভাষে যোগাযোগ।",
+    "plan_en": "Phone call: Call parents or close friends to check in.",
+    "report_bn": "বাড়িতে বাবা-মায়ের সাথে ফোনে চমৎকার কথা বললাম।",
+    "report_en": "Had a long phone conversation with parents and family."
+  },
+  {
+    "keywords": ["invoice", "billing", "excel", "হিসাব", "ইনভয়েস"],
+    "tag": "work",
+    "plan_bn": "হিসাব-নিকাশ: এই সপ্তাহের সব ইনভয়েস ক্লিয়ার ও এন্ট্রি করা।",
+    "plan_en": "Invoice clearing: Verify weekly billing and entry sheets.",
+    "report_bn": "সব ইনভয়েস জেনারেট করে ক্লায়েন্টদের নিকট সাবমিট করেছি।",
+    "report_en": "Sent outstanding invoices and processed billing entries."
+  },
+  {
+    "keywords": ["boss", "manager", "one-on-one", "বস", "রিপোর্ট"],
+    "tag": "work",
+    "plan_bn": "বস মিটিং: ম্যানেজারকে এই সপ্তাহের কাজের বিবরণ দেওয়া।",
+    "plan_en": "Manager sync: Provide status overview of task progress to supervisor.",
+    "report_bn": "ম্যানেজারের সাথে ওয়ান-টু-ওয়ান মিটিং শেষ করে প্রশংসা পেলাম।",
+    "report_en": "Finished supervisor sync and aligned expectations."
+  },
+  {
+    "keywords": ["api", "endpoint", "postman", "এপিআই", "কানেকশন"],
+    "tag": "code",
+    "plan_bn": "এপিআই ইন্টিগ্রেশন: থার্ড-পার্টি গেটওয়ে কানেক্ট করা।",
+    "plan_en": "API connection: Integrate third-party payments endpoint.",
+    "report_bn": "এপিআই কানেক্ট করে পোস্টম্যান টেস্টিং কমপ্লিট করেছি।",
+    "report_en": "Successfully integrated APIs and completed Postman tests."
+  },
+  {
+    "keywords": ["dog", "cat", "pet", "বিড়াল", "কুকুর"],
+    "tag": "chores",
+    "plan_bn": "পোষা প্রাণীর যত্ন: বিড়ালকে খাবার দেওয়া ও খেলনা দিয়ে খেলা।",
+    "plan_en": "Pet care: Feed the cat/dog and go for a quick walk.",
+    "report_bn": "বিড়ালকে খাবার খাইয়েছি এবং তাদের সাথে কিছু সময় খেলেছি।",
+    "report_en": "Fed the pets and cleaned up their living quarters."
+  },
+  {
+    "keywords": ["commute", "bus", "train", "বাস", "ট্রেন"],
+    "tag": "chores",
+    "plan_bn": "বাসে ভ্রমণ: অফিসের উদ্দেশ্যে বাসা থেকে রওনা হওয়া।",
+    "plan_en": "Bus commute: Board the transit to reach workspace.",
+    "report_bn": "বাস জার্নি শেষ করে সময়মতো অফিসে প্রবেশ করলাম।",
+    "report_en": "Reached workspace office using local transport transit."
+  },
+  {
+    "keywords": ["admin", "paperwork", "file", "কাগজপত্র", "ফাইল"],
+    "tag": "work",
+    "plan_bn": "অফিস অ্যাডমিন কাজ: পেন্ডিং ফিজিক্যাল ফাইল গুছানো।",
+    "plan_en": "Admin task: Organize physical files and client agreements.",
+    "report_bn": "সব কাজের কাগজপত্র ফাইল ক্যাবিনেটে অর্গানাইজ করেছি।",
+    "report_en": "Completed file sorting and archived client records."
+  },
+  {
+    "keywords": ["lecture", "notes", "revise", "লেকচার", "নোট"],
+    "tag": "study",
+    "plan_bn": "নোট রিভিশন: ফিজিক্স লেকচারের জটিল অংশসমূহ রিভিউ করা।",
+    "plan_en": "Lecture revision: Revise advanced theories of modern physics.",
+    "report_bn": "লেকচার নোটগুলো ভালোভাবে মুখস্থ ও আত্মস্থ করেছি।",
+    "report_en": "Reviewed physics lectures and consolidated quick reference sheets."
+  },
+  {
+    "keywords": ["exam", "prep", "test", "পরীক্ষা", "প্রস্তুতি"],
+    "tag": "study",
+    "plan_bn": "পরীক্ষার প্রস্তুতি: মক টেস্ট সলভ করে প্রস্তুতি যাচাই করা।",
+    "plan_en": "Exam preparation: Solve previous year question papers.",
+    "report_bn": "একটি পূর্ণাঙ্গ প্র্যাকটিস মক টেস্ট শেষ করেছি।",
+    "report_en": "Finished mock tests and identified weak target topics."
+  },
+  {
+    "keywords": ["water", "hydrate", "drink", "পানি", "শরবত"],
+    "tag": "health",
+    "plan_bn": "হাইড্রেটেড থাকা: এক লিটার জল খাওয়া ও ফ্রেশ হওয়া।",
+    "plan_en": "Stay Hydrated: Drink water and take a quick posture check.",
+    "report_bn": "পর্যাপ্ত পানি খেয়ে শরীরকে তাজা করলাম।",
+    "report_en": "Hydrated well, stretched muscles and refreshed focus."
+  },
+  {
+    "keywords": ["guitar", "piano", "practice", "গিটার", "পিয়ানো"],
+    "tag": "creative",
+    "plan_bn": "সংগীত চর্চা: গিটারে নতুন কর্ড প্রোগ্রেস প্র্যাকটিস করা।",
+    "plan_en": "Instrument practice: Practice new chords on the guitar.",
+    "report_bn": "আজ চমৎকারভাবে গিটার প্র্যাকটিস সেশন সম্পন্ন করেছি।",
+    "report_en": "Completed music drills and perfected planned patterns."
+  },
+  {
+    "keywords": ["grocery", "eggs", "milk", "ডিম", "দুধ"],
+    "tag": "chores",
+    "plan_bn": "কেনাকাটা: সুপারশপ থেকে চাল, ডাল ও ডিম কিনে আনা।",
+    "plan_en": "Shopping: Buy daily essentials like milk, eggs, and bread.",
+    "report_bn": "সুপারশপ বাজার থেকে ঘরের প্রয়োজনীয় জিনিস এনেছি।",
+    "report_en": "Purchased bread, eggs, and milk from nearby retail shop."
+  },
+  {
+    "keywords": ["commute", "car", "uber", "গাড়ি", "উবার"],
+    "tag": "chores",
+    "plan_bn": "উবার বুকিং: জ্যামের হাত থেকে বাঁচতে গাড়ি ড্রাইভ বা রাইড নেওয়া।",
+    "plan_en": "Ride-sharing: Take an Uber commute to client office.",
+    "report_bn": "উবার রাইড নিয়ে দ্রুত মিটিং ভেন্যুতে পৌঁছালাম।",
+    "report_en": "Reached client destination on time via ride-sharing."
+  },
+  {
+    "keywords": ["meeting", "presentation", "ppt", "স্লাইড", "প্রেজেন্টেশন"],
+    "tag": "work",
+    "plan_bn": "স্লাইড ডিজাইন: কালকের প্রেজেন্টেশনের জন্য পিপিটি ফাইল বানানো।",
+    "plan_en": "Presentation prep: Design slides for tomorrow's business pitch.",
+    "report_bn": "প্রেজেন্টেশনের স্লাইডগুলো ফাইনাল এডিট করে প্রস্তুত করেছি।",
+    "report_en": "Completed PPT deck and verified speech guidelines."
+  },
+  {
+    "keywords": ["coffee", "cafeteria", "starbucks", "কফি", "ক্যাফে"],
+    "tag": "relax",
+    "plan_bn": "কফি আড্ডা: ফ্রেন্ডদের নিয়ে কফি শপে গিয়ে গল্প করা।",
+    "plan_en": "Coffee session: Visit neighborhood cafeteria for caffeine booster.",
+    "report_bn": "সুস্বাদু এক কাপ ক্যাপুচিনো খেলাম ও মাথা সতেজ হলো।",
+    "report_en": "Had hot espresso coffee and recovered afternoon stamina."
+  },
+  {
+    "keywords": ["youtube", "funny", "cats", "ভিডিও", "ইউটিউব"],
+    "tag": "relax",
+    "plan_bn": "ইউটিউবে ভিডিও দেখা: একটু বিনোদনের জন্য টিউটোরিয়াল দেখা।",
+    "plan_en": "YouTube browsing: Watch educational tutorial or documentary.",
+    "report_bn": "টিউটোরিয়াল ভিডিও দেখে প্রজেক্টের সমাধান বের করলাম।",
+    "report_en": "Watched useful coding tips on YouTube for resolving blockages."
+  },
+  {
+    "keywords": ["paint", "sketch", "canvas", "আঁকা", "স্কেচ"],
+    "tag": "creative",
+    "plan_bn": "স্কেচিং প্র্যাকটিস: চারকোল দিয়ে মানুষের প্রতিকৃতি আঁকা।",
+    "plan_en": "Sketch practice: Practice human anatomy sketch in charcoal.",
+    "report_bn": "চারকোলের সাহায্যে একটি ফেস স্কেচ শেষ করেছি।",
+    "report_en": "Completed facial sketch anatomy practice in sketchpad."
+  },
+  {
+    "keywords": ["walk", "evening", "park", "হাঁটাহাঁটি", "পার্ক"],
+    "tag": "health",
+    "plan_bn": "পার্কে হাঁটাহাঁটি: খোলা বাতাসে প্রাণভরে নিঃশ্বাস নিতে বের হওয়া।",
+    "plan_en": "Park walk: Go for physical walking session in the green field.",
+    "report_bn": "বিকেলে পার্কে হেঁটে শরীর ও মন ভালো করলাম।",
+    "report_en": "Had a brisk evening walk at nearby park."
+  },
+  {
+    "keywords": ["learn", "vocabulary", "english", "ইংরেজি", "শিক্ষা"],
+    "tag": "study",
+    "plan_bn": "ইংরেজি শিক্ষা: ১০টি নতুন ইংরেজি ভোকাবুলারি শেখা।",
+    "plan_en": "Vocabulary builder: Learn ten new advanced English words.",
+    "report_bn": "আজকের ক্লাসের নতুন ভোকাবুলারি রিভিশন শেষ করেছি।",
+    "report_en": "Memorized vocabulary words and practiced writing sentences."
+  },
+  {
+    "keywords": ["cleaning", "dusting", "closet", "আলমারি", "গোছানো"],
+    "tag": "chores",
+    "plan_bn": "ঘর ধূলিমুক্তকরণ: সেলফ ও বুকশেলফের ধুলোবালি পরিষ্কার করা।",
+    "plan_en": "Dusting bookshelf: Clean dust from books and study table.",
+    "report_bn": "আমার বইয়ের তাক গুছিয়েছি ও ধুলো পরিষ্কার করেছি।",
+    "report_en": "Cleaned bookshelves and organized stationery items."
+  },
+  {
+    "keywords": ["laundry", "wash", "clothes", "কাপড়", "ধোয়া"],
+    "tag": "chores",
+    "plan_bn": "কাপড় কাচা: ওয়াশিং মেশিনে নোংরা কাপড় ধুয়ে শুকাতে দেওয়া।",
+    "plan_en": "Laundry wash: Throw dirty laundry into washing machine.",
+    "report_bn": "সব নোংরা কাপড় ধুয়ে বারান্দায় শুকাতে দিয়েছি।",
+    "report_en": "Completed laundry cleaning cycle and dried clothes."
+  },
+  {
+    "keywords": ["dinner", "night", "food", "রাতের", "খাবার"],
+    "tag": "food",
+    "plan_bn": "রাতের খাবার: পরিবারসহ পুষ্টিকর এবং হালকা ডিনার করা।",
+    "plan_en": "Dinner meal: Have a light and healthy supper with family.",
+    "report_bn": "পরিবারের সাথে ডিনার সম্পন্ন করে ঘুমাতে যাওয়ার প্রস্তুতি নিলাম।",
+    "report_en": "Finished light supper dinner and ready to wind down."
+  },
+  {
+    "keywords": ["breakfast", "morning", "eggs", "সকালের", "নাস্তা"],
+    "tag": "food",
+    "plan_bn": "সকালের নাস্তা: ওটস, ডিম ও কলা দিয়ে পুষ্টিকর ব্রেকফাস্ট করা।",
+    "plan_en": "Breakfast meal: Prep morning oats, eggs, and coffee.",
+    "report_bn": "নাস্তা শেষ করে কাজের দিন শুরু করতে প্রস্তুত হলাম।",
+    "report_en": "Finished healthy breakfast and ready to jump on daily tasks."
+  },
+  {
+    "keywords": ["commute", "office", "journey", "অফিস", "যাতায়াত"],
+    "tag": "chores",
+    "plan_bn": "সকালের অফিস যাত্রা: পাবলিক বাসে করে অফিসে রওনা হওয়া।",
+    "plan_en": "Morning commute: Catch bus transit to reach early standup.",
+    "report_bn": "অফিসে সফলভাবে পৌঁছে সিটে বসলাম।",
+    "report_en": "Reached desk workstation safely after transit commute."
+  },
+  {
+    "keywords": ["react", "components", "jsx", "রিঅ্যাক্ট", "ভিউ"],
+    "tag": "code",
+    "plan_bn": "রিঅ্যাক্ট স্টাইল: সিএসএস ও ট্রানজিশন দিয়ে পেজ সুন্দর করা।",
+    "plan_en": "React styling: Style frontend pages with CSS and transition animation.",
+    "report_bn": "পেজের স্টাইলিং ও রিঅ্যাক্ট কম্পোনেন্ট ভিজ্যুয়াল ফাইনাল করেছি।",
+    "report_en": "Successfully completed UI layout styles for React frontend modules."
+  },
+  {
+    "keywords": ["standup", "sprint", "agile", "মিটিং", "স্ট্যান্ডআপ"],
+    "tag": "work",
+    "plan_bn": "সকালের স্ট্যান্ডআপ মিটিং: গতকালকের কাজের আপডেট শেয়ার করা।",
+    "plan_en": "Morning Standup: Sync yesterday logs and align daily roadmap.",
+    "report_bn": "টিম মেম্বারদের নিকট আজকের অ্যাকশন প্ল্যান প্রেজেন্ট করেছি।",
+    "report_en": "Completed standup presentation and coordinated blocks with team."
+  },
+  {
+    "keywords": ["invoice", "payment", "bank", "টাকা", "লেনদেন"],
+    "tag": "work",
+    "plan_bn": "ব্যাংক লেনদেন: প্রয়োজনীয় ফিনান্সিয়াল ট্রানজাকশন সম্পন্ন করা।",
+    "plan_en": "Banking chores: Settle payments and bank balance check.",
+    "report_bn": "অনলাইন ব্যাংকিং ড্যাশবোর্ডে অ্যাকাউন্টের হিসাব মিলিয়েছি।",
+    "report_en": "Cleared vendor bills and synced balances online."
+  },
+  {
+    "keywords": ["boss", "manager", "one-on-one", "মিটিং", "ম্যানেজার"],
+    "tag": "work",
+    "plan_bn": "ম্যানেজার মিটিং: নতুন রিকোয়ারমেন্টস নিয়ে আলোচনা।",
+    "plan_en": "Supervisor sync: Discuss project hurdles and feature priorities.",
+    "report_bn": "ম্যানেজারের সাথে ওয়ান-অন-ওয়ান ফিডব্যাক সেশন সম্পন্ন করেছি।",
+    "report_en": "Finished supervisor check-in and clarified ticket scope."
+  },
+  {
+    "keywords": ["api", "testing", "postman", "টেস্ট", "পোস্টম্যান"],
+    "tag": "code",
+    "plan_bn": "এপিআই ভ্যালিডেশন: নতুন এন্ডপয়েন্টের ডাটা ভ্যালিডেশন চেক।",
+    "plan_en": "API testing: Run API route scenarios in Postman workspace.",
+    "report_bn": "সব এপিআই রাউট রেসপন্স ওকে পেয়েছি ও সেভ করেছি।",
+    "report_en": "Verified payments backend API response headers via Postman."
+  },
+  {
+    "keywords": ["pet", "feed", "grooming", "কুকুর", "বিড়াল"],
+    "tag": "chores",
+    "plan_bn": "পোষা প্রাণীর যত্ন: বিড়ালের নখ কাটা ও স্নান করানো।",
+    "plan_en": "Pet grooming: Bath and brush the pets for clean health.",
+    "report_bn": "বিড়ালকে ফ্রেশ করিয়ে তাদের বাটি পরিষ্কার করেছি।",
+    "report_en": "Groomed pets and cleaned cages successfully."
+  },
+  {
+    "keywords": ["medicine", "pills", "supplements", "ঔষধ", "ট্যাবলেট"],
+    "tag": "health",
+    "plan_bn": "নিয়মিত ঔষধ খাওয়া: মাল্টিভিটামিন ও প্রেসক্রিপশন ঔষধ গ্রহণ।",
+    "plan_en": "Medicine consumption: Take daily supplements and capsules.",
+    "report_bn": "জল দিয়ে দুপুরের ঔষধ সেবন করলাম।",
+    "report_en": "Took daily prescribed capsules after lunch."
+  },
+  {
+    "keywords": ["walk", "jogging", "cardio", "হাঁটা", "জগিং"],
+    "tag": "health",
+    "plan_bn": "হাঁটার অভ্যাস: হার্ট ভালো রাখতে দ্রুত হাঁটার কসরত।",
+    "plan_en": "Brisk walking: Practice cardio running exercise in the block.",
+    "report_bn": "২০ মিনিট দ্রুত হেঁটে শরীর ঘামালাম।",
+    "report_en": "Completed brisk walk session and burnt target calories."
+  },
+  {
+    "keywords": ["study", "notes", "revision", "পড়া", "রিভিশন"],
+    "tag": "study",
+    "plan_bn": "রিভিশন সেশন: কালকের পরীক্ষার সব টপিক দ্রুত রিভিশন করা।",
+    "plan_en": "Study revision: Go through key formulas and theorems again.",
+    "report_bn": "পরীক্ষার সব রিভিশন শেষ করেছি এবং রিফ্রেশড অনুভব করছি।",
+    "report_en": "Completed all final exam revisions and summarized formulas."
+  },
+  {
+    "keywords": ["cook", "lunch", "kitchen", "দুপুরের", "রান্না"],
+    "tag": "food",
+    "plan_bn": "দুপুরের রান্না: মাছের ঝোল ও ভাত প্রস্তুত করার ইচ্ছা।",
+    "plan_en": "Lunch prep: Cook local rice and curry in the kitchen.",
+    "report_bn": "দুপুরের পুষ্টিকর রান্না সম্পন্ন করে লাঞ্চে বসলাম।",
+    "report_en": "Completed preparing lunch meal successfully."
+  },
+  {
+    "keywords": ["grocery", "store", "buy", "কেনাকাটা", "বাজার"],
+    "tag": "chores",
+    "plan_bn": "মদি বাজার: সাবান, পেস্ট ও প্রয়োজনীয় লিকুইড নিয়ে আসা।",
+    "plan_en": "Retail shopping: Settle household groceries checklist items.",
+    "report_bn": "সুপারস্টোর থেকে প্রয়োজনীয় মদি মাল কেনা শেষ করলাম।",
+    "report_en": "Finished retail shopping trip and returned with household goods."
+  },
+  {
+    "keywords": ["yoga", "stretch", "posture", "ইয়োগা", "স্ট্রেচিং"],
+    "tag": "health",
+    "plan_bn": "স্ট্রেচিং ইয়োগা: মেরুদণ্ডের আরামের জন্য আসন চর্চা।",
+    "plan_en": "Yoga stretching: Practice basic poses to release lower back pain.",
+    "report_bn": "১০ মিনিট চমৎকার স্ট্রেচিং করে পিঠের ব্যথা কম করলাম।",
+    "report_en": "Did full-body yoga stretching exercises to fix posture."
+  },
+  {
+    "keywords": ["homework", "math", "equations", "গণিত", "হোমওয়ার্ক"],
+    "tag": "study",
+    "plan_bn": "গণিত হোমওয়ার্ক: বীজগণিতের দ্বিপদী সমীকরণ চ্যাপ্টার শেষ করা।",
+    "plan_en": "Algebra homework: Solve linear equations and matrices sheet.",
+    "report_bn": "আজকের ক্লাসের হোমওয়ার্ক ক্লিয়ার করলাম।",
+    "report_en": "Completed all algebraic equations sheets."
+  },
+  {
+    "keywords": ["design", "figma", "screens", "ফিগমা", "ডিজাইন"],
+    "tag": "design",
+    "plan_bn": "ইউজার ইন্টারফেস: ডার্ক মোডের কালার প্যালেট ফাইনাল করা।",
+    "plan_en": "Color styling: Finalize dark mode themes in Figma layout.",
+    "report_bn": "ডার্ক মোড স্ক্রিন মকআপ ফিগমাতে রেডি শেষ করলাম।",
+    "report_en": "Completed dark theme style definitions in Figma screen drafts."
+  },
+  {
+    "keywords": ["commute", "rickshaw", "cng", "রিকশা", "সিএনজি"],
+    "tag": "chores",
+    "plan_bn": "রিকশায় যাতায়াত: নিকটস্থ মেট্রো স্টেশনে পৌঁছানো।",
+    "plan_en": "Local commute: Take a rickshaw ride to subway station.",
+    "report_bn": "রিকশায় চড়ে জ্যাম পেরিয়ে স্টেশনে আসলাম।",
+    "report_en": "Reached metro station safely via local rickshaw transport."
+  },
+  {
+    "keywords": ["git", "merge", "conflict", "গিট", "কনফ্লিক্ট"],
+    "tag": "code",
+    "plan_bn": "গিট ব্রাঞ্চ মার্জ: কনফ্লিক্টগুলো ম্যানুয়ালি রিজলভ করা।",
+    "plan_en": "Git merge: Resolve branch integration conflicts manually.",
+    "report_bn": "সফলভাবে সব কোড কনফ্লিক্ট রিজলভ ও মার্জ শেষ করেছি।",
+    "report_en": "Merged target branches and resolved merge conflicts."
+  },
+  {
+    "keywords": ["email", "newsletter", "inbox", "মেইল", "ইনবক্স"],
+    "tag": "work",
+    "plan_bn": "মেইলিং লিস্ট চেক: নিউজলেটার রাইটিং শেষ করা।",
+    "plan_en": "Mailing check: Complete drafting monthly newsletter layout.",
+    "report_bn": "নিউজলেটার কমপ্লিট করে সব গ্রাহকদের ইমেইলে পাঠিয়েছি।",
+    "report_en": "Sent monthly newsletter update to database mailing list."
+  },
+  {
+    "keywords": ["facebook", "instagram", "feed", "ফেইসবুক", "ফিড"],
+    "tag": "relax",
+    "plan_bn": "সামাজিক মাধ্যম: বন্ধুদের ছবি ও আপডেট স্ক্রোল করা।",
+    "plan_en": "Social browsing: Check feed updates on Instagram and Facebook.",
+    "report_bn": "কিছুক্ষণ সময় কাটানোর জন্য সোশ্যাল ফিড চেক করেছি।",
+    "report_en": "Scrolled feed updates and checked social messages."
+  },
+  {
+    "keywords": ["water", "plants", "garden", "গাছ", "বাগান"],
+    "tag": "chores",
+    "plan_bn": "গাছের যত্ন: শুকিয়ে যাওয়া গাছের পাতা ট্রিম করা।",
+    "plan_en": "Water plants: Take care of indoor balcony plant pots.",
+    "report_bn": "বারান্দার সব টবে পানি দিয়ে বাগান সতেজ করলাম।",
+    "report_en": "Watered plants and set up fertilizers in pots."
+  },
+  {
+    "keywords": ["meditation", "mindfulness", "zen", "মেডিটেশন", "ধ্যান"],
+    "tag": "health",
+    "plan_bn": "মনোযোগ বৃদ্ধি: হেডস্পেস অ্যাপ দিয়ে ১০ মিনিট ধ্যান করা।",
+    "plan_en": "Zen focus: Join online guided mindfulness session for 10 min.",
+    "report_bn": "মেডিটেশন করে মানসিক ক্লান্তি দূর করলাম।",
+    "report_en": "Completed guided mindfulness meditation and rested mind."
+  },
+  {
+    "keywords": ["write", "journal", "diary", "ডায়েরি", "লেখা"],
+    "tag": "creative",
+    "plan_bn": "দিনলিপি লিখন: আজকের দিনের ভালো ঘটনাগুলো ডায়েরিতে নোট করা।",
+    "plan_en": "Journal entry: Write reflections on today's goals and feelings.",
+    "report_bn": "আজকের চমৎকার অভিজ্ঞতার কথা ডায়েরিতে রেকর্ড করলাম।",
+    "report_en": "Successfully completed personal journal logging for today."
+  },
+  {
+    "keywords": ["haircut", "trim", "shave", "চুল", "কাটা"],
+    "tag": "chores",
+    "plan_bn": "চুল ছাঁটা: গরমের স্বস্তির জন্য শর্ট হেয়ারকাট নেওয়া।",
+    "plan_en": "Barber visit: Get a quick hair trimming and facial clean.",
+    "report_bn": "হেয়ারকাট সেশন শেষ করে অত্যন্ত লাইট ও ফ্রেশ লাগছে।",
+    "report_en": "Completed hair trim and shaven look at salon shop."
+  },
+  {
+    "keywords": ["bill", "electricity", "gas", "গ্যাস", "বিদ্যুৎ"],
+    "tag": "chores",
+    "plan_bn": "বিল পেমেন্ট: এই মাসের বিদ্যুৎ ও গ্যাস বিল বিকাশ করা।",
+    "plan_en": "Bill settle: clear monthly energy and gas balances online.",
+    "report_bn": "সব বিদ্যুৎ ও ইউটিলিটি চার্জ পেমেন্ট ক্লিয়ার শেষ করলাম।",
+    "report_en": "Settled electricity and utility bills using digital banking."
+  },
+  {
+    "keywords": ["family", "outing", "dinner", "পরিবার", "আউটডোর"],
+    "tag": "social",
+    "plan_bn": "পরিবার আউটিং: ডিনারের জন্য রেস্টুরেন্টে খেতে যাওয়া।",
+    "plan_en": "Family dinner: Dine out at local restaurant with family.",
+    "report_bn": "পরিবারের সবাই মিলে সুন্দর ডিনার আউটিং শেষ করলাম।",
+    "report_en": "Completed delicious family dine-out session at restaurant."
+  },
+  {
+    "keywords": ["lunch", "office", "cafeteria", "দুপুরের", "খাবার"],
+    "tag": "food",
+    "plan_bn": "লাঞ্চ ব্রেক: কলিগদের সাথে ক্যাফেটেরিয়ায় দুপুরের খাবার খাওয়া।",
+    "plan_en": "Office lunch: Eat packed meal with teammates in cafeteria.",
+    "report_bn": "কলিগদের সাথে দুপুরের লাঞ্চ খাওয়া ও আড্ডা শেষ করলাম।",
+    "report_en": "Finished cafeteria lunch and enjoyed sync discussions with colleagues."
+  },
+  {
+    "keywords": ["grocery", "vegetables", "onions", "পিঁয়াজ", "সবজি"],
+    "tag": "chores",
+    "plan_bn": "শাকসবজি বাজার: আলু, পিঁয়াজ ও তরকারি কিনতে বাজারে যাওয়া।",
+    "plan_en": "Fresh shopping: Go to local shop to fetch onion and vegetables.",
+    "report_bn": "তরতাজা সবজি কেনাকাটা ও রান্নাঘরে গোছানো সম্পন্ন করেছি।",
+    "report_en": "Completed buying fresh veggies and sorted kitchen cabinets."
+  },
+  {
+    "keywords": ["react", "context", "state", "রিঅ্যাক্ট", "স্টেট"],
+    "tag": "code",
+    "plan_bn": "স্টেট ম্যানেজমেন্ট: কনটেক্সট এপিআই দিয়ে গ্লোবাল স্টেট সাজানো।",
+    "plan_en": "State management: Configure React context API endpoints.",
+    "report_bn": "গ্লোবাল স্টেট ও কনটেক্সট কানেকশন রেডি করে টেস্ট করেছি।",
+    "report_en": "Integrated React Context API to manage login credentials globally."
+  },
+  {
+    "keywords": ["game", "ps5", "fifa", "গেম", "ফিফা"],
+    "tag": "relax",
+    "plan_bn": "ফিফা গেম: প্লেস্টেশনে ফিফা টুর্নামেন্ট খেলার আয়োজন।",
+    "plan_en": "FIFA gaming: Play digital sports tournament with neighbors.",
+    "report_bn": "ফিফা টুর্নামেন্টে চমৎকার জয় লাভ করে মজা করলাম।",
+    "report_en": "Won the FIFA sports tournament round in gaming session."
+  },
+  {
+    "keywords": ["movie", "cinema", "hall", "সিনেমা", "হল"],
+    "tag": "relax",
+    "plan_bn": "সিনেপ্লেক্স ভ্রমণ: থিয়েটারে নতুন সাই-ফাই সিনেমা উপভোগ করা।",
+    "plan_en": "Movie theater: Watch newly released sci-fi movie in cinema.",
+    "report_bn": "দারুণ একটি হলিউড সাই-ফাই মুভি দেখা শেষ করলাম।",
+    "report_en": "Completed viewing movie at the multiplex theater."
+  },
+  {
+    "keywords": ["boss", "meeting", "feedback", "বস", "ফিডব্যাক"],
+    "tag": "work",
+    "plan_bn": "বস আপডেট: কোয়ার্টার প্রগ্রেস রিপোর্ট ম্যানেজারকে সাবমিট।",
+    "plan_en": "Manager overview: Present quarterly goals metrics slide deck.",
+    "report_bn": "ম্যানেজারের থেকে অত্যন্ত ইতিবাচক কাজের ফিডব্যাক পেলাম।",
+    "report_en": "Submitted project statistics files and received positive workspace feedback."
+  },
+  {
+    "keywords": ["commute", "metro", "subway", "মেট্রো", "রেল"],
+    "tag": "chores",
+    "plan_bn": "মেট্রোরেলে যাতায়াত: জ্যাম ছাড়া দ্রুত অফিসে পৌঁছানো।",
+    "plan_en": "Metro transit: Board fast-track subway line to avoid road traffic.",
+    "report_bn": "দ্রুত সময়ে মেট্রোরেলে করে অফিসে যাতায়াত শেষ করলাম।",
+    "report_en": "Arrived at destination workspace using high-speed subway transit."
+  },
+  {
+    "keywords": ["exam", "mcq", "study", "পরীক্ষা", "নোট"],
+    "tag": "study",
+    "plan_bn": "এমসিকিউ অনুশীলন: ২০০টি গুরুত্বপূর্ণ সংক্ষিপ্ত প্রশ্ন সমাধান।",
+    "plan_en": "MCQ drills: Solve online multiple choice mock exams sheet.",
+    "report_bn": "এমসিকিউ প্রশ্নগুলোর সঠিক উত্তর মুখস্থ শেষ করেছি।",
+    "report_en": "Finished mock test database and checked scoring patterns."
+  },
+  {
+    "keywords": ["guitar", "tuner", "strings", "গিটার", "তার"],
+    "tag": "creative",
+    "plan_bn": "গিটারের যত্ন: পুরনো তার পরিবর্তন করে টিউনিং করা।",
+    "plan_en": "Guitar maintenance: Replace old strings and tune chords.",
+    "report_bn": "গিটারের তার বদলে একদম নতুন মিষ্টি সুরে টিউন করলাম।",
+    "report_en": "Completed guitar setup and tuned all strings accurately."
+  },
+  {
+    "keywords": ["tea", "snack", "bakery", "চা", "নাস্তা"],
+    "tag": "relax",
+    "plan_bn": "বিকালে চা-নাস্তা: বাকেরির গরম সমোসা ও চা উপভোগ।",
+    "plan_en": "Afternoon tea: Enjoy warm baked goods and ginger tea.",
+    "report_bn": "সুন্দর আড্ডার সাথে চা-বিস্কুট খাওয়া সম্পন্ন করেছি।",
+    "report_en": "Had tea and snacks break and refreshed mid-day energy."
+  },
+  {
+    "keywords": ["study", "history", "chapter", "ইতিহাস", "অধ্যায়"],
+    "tag": "study",
+    "plan_bn": "ইতিহাস চ্যাপ্টার রিডিং: প্রাচীন সভ্যতার অধ্যায়টি পড়া।",
+    "plan_en": "History study: Read chapters on ancient civilizations.",
+    "report_bn": "আজ ইতিহাস বইয়ের ৩টি গুরুত্বপূর্ণ পাতা শেষ করেছি।",
+    "report_en": "Finished reading history notes and wrote study cards."
+  },
+  {
+    "keywords": ["social", "chatting", "messenger", "চ্যাট", "মেসেঞ্জার"],
+    "tag": "social",
+    "plan_bn": "মেসেঞ্জারে চ্যাট: বন্ধুদের সাথে সপ্তাহান্তের প্ল্যান রেডি করা।",
+    "plan_en": "Online chat: Catch up on weekend activities with friends.",
+    "report_bn": "গ্রুপ চ্যাটে বন্ধুদের সাথে আড্ডা ও প্রোগ্রাম ফাইনাল করলাম।",
+    "report_en": "Completed chats with close friends and set weekend goals."
+  },
+  {
+    "keywords": ["rest", "sofa", "music", "বিশ্রাম", "গান"],
+    "tag": "relax",
+    "plan_bn": "সোফায় আরাম: মোবাইল বন্ধ রেখে হালকা গান শোনা ও ঘুমানো।",
+    "plan_en": "Sofa relaxation: Lay down on the couch and listen to soft audio.",
+    "report_bn": "দুপুরের ক্লান্তির পর ২০ মিনিট সোফায় শুয়ে রেস্ট নিলাম।",
+    "report_en": "Completed sofa rest period and recovered body posture."
+  }
+]

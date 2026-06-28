@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import SuggestionHelper from './SuggestionHelper';
 
 /**
  * PlanningModal handles creating a new plan hour slot or editing an existing plan.
  * Fields: Hour, AM/PM, Planning text.
  */
-export default function PlanningModal({ isOpen, onClose, onSave, report }) {
+export default function PlanningModal({ isOpen, onClose, onSave, report, dictionaryData }) {
   const [hour, setHour] = useState(8);
   const [ampm, setAmpm] = useState('AM');
   const [plan, setPlan] = useState('');
@@ -116,9 +117,23 @@ export default function PlanningModal({ isOpen, onClose, onSave, report }) {
                     autoFocus
                     style={{ resize: 'none', fontSize: '0.95rem' }}
                   ></textarea>
-                  <div className="form-text text-muted" style={{ fontSize: '0.75rem' }}>
+                  <div className="form-text text-muted mb-2" style={{ fontSize: '0.75rem' }}>
                     Describe your tasks or objectives for this hour slot.
                   </div>
+
+                  {/* Suggestion Helper */}
+                  <SuggestionHelper 
+                    type="plan" 
+                    currentInputText={plan}
+                    dictionaryData={dictionaryData}
+                    onApply={(s) => setPlan(prev => {
+                      const trimmed = prev.trim();
+                      const words = trimmed.split(/\s+/).filter(Boolean);
+                      if (words.length <= 1) return s;
+                      const rest = trimmed.substring(words[0].length).trim();
+                      return s + ' ' + rest;
+                    })}
+                  />
                 </div>
               </div>
 

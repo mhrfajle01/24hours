@@ -5,13 +5,13 @@ import { calculateStats } from '../utils/helpers';
  * Summary card component displaying daily statistics, productivity metrics, progress bar, 
  * date filter picker, and quick-generator button.
  */
-export default function Summary({ reports, selectedDate, onDateChange, onGenerateToday }) {
+export default function Summary({ reports, selectedDate, onDateChange, onGenerateToday, onOpenPDFSettings }) {
   const { completed, pending, missed, totalPlanned, productivity } = calculateStats(reports);
 
   return (
     <div className="container-fluid max-width-container my-3 px-3 animate-fade-in">
       <div className="card border-0 shadow-sm rounded-4 p-3 bg-white">
-        {/* Date Filter & Auto Generate Row */}
+        {/* Date Filter & Auto Generate / Export Row */}
         <div className="row g-2 align-items-center mb-3">
           <div className="col-12 col-md-6">
             <label className="form-label text-secondary small fw-bold mb-1" htmlFor="dateFilter">
@@ -31,13 +31,22 @@ export default function Summary({ reports, selectedDate, onDateChange, onGenerat
             </div>
           </div>
           <div className="col-12 col-md-6 text-md-end mt-2 mt-md-4">
-            {reports.length === 0 && (
+            {reports.length === 0 ? (
               <button
                 className="btn text-white fw-bold px-4 py-2 rounded-pill shadow-sm transition-all hover-scale"
                 style={{ backgroundColor: '#128C7E' }}
                 onClick={onGenerateToday}
               >
                 <i className="bi bi-lightning-charge-fill me-2"></i>Generate Today
+              </button>
+            ) : (
+              <button
+                className="btn btn-danger text-white fw-bold px-4 py-2 rounded-pill shadow-sm transition-all hover-scale border-0"
+                style={{ backgroundColor: '#DC3545' }}
+                onClick={onOpenPDFSettings}
+                title="Configure and download PDF report"
+              >
+                <i className="bi bi-file-earmark-pdf-fill me-2"></i>Export PDF (PDF ডাউনলোড)
               </button>
             )}
           </div>

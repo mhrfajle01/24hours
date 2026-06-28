@@ -9,6 +9,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  setDoc,
   serverTimestamp,
   writeBatch,
   getDocs,
@@ -283,6 +284,44 @@ export const useFirestore = (selectedDate, uid) => {
     return trashIds;
   };
 
+  const [userDictionary, setUserDictionary] = useState([]);
+  const [dictionaryLoading, setDictionaryLoading] = useState(true);
+
+  // ─── Dictionary real-time listener ────────────────────────────────────
+  useEffect(() => {
+    if (!uid) {
+      setUserDictionary([]);
+      setDictionaryLoading(false);
+      return;
+    }
+    setDictionaryLoading(true);
+
+    const ref = doc(db, 'dictionaries', uid);
+    const unsubscribe = onSnapshot(
+      ref,
+      (snap) => {
+        if (snap.exists()) {
+          setUserDictionary(snap.data().items || []);
+        } else {
+          setUserDictionary([]);
+        }
+        setDictionaryLoading(false);
+      },
+      (err) => {
+        console.error('Firestore dictionary error:', err);
+        setDictionaryLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [uid]);
+
+  const updateDictionary = async (newItems) => {
+    if (!uid) throw new Error('Authentication required');
+    const ref = doc(db, 'dictionaries', uid);
+    await setDoc(ref, { items: newItems, updatedAt: serverTimestamp() }, { merge: true });
+  };
+
   return {
     // Reports
     reports,
@@ -302,5 +341,9 @@ export const useFirestore = (selectedDate, uid) => {
     // Bulk
     generateDayReports,
     clearDayReports,
+    // Dictionary
+    userDictionary,
+    dictionaryLoading,
+    updateDictionary,
   };
 };

@@ -11,6 +11,7 @@ import TrashModal from '../components/TrashModal';
 import AuthPage from '../components/AuthPage';
 import { useFirestore } from '../hooks/useFirestore';
 import { getTodayDateString, getCurrentHourAndAMPM } from '../utils/helpers';
+import defaultDictionary from '../constants/dictionary.json';
 import { db, auth } from '../firebase/firebase';
 import {
   writeBatch,
@@ -61,7 +62,12 @@ export default function Home() {
     restoreAllFromTrash,
     generateDayReports,
     clearDayReports,
+    userDictionary,
+    dictionaryLoading,
+    updateDictionary,
   } = useFirestore(selectedDate, currentUser?.uid);
+
+  const finalDictionary = userDictionary && userDictionary.length > 0 ? userDictionary : defaultDictionary;
 
   // ── Modal state ──────────────────────────────────────────────────────────
   // 'planning' | 'report' | 'delete' | 'settings' | 'profile' | 'trash' | null
@@ -358,6 +364,32 @@ export default function Home() {
     }
   };
 
+  const handleInlineUpdatePlan = async (reportItem, newPlan) => {
+    try {
+      const previousData = { plan: reportItem.plan };
+      const newData = { plan: newPlan };
+      await updateReport(reportItem.id, newData);
+      pushUndo({ type: 'UPDATE_PLAN', docId: reportItem.id, previousData, newData });
+      showToast('Plan updated', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update plan.', 'danger');
+    }
+  };
+
+  const handleInlineUpdateReport = async (reportItem, newReportText, newStatus) => {
+    try {
+      const previousData = { report: reportItem.report, status: reportItem.status };
+      const newData = { report: newReportText, status: newStatus };
+      await updateReport(reportItem.id, newData);
+      pushUndo({ type: 'UPDATE_REPORT', docId: reportItem.id, previousData, newData });
+      showToast('Report updated', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update report.', 'danger');
+    }
+  };
+
   const handleConfirmDelete = async () => {
     try {
       if (!selectedReport) return;
@@ -564,6 +596,7 @@ export default function Home() {
               selectedDate={selectedDate}
               onDateChange={setSelectedDate}
               onGenerateToday={handleGenerateToday}
+              onOpenPDFSettings={handleOpenSettings}
             />
             <Timeline
               reports={reports}
@@ -573,6 +606,9 @@ export default function Home() {
               onEditReport={handleOpenEditReport}
               onDelete={handleOpenDelete}
               onGenerateToday={handleGenerateToday}
+              onInlineUpdatePlan={handleInlineUpdatePlan}
+              onInlineUpdateReport={handleInlineUpdateReport}
+              dictionaryData={finalDictionary}
             />
           </>
         )}
@@ -666,6 +702,7 @@ export default function Home() {
         onClose={handleCloseModal}
         onSave={handleSavePlan}
         report={selectedReport}
+        dictionaryData={finalDictionary}
       />
 
       <ReportModal
@@ -673,6 +710,7 @@ export default function Home() {
         onClose={handleCloseModal}
         onSave={handleSaveReport}
         report={selectedReport}
+        dictionaryData={finalDictionary}
       />
 
       <DeleteModal
@@ -687,10 +725,13 @@ export default function Home() {
         onClose={handleCloseModal}
         reports={reports}
         selectedDate={selectedDate}
+        currentUser={currentUser}
         onGenerateToday={handleGenerateToday}
         onClearData={handleClearTodayData}
         onImportData={handleImportData}
         onExportData={handleExportData}
+        dictionaryData={finalDictionary}
+        onUpdateDictionary={updateDictionary}
       />
 
       <ProfileModal

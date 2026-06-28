@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import PlanBubble from './PlanBubble';
 import ReportBubble from './ReportBubble';
 import { formatHourString } from '../utils/helpers';
@@ -13,9 +13,42 @@ export default function HourCard({
   isCurrentHour, 
   onEditPlan, 
   onEditReport, 
-  onDelete 
+  onDelete,
+  onInlineUpdatePlan,
+  onInlineUpdateReport,
+  dictionaryData
 }) {
   const { hour, ampm, plan, report: reportText, status, createdAt } = report;
+
+  // Local state for inline editing
+  const [isEditingPlan, setIsEditingPlan] = useState(false);
+  const [isEditingReport, setIsEditingReport] = useState(false);
+  const [tempPlan, setTempPlan] = useState('');
+  const [tempReport, setTempReport] = useState('');
+  const [tempStatus, setTempStatus] = useState('Pending');
+
+  const handleStartEditPlan = () => {
+    setTempPlan(plan || '');
+    setIsEditingPlan(true);
+    setIsEditingReport(false);
+  };
+
+  const handleStartEditReport = () => {
+    setTempReport(reportText || '');
+    setTempStatus(status || 'Pending');
+    setIsEditingReport(true);
+    setIsEditingPlan(false);
+  };
+
+  const handleSavePlan = async () => {
+    await onInlineUpdatePlan(report, tempPlan);
+    setIsEditingPlan(false);
+  };
+
+  const handleSaveReport = async () => {
+    await onInlineUpdateReport(report, tempReport, tempStatus);
+    setIsEditingReport(false);
+  };
 
   // Compute status badge classes
   let statusBadgeClass = 'bg-warning text-dark';
@@ -55,10 +88,32 @@ export default function HourCard({
       {/* Bubbles Area */}
       <div className="card-body px-3 py-2">
         {/* Right side: Planning */}
-        <PlanBubble content={plan} createdAt={createdAt} />
+        <PlanBubble 
+          content={plan} 
+          createdAt={createdAt} 
+          isEditing={isEditingPlan}
+          tempValue={tempPlan}
+          onChange={setTempPlan}
+          onSave={handleSavePlan}
+          onCancel={() => setIsEditingPlan(false)}
+          onStartEdit={handleStartEditPlan}
+          dictionaryData={dictionaryData}
+        />
 
         {/* Left side: Report */}
-        <ReportBubble content={reportText} createdAt={createdAt} />
+        <ReportBubble 
+          content={reportText} 
+          createdAt={createdAt} 
+          isEditing={isEditingReport}
+          tempValue={tempReport}
+          tempStatus={tempStatus}
+          onChange={setTempReport}
+          onStatusChange={setTempStatus}
+          onSave={handleSaveReport}
+          onCancel={() => setIsEditingReport(false)}
+          onStartEdit={handleStartEditReport}
+          dictionaryData={dictionaryData}
+        />
       </div>
 
       {/* Actions footer */}
@@ -78,14 +133,14 @@ export default function HourCard({
               color: '#075E54', 
               border: '1px solid #C4E9A7' 
             }}
-            onClick={() => onEditPlan(report)}
+            onClick={handleStartEditPlan}
           >
             <i className="bi bi-compass-fill me-1"></i>Edit Plan
           </button>
           <button 
             className="btn btn-sm text-white rounded-pill px-3 fw-bold shadow-sm transition-all btn-edit-report hover-scale"
             style={{ backgroundColor: '#075E54' }}
-            onClick={() => onEditReport(report)}
+            onClick={handleStartEditReport}
           >
             <i className="bi bi-check2-circle me-1"></i>Edit Report
           </button>

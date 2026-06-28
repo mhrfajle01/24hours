@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { generatePDF } from '../utils/pdfGenerator';
 
 /**
  * SettingsModal — handles app-level configuration only.
@@ -10,12 +11,43 @@ export default function SettingsModal({
   onClose,
   reports,
   selectedDate,
+  currentUser,
   onGenerateToday,
   onClearData,
   onImportData,
   onExportData,
+  dictionaryData = [],
+  onUpdateDictionary,
 }) {
   const fileInputRef = useRef(null);
+
+  // Suggestions dictionary CRUD states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [editingIndex, setEditingIndex] = useState(null);
+
+  // Add form inputs
+  const [newTag, setNewTag] = useState('');
+  const [newKeywords, setNewKeywords] = useState('');
+  const [newPlanEn, setNewPlanEn] = useState('');
+  const [newPlanBn, setNewPlanBn] = useState('');
+  const [newReportEn, setNewReportEn] = useState('');
+  const [newReportBn, setNewReportBn] = useState('');
+
+  // Edit form inputs
+  const [editTag, setEditTag] = useState('');
+  const [editKeywords, setEditKeywords] = useState('');
+  const [editPlanEn, setEditPlanEn] = useState('');
+  const [editPlanBn, setEditPlanBn] = useState('');
+  const [editReportEn, setEditReportEn] = useState('');
+  const [editReportBn, setEditReportBn] = useState('');
+
+  // PDF Export settings state
+  const [pdfTemplateType, setPdfTemplateType] = useState('report');
+  const [englishFont, setEnglishFont] = useState('Outfit');
+  const [banglaFont, setBanglaFont] = useState('Noto Sans Bengali');
+  const [pdfTheme, setPdfTheme] = useState('teal');
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
 
   // Custom alert state
   const [alertBox, setAlertBox] = useState({ show: false, type: 'success', message: '' });
@@ -101,6 +133,124 @@ export default function SettingsModal({
       showAlert('Failed to clear data: ' + err.message, 'danger');
     }
   };
+
+  const handleExportPDFClick = async () => {
+    setIsExportingPDF(true);
+    try {
+      await generatePDF(reports, selectedDate, currentUser, {
+        templateType: pdfTemplateType,
+        englishFont,
+        banglaFont,
+        theme: pdfTheme
+      });
+      showAlert('PDF report exported successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      showAlert('PDF generation failed: ' + err.message, 'danger');
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
+  // Suggestions Dictionary Operations
+  const handleAddEntry = async () => {
+    if (!newTag || !newKeywords || !newPlanEn || !newPlanBn) {
+      showAlert('Please fill in required fields.', 'danger');
+      return;
+    }
+    const kwArray = newKeywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+    if (kwArray.length === 0) {
+      showAlert('Please enter at least one keyword.', 'danger');
+      return;
+    }
+    
+    const newItem = {
+      tag: newTag.trim().toLowerCase(),
+      keywords: kwArray,
+      plan_en: newPlanEn.trim(),
+      plan_bn: newPlanBn.trim(),
+      report_en: newReportEn.trim() || newPlanEn.trim(),
+      report_bn: newReportBn.trim() || newPlanBn.trim(),
+    };
+
+    const updatedList = [newItem, ...dictionaryData];
+    try {
+      await onUpdateDictionary(updatedList);
+      showAlert('New suggestion added!', 'success');
+      setNewTag('');
+      setNewKeywords('');
+      setNewPlanEn('');
+      setNewPlanBn('');
+      setNewReportEn('');
+      setNewReportBn('');
+      setShowAddForm(false);
+    } catch (err) {
+      showAlert('Failed to add suggestion: ' + err.message, 'danger');
+    }
+  };
+
+  const handleStartEdit = (index, entry) => {
+    setEditingIndex(index);
+    setEditTag(entry.tag || '');
+    setEditKeywords((entry.keywords || []).join(', '));
+    setEditPlanEn(entry.plan_en || '');
+    setEditPlanBn(entry.plan_bn || '');
+    setEditReportEn(entry.report_en || '');
+    setEditReportBn(entry.report_bn || '');
+  };
+
+  const handleSaveEdit = async (index) => {
+    const kwArray = editKeywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+    if (kwArray.length === 0) {
+      showAlert('Please enter at least one keyword.', 'danger');
+      return;
+    }
+    
+    const updatedItem = {
+      tag: editTag.trim().toLowerCase(),
+      keywords: kwArray,
+      plan_en: editPlanEn.trim(),
+      plan_bn: editPlanBn.trim(),
+      report_en: editReportEn.trim() || editPlanEn.trim(),
+      report_bn: editReportBn.trim() || editPlanBn.trim(),
+    };
+
+    const updatedList = [...dictionaryData];
+    updatedList[index] = updatedItem;
+    
+    try {
+      await onUpdateDictionary(updatedList);
+      showAlert('Suggestion updated!', 'success');
+      setEditingIndex(null);
+    } catch (err) {
+      showAlert('Failed to update: ' + err.message, 'danger');
+    }
+  };
+
+  const handleDeleteEntry = async (index) => {
+    const updatedList = dictionaryData.filter((_, idx) => idx !== index);
+    try {
+      await onUpdateDictionary(updatedList);
+      showAlert('Suggestion deleted!', 'success');
+      setEditingIndex(null);
+    } catch (err) {
+      showAlert('Failed to delete: ' + err.message, 'danger');
+    }
+  };
+
+  const handleResetDictionary = async () => {
+    try {
+      await onUpdateDictionary([]);
+      showAlert('Dictionary reset to default!', 'success');
+    } catch (err) {
+      showAlert('Reset failed: ' + err.message, 'danger');
+    }
+  };
+
+  const filteredEntries = dictionaryData.filter(entry => 
+    (entry.tag || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (entry.keywords || []).some(kw => kw.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   return (
     <>
@@ -257,6 +407,365 @@ export default function SettingsModal({
                     </span>
                     <i className="bi bi-chevron-right text-muted small" />
                   </button>
+                </div>
+              </div>
+
+              {/* PDF Export Section */}
+              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+                  <i className="bi bi-file-pdf-fill text-danger fs-5" />
+                  PDF Export (রিপোর্ট ডাউনলোড)
+                </h6>
+                
+                {/* PDF Template Type */}
+                <div className="mb-3">
+                  <label className="text-secondary small fw-bold mb-1 d-block">Template Type / রিপোর্টের ধরন</label>
+                  <select
+                    className="form-select form-select-sm rounded-3 shadow-none text-dark bg-white border"
+                    value={pdfTemplateType}
+                    onChange={(e) => setPdfTemplateType(e.target.value)}
+                  >
+                    <option value="report">Hourly Report (দৈনিক প্রতিবেদন - Plan & Report)</option>
+                    <option value="plan">Hourly Plan Only (কর্মপরিকল্পনা - Plan Only)</option>
+                  </select>
+                </div>
+
+                {/* PDF Theme */}
+                <div className="mb-3">
+                  <label className="text-secondary small fw-bold mb-1 d-block">Styling Theme / থিম কালার</label>
+                  <select
+                    className="form-select form-select-sm rounded-3 shadow-none text-dark bg-white border"
+                    value={pdfTheme}
+                    onChange={(e) => setPdfTheme(e.target.value)}
+                  >
+                    <option value="teal">WhatsApp Teal (টিয়াল)</option>
+                    <option value="charcoal">Modern Slate/Charcoal (ধূসর)</option>
+                    <option value="royal">Royal Purple/Lavender (বেগুনী)</option>
+                    <option value="sakura">Sakura Rose/Pink (গোলাপী)</option>
+                    <option value="minimalist">Classic Minimalist (সাদা-কালো)</option>
+                  </select>
+                </div>
+
+                <div className="row g-2 mb-3">
+                  {/* English Font */}
+                  <div className="col-6">
+                    <label className="text-secondary small fw-bold mb-1 d-block" style={{ fontSize: '0.72rem' }}>English Font / ইংরেজি ফন্ট</label>
+                    <select
+                      className="form-select form-select-sm rounded-3 shadow-none text-dark bg-white border"
+                      value={englishFont}
+                      onChange={(e) => setEnglishFont(e.target.value)}
+                      style={{ fontSize: '0.8rem' }}
+                    >
+                      <option value="Outfit">Outfit (Default)</option>
+                      <option value="Inter">Inter (Sans)</option>
+                      <option value="Poppins">Poppins (Geom)</option>
+                      <option value="Roboto">Roboto (Clean)</option>
+                      <option value="Playfair Display">Playfair (Serif)</option>
+                      <option value="Lora">Lora (Serif)</option>
+                      <option value="Courier New">Courier (Mono)</option>
+                    </select>
+                  </div>
+
+                  {/* Bangla Font */}
+                  <div className="col-6">
+                    <label className="text-secondary small fw-bold mb-1 d-block" style={{ fontSize: '0.72rem' }}>Bangla Font / বাংলা ফন্ট</label>
+                    <select
+                      className="form-select form-select-sm rounded-3 shadow-none text-dark bg-white border"
+                      value={banglaFont}
+                      onChange={(e) => setBanglaFont(e.target.value)}
+                      style={{ fontSize: '0.8rem' }}
+                    >
+                      <option value="Noto Sans Bengali">Noto Sans</option>
+                      <option value="Hind Siliguri">Hind Siliguri</option>
+                      <option value="Noto Serif Bengali">Noto Serif</option>
+                      <option value="Tiro Bangla">Tiro Bangla</option>
+                      <option value="Mina">Mina</option>
+                      <option value="Atma">Atma</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Download PDF Button */}
+                <button
+                  type="button"
+                  className="btn btn-danger w-100 py-2 rounded-3 fw-bold small shadow-none d-flex align-items-center justify-content-center gap-2 hover-scale text-white border-0"
+                  style={{ backgroundColor: '#DC3545', transition: 'all 0.2s' }}
+                  onClick={handleExportPDFClick}
+                  disabled={reports.length === 0 || isExportingPDF}
+                >
+                  {isExportingPDF ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                      Generating PDF...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-file-earmark-pdf-fill" />
+                      Download PDF (ডাউনলোড করুন)
+                    </>
+                  )}
+                </button>
+                {reports.length === 0 && (
+                  <div className="text-muted text-center small mt-2" style={{ fontSize: '0.7rem' }}>
+                    * Add hourly logs first to enable PDF export.
+                  </div>
+                )}
+              </div>
+
+              {/* Suggestion Dictionary Editor */}
+              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
+                    <i className="bi bi-magic" style={{ color: '#075E54' }} />
+                    Custom Suggestions (অভিধান)
+                  </h6>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-link text-danger text-decoration-none p-0 fw-bold small shadow-none border-0"
+                    onClick={handleResetDictionary}
+                    style={{ fontSize: '0.72rem' }}
+                    title="Revert all changes to default 100 entries"
+                  >
+                    <i className="bi bi-arrow-counterclockwise"></i> Reset to Default
+                  </button>
+                </div>
+
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.72rem', lineHeight: '1.3' }}>
+                  Manage the tags and templates used by the dynamic suggestions helper. Add new tags or search and edit existing keyword templates.
+                </p>
+
+                {/* Add Entry Button */}
+                {!showAddForm && (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-success w-100 mb-3 rounded-3 fw-bold border-0 text-white d-flex align-items-center justify-content-center gap-1 py-1.5 shadow-none"
+                    style={{ backgroundColor: '#128C7E' }}
+                    onClick={() => {
+                      setShowAddForm(true);
+                      setEditingIndex(null);
+                    }}
+                  >
+                    <i className="bi bi-plus-lg"></i> Add New Suggestion / নতুন যোগ করুন
+                  </button>
+                )}
+
+                {/* Add Entry Form */}
+                {showAddForm && (
+                  <div className="border border-success rounded-3 p-3 bg-success bg-opacity-10 mb-3 animate-fade-in text-start">
+                    <h6 className="fw-bold text-success small mb-2.5">New Dictionary Entry</h6>
+                    <div className="row g-2 mb-2">
+                      <div className="col-6">
+                        <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Tag (e.g. work)</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm rounded-3 border py-1.5 shadow-none"
+                          placeholder="Tag"
+                          value={newTag}
+                          onChange={(e) => setNewTag(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-6">
+                        <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Keywords (separated by comma)</label>
+                        <input
+                          type="text"
+                          className="form-control form-control-sm rounded-3 border py-1.5 shadow-none"
+                          placeholder="e.g. gym, walk"
+                          value={newKeywords}
+                          onChange={(e) => setNewKeywords(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="mb-2">
+                      <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Plan (English)</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm rounded-3 border py-1.5 shadow-none mb-1"
+                        placeholder="English Plan Template"
+                        value={newPlanEn}
+                        onChange={(e) => setNewPlanEn(e.target.value)}
+                      />
+                      <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Plan (বাংলা)</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm rounded-3 border py-1.5 shadow-none"
+                        placeholder="বাংলা প্ল্যান টেমপ্লেট"
+                        value={newPlanBn}
+                        onChange={(e) => setNewPlanBn(e.target.value)}
+                      />
+                    </div>
+                    <div className="mb-3">
+                      <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Report (English)</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm rounded-3 border py-1.5 shadow-none mb-1"
+                        placeholder="English Report (Optional)"
+                        value={newReportEn}
+                        onChange={(e) => setNewReportEn(e.target.value)}
+                      />
+                      <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Report (বাংলা)</label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm rounded-3 border py-1.5 shadow-none"
+                        placeholder="বাংলা রিপোর্ট (অপশনাল)"
+                        value={newReportBn}
+                        onChange={(e) => setNewReportBn(e.target.value)}
+                      />
+                    </div>
+                    <div className="d-flex gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-success rounded-pill px-3 py-1 text-white border-0 fw-bold"
+                        style={{ backgroundColor: '#075E54', fontSize: '0.75rem' }}
+                        onClick={handleAddEntry}
+                      >
+                        Save Entry
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 fw-bold"
+                        style={{ fontSize: '0.75rem' }}
+                        onClick={() => setShowAddForm(false)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Search Bar */}
+                <div className="input-group input-group-sm mb-2.5">
+                  <span className="input-group-text bg-white border rounded-start-3 text-secondary">
+                    <i className="bi bi-search" />
+                  </span>
+                  <input
+                    type="text"
+                    className="form-control border-start-0 border rounded-end-3 py-1.5 shadow-none bg-white"
+                    placeholder="Search keywords or tags..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+
+                {/* Dictionary Scrollable List */}
+                <div className="overflow-y-auto px-1 border rounded-3 bg-light" style={{ maxHeight: '180px' }}>
+                  {filteredEntries.length === 0 ? (
+                    <div className="text-muted text-center py-4 small">No matching items found.</div>
+                  ) : (
+                    filteredEntries.map((entry, idx) => {
+                      const actualIndex = dictionaryData.findIndex(item => item === entry);
+                      const isEditing = editingIndex === actualIndex;
+                      
+                      if (isEditing) {
+                        return (
+                          <div key={idx} className="border-bottom p-2.5 bg-warning bg-opacity-10 rounded-3 my-1.5 animate-slide-up text-start">
+                            <div className="row g-2 mb-2">
+                              <div className="col-6">
+                                <label className="text-secondary small fw-bold mb-0.5" style={{ fontSize: '0.68rem' }}>Tag</label>
+                                <input
+                                  type="text"
+                                  className="form-control form-control-sm border py-1 shadow-none bg-white"
+                                  value={editTag}
+                                  onChange={(e) => setEditTag(e.target.value)}
+                                />
+                              </div>
+                              <div className="col-6">
+                                <label className="text-secondary small fw-bold mb-0.5" style={{ fontSize: '0.68rem' }}>Keywords</label>
+                                <input
+                                  type="text"
+                                  className="form-control form-control-sm border py-1 shadow-none bg-white"
+                                  value={editKeywords}
+                                  onChange={(e) => setEditKeywords(e.target.value)}
+                                />
+                              </div>
+                            </div>
+                            <div className="mb-2">
+                              <label className="text-secondary small fw-bold mb-0.5" style={{ fontSize: '0.68rem' }}>Plan (EN &amp; BN)</label>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm border py-1 shadow-none mb-1 bg-white"
+                                value={editPlanEn}
+                                onChange={(e) => setEditPlanEn(e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                className="form-control form-control-sm border py-1 shadow-none bg-white"
+                                value={editPlanBn}
+                                onChange={(e) => setEditPlanBn(e.target.value)}
+                              />
+                            </div>
+                            <div className="mb-3">
+                              <label className="text-secondary small fw-bold mb-0.5" style={{ fontSize: '0.68rem' }}>Report (EN &amp; BN)</label>
+                              <input
+                                type="text"
+                                className="form-control form-control-sm border py-1 shadow-none mb-1 bg-white"
+                                value={editReportEn}
+                                onChange={(e) => setEditReportEn(e.target.value)}
+                              />
+                              <input
+                                type="text"
+                                className="form-control form-control-sm border py-1 shadow-none bg-white"
+                                value={editReportBn}
+                                onChange={(e) => setEditReportBn(e.target.value)}
+                              />
+                            </div>
+                            <div className="d-flex justify-content-between align-items-center">
+                              <div className="d-flex gap-1.5">
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-success rounded-pill px-3 py-0.5 text-white border-0 fw-bold me-1"
+                                  style={{ backgroundColor: '#075E54', fontSize: '0.72rem' }}
+                                  onClick={() => handleSaveEdit(actualIndex)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-outline-secondary rounded-pill px-3 py-0.5 fw-bold"
+                                  style={{ fontSize: '0.72rem' }}
+                                  onClick={() => setEditingIndex(null)}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-link text-danger p-0 text-decoration-none small fw-bold border-0 shadow-none"
+                                style={{ fontSize: '0.72rem' }}
+                                onClick={() => handleDeleteEntry(actualIndex)}
+                              >
+                                <i className="bi bi-trash-fill" /> Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div 
+                          key={idx} 
+                          className="border-bottom p-2 bg-white rounded-2 my-1 border-light shadow-sm hover-bg-light transition-all text-start"
+                          onClick={() => handleStartEdit(actualIndex, entry)}
+                          style={{ cursor: 'pointer' }}
+                          title="Click to edit suggestion keywords or templates"
+                        >
+                          <div className="d-flex justify-content-between align-items-center mb-1">
+                            <span className="badge rounded-pill fw-bold text-uppercase" style={{ backgroundColor: '#DCF8C6', color: '#075E54', fontSize: '0.62rem' }}>
+                              #{entry.tag}
+                            </span>
+                            <span className="text-secondary small fw-bold" style={{ fontSize: '0.65rem' }}>
+                              <i className="bi bi-pencil-fill me-0.5" /> Edit
+                            </span>
+                          </div>
+                          <div className="small fw-bold mb-1 text-dark" style={{ fontSize: '0.76rem' }}>
+                            Keywords: <span className="text-secondary fw-normal">{(entry.keywords || []).join(', ')}</span>
+                          </div>
+                          <div className="text-muted small text-truncate" style={{ fontSize: '0.72rem' }}>
+                            🇧🇩 {entry.plan_bn}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
