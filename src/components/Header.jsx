@@ -7,6 +7,7 @@ import { formatFriendlyDate, getCurrentTimeString, getCurrentHourAndAMPM, format
 export default function Header({ selectedDate, onOpenSettings, onOpenProfile, onOpenTrash, trashCount, currentUser }) {
   const [timeStr, setTimeStr] = useState(getCurrentTimeString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -14,6 +15,19 @@ export default function Header({ selectedDate, onOpenSettings, onOpenProfile, on
       setCurrentHourData(getCurrentHourAndAMPM());
     }, 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
   const avatarInitial = (currentUser?.displayName || currentUser?.email || '?')
@@ -29,6 +43,23 @@ export default function Header({ selectedDate, onOpenSettings, onOpenProfile, on
           <h1 className="h4 m-0 fw-bold d-flex align-items-center gap-2">
             <i className="bi bi-chat-left-text-fill" style={{ color: '#25D366' }} />
             <span>HourLog</span>
+            {!isOnline && (
+              <span 
+                className="badge bg-warning text-dark rounded-pill fs-xs px-2 py-0.5 ms-1 fw-bold d-inline-flex align-items-center gap-1 animate-pulse"
+                title="Working offline. Changes will sync when connection is restored."
+              >
+                <i className="bi bi-cloud-slash-fill"></i> Offline
+              </span>
+            )}
+            {isOnline && (
+              <span 
+                className="badge bg-success-subtle text-success border border-success-subtle rounded-pill fs-xs px-2 py-0.5 ms-1 fw-semibold d-none d-md-inline-flex align-items-center gap-1"
+                style={{ opacity: 0.85 }}
+                title="Connected to server. All data synced."
+              >
+                <i className="bi bi-cloud-check-fill"></i> Synced
+              </span>
+            )}
           </h1>
           <span style={{ fontSize: '0.85rem', opacity: 0.9 }}>
             {formatFriendlyDate(selectedDate)}

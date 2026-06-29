@@ -104,6 +104,23 @@ export default function Home() {
     return () => clearInterval(t);
   }, []);
 
+  useEffect(() => {
+    const handleOnline = () => {
+      showToast('Back online! Syncing changes with the server...', 'success');
+    };
+    const handleOffline = () => {
+      showToast('Working offline. Changes will save locally and sync later.', 'warning');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // Single keyboard listener; calls via refs to avoid stale closures
   useEffect(() => {
     const handler = (e) => {
