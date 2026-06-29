@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import SuggestionHelper from './SuggestionHelper';
 
 /**
@@ -9,6 +9,7 @@ export default function PlanningModal({ isOpen, onClose, onSave, report, diction
   const [hour, setHour] = useState(8);
   const [ampm, setAmpm] = useState('AM');
   const [plan, setPlan] = useState('');
+  const textareaRef = useRef(null);
 
   useEffect(() => {
     if (report) {
@@ -27,6 +28,29 @@ export default function PlanningModal({ isOpen, onClose, onSave, report, diction
       setPlan('');
     }
   }, [report, isOpen]);
+
+  const handleInsertTemplate = (template) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentVal = textarea.value || '';
+
+    let textToInsert = template;
+    if (start > 0 && currentVal[start - 1] !== '\n') {
+      textToInsert = '\n' + template;
+    }
+
+    const newVal = currentVal.substring(0, start) + textToInsert + currentVal.substring(end);
+    setPlan(newVal);
+
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + textToInsert.length;
+      textarea.selectionStart = textarea.selectionEnd = newCursorPos;
+    }, 50);
+  };
 
   if (!isOpen) return null;
 
@@ -106,8 +130,32 @@ export default function PlanningModal({ isOpen, onClose, onSave, report, diction
 
                 {/* Plan Textarea */}
                 <div className="mb-2">
-                  <label className="form-label fw-bold text-secondary small">Planning (Bengali Expected)</label>
+                  <div className="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-2">
+                    <label className="form-label fw-bold text-secondary small m-0">Planning (Bengali Expected)</label>
+                    
+                    {/* Quick Checklist Insert Buttons */}
+                    <div className="d-flex gap-1.5">
+                      <button
+                        type="button"
+                        className="btn btn-xs rounded-pill px-2 py-0.5 border border-success-subtle bg-success text-white d-flex align-items-center gap-1 shadow-xs hover-scale"
+                        style={{ fontSize: '0.72rem', backgroundColor: '#075E54', border: 'none' }}
+                        onClick={() => handleInsertTemplate('[ ] ')}
+                      >
+                        <i className="bi bi-check2-square"></i> + Task
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-xs rounded-pill px-2 py-0.5 border border-secondary-subtle bg-light text-dark d-flex align-items-center gap-1 shadow-xs hover-scale"
+                        style={{ fontSize: '0.72rem' }}
+                        onClick={() => handleInsertTemplate('• ')}
+                      >
+                        <i className="bi bi-list-ul"></i> + Bullet
+                      </button>
+                    </div>
+                  </div>
+
                   <textarea 
+                    ref={textareaRef}
                     className="form-control border-0 py-2.5 shadow-sm rounded-3"
                     rows="4"
                     placeholder="আজকে কী করবেন? (যেমন: আজকে Firebase CRUD শেষ করবো)"

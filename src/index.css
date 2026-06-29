@@ -247,3 +247,35 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     box-shadow: 0 0 0 6px rgba(37, 211, 102, 0);
   }
 }
+
+/* Checklist item row styling for active and hover states */
+.checklist-item-row {
+  padding: 6px 8px;
+  border-radius: 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
+}
+.checklist-item-row:hover {
+  background-color: rgba(7, 94, 84, 0.08);
+}
+.checklist-item-row:active {
+  background-color: rgba(7, 94, 84, 0.15);
+  transform: scale(0.99);
+}
+
+/* Micro-animations */
+.animate-spin-slow {
+  animation: spinSlow 3s infinite linear;
+  display: inline-block;
+}
+
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+

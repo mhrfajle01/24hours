@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PlanBubble from './PlanBubble';
 import ReportBubble from './ReportBubble';
 import { formatHourString } from '../utils/helpers';
@@ -26,6 +26,25 @@ export default function HourCard({
   const [tempPlan, setTempPlan] = useState('');
   const [tempReport, setTempReport] = useState('');
   const [tempStatus, setTempStatus] = useState('Pending');
+
+  // Dynamic ticking timer for remaining minutes in active hour slot
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  useEffect(() => {
+    if (!isCurrentHour) return;
+
+    setCurrentTime(new Date());
+
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [isCurrentHour]);
+
+  const handleUpdatePlanDirect = async (updatedPlanText) => {
+    await onInlineUpdatePlan(report, updatedPlanText);
+  };
 
   const handleStartEditPlan = () => {
     setTempPlan(plan || '');
@@ -66,6 +85,22 @@ export default function HourCard({
         borderRadius: '18px',
       }}
     >
+      {/* Top progress bar for active hour slot */}
+      {isCurrentHour && (
+        <div 
+          className="position-absolute top-0 start-0 w-100" 
+          style={{ height: '4px', backgroundColor: 'rgba(37, 211, 102, 0.1)', zIndex: 10 }}
+        >
+          <div 
+            className="h-100 bg-success" 
+            style={{ 
+              width: `${(currentTime.getMinutes() / 60) * 100}%`,
+              backgroundColor: '#25D366',
+              transition: 'width 0.5s ease-out'
+            }}
+          />
+        </div>
+      )}
       {/* Top Header info (Hour label and Status) */}
       <div className="card-header bg-transparent border-0 d-flex justify-content-between align-items-center pt-3 px-3 pb-1">
         <div className="d-flex align-items-center gap-2">
@@ -73,9 +108,15 @@ export default function HourCard({
             {formatHourString(hour, ampm)}
           </span>
           {isCurrentHour && (
-            <span className="badge rounded-pill bg-success text-white px-2 py-1 fs-xs badge-now-pulse animate-pulse">
-              <i className="bi bi-clock-fill me-1"></i>NOW
-            </span>
+            <>
+              <span className="badge rounded-pill bg-success text-white px-2 py-1 fs-xs badge-now-pulse animate-pulse">
+                <i className="bi bi-clock-fill me-1"></i>NOW
+              </span>
+              <span className="badge rounded-pill bg-success-subtle text-success border border-success-subtle px-2 py-1 fs-xs d-flex align-items-center gap-1">
+                <i className="bi bi-hourglass-split animate-spin-slow"></i>
+                {60 - currentTime.getMinutes()}m left
+              </span>
+            </>
           )}
         </div>
         <div>
@@ -98,6 +139,7 @@ export default function HourCard({
           onCancel={() => setIsEditingPlan(false)}
           onStartEdit={handleStartEditPlan}
           dictionaryData={dictionaryData}
+          onUpdatePlanText={handleUpdatePlanDirect}
         />
 
         {/* Left side: Report */}
