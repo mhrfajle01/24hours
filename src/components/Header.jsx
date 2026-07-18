@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { formatFriendlyDate, getCurrentTimeString, getCurrentHourAndAMPM, formatHourString } from '../utils/helpers';
+import { formatFriendlyDate, getCurrentTimeString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, getTodayDateString } from '../utils/helpers';
 
 /**
  * Sticky Header — profile avatar opens ProfileModal, gear opens SettingsModal.
  */
-export default function Header({ selectedDate, onOpenSettings, onOpenProfile, onOpenTrash, trashCount, currentUser }) {
+export default function Header({ selectedDate, reports = [], onOpenSettings, onOpenProfile, onOpenTrash, trashCount, currentUser }) {
   const [timeStr, setTimeStr] = useState(getCurrentTimeString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -33,6 +33,62 @@ export default function Header({ selectedDate, onOpenSettings, onOpenProfile, on
   const avatarInitial = (currentUser?.displayName || currentUser?.email || '?')
     .charAt(0)
     .toUpperCase();
+
+  const formatCurrentHourRange = () => {
+    const { hour, ampm } = currentHourData;
+    const padded = String(hour).padStart(2, '0');
+    let nextHour = hour + 1;
+    let nextAmpm = ampm;
+    if (hour === 11) {
+      nextAmpm = ampm === 'AM' ? 'PM' : 'AM';
+    } else if (hour === 12) {
+      nextHour = 1;
+    }
+    const nextPadded = String(nextHour).padStart(2, '0');
+    return `${padded}:00 ${ampm} - ${nextPadded}:00 ${nextAmpm}`;
+  };
+
+  const getActiveSlotTimeStr = () => {
+    const isTodaySelected = selectedDate === getTodayDateString();
+    if (!isTodaySelected || !reports || reports.length === 0) {
+      return null;
+    }
+    
+    const now = new Date();
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+    
+    const matchingReports = reports.filter((report) => {
+      const times = getIntervalTimes(report);
+      const startMin = timeToMinutes(times.startTime);
+      let endMin = timeToMinutes(times.endTime);
+      if (endMin < startMin) {
+        endMin += 24 * 60;
+      }
+      return (endMin >= 24 * 60)
+        ? (currentMin >= startMin || currentMin < (endMin % (24 * 60)))
+        : (currentMin >= startMin && currentMin < endMin);
+    });
+    
+    if (matchingReports.length > 0) {
+      let bestMatch = matchingReports[0];
+      let minDiff = Infinity;
+      matchingReports.forEach(r => {
+        const times = getIntervalTimes(r);
+        const startMin = timeToMinutes(times.startTime);
+        const diff = currentMin - startMin;
+        if (diff >= 0 && diff < minDiff) {
+          minDiff = diff;
+          bestMatch = r;
+        }
+      });
+      const times = getIntervalTimes(bestMatch);
+      return `${formatTime12h(times.startTime)} - ${formatTime12h(times.endTime)}`;
+    }
+    return null;
+  };
+
+  const activeSlotTime = getActiveSlotTimeStr();
+  const displayTimeRange = activeSlotTime ? activeSlotTime : formatCurrentHourRange();
 
   return (
     <header className="sticky-top shadow-sm px-3 py-2 text-white" style={{ backgroundColor: '#075E54', zIndex: 1020 }}>
@@ -65,25 +121,25 @@ export default function Header({ selectedDate, onOpenSettings, onOpenProfile, on
             {formatFriendlyDate(selectedDate)}
           </span>
         </div>
-
+ 
         {/* Right: Clock + Profile + Settings */}
         <div className="d-flex align-items-center gap-2">
-
+ 
           {/* Clock — desktop */}
           <div className="text-end d-none d-sm-block me-1">
             <div className="fw-semibold" style={{ color: '#25D366', fontSize: '0.95rem' }}>
               {timeStr}
             </div>
-            <div style={{ fontSize: '0.75rem', opacity: 0.85 }}>
-              NOW: {formatHourString(currentHourData.hour, currentHourData.ampm)}
+            <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>
+              NOW: {displayTimeRange}
             </div>
           </div>
-
+ 
           {/* Clock — mobile */}
           <div className="text-end d-block d-sm-none me-1" style={{ fontSize: '0.8rem' }}>
             <div className="fw-semibold" style={{ color: '#25D366' }}>{timeStr}</div>
-            <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>
-              {currentHourData.hour} {currentHourData.ampm}
+            <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
+              NOW: {displayTimeRange}
             </div>
           </div>
 

@@ -1,30 +1,33 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SuggestionHelper from './SuggestionHelper';
+import { getIntervalTimes, timeToMinutes, normalizeTimeTo24h } from '../utils/helpers';
 
 /**
  * PlanningModal handles creating a new plan hour slot or editing an existing plan.
- * Fields: Hour, AM/PM, Planning text.
+ * Fields: Start Time, End Time, Planning text.
  */
 export default function PlanningModal({ isOpen, onClose, onSave, report, dictionaryData }) {
-  const [hour, setHour] = useState(8);
-  const [ampm, setAmpm] = useState('AM');
+  const [startTime, setStartTime] = useState('08:00');
+  const [endTime, setEndTime] = useState('09:00');
   const [plan, setPlan] = useState('');
+  const [validationError, setValidationError] = useState('');
   const textareaRef = useRef(null);
 
   useEffect(() => {
+    setValidationError('');
     if (report) {
-      setHour(report.hour);
-      setAmpm(report.ampm);
+      const times = getIntervalTimes(report);
+      setStartTime(normalizeTimeTo24h(times.startTime));
+      setEndTime(normalizeTimeTo24h(times.endTime));
       setPlan(report.plan || '');
     } else {
       // Default to current time hour rounded or standard 8 AM
       const now = new Date();
       let h = now.getHours();
-      const a = h >= 12 ? 'PM' : 'AM';
-      h = h % 12;
-      h = h ? h : 12;
-      setHour(h);
-      setAmpm(a);
+      const startStr = `${String(h).padStart(2, '0')}:00`;
+      const endStr = `${String((h + 1) % 24).padStart(2, '0')}:00`;
+      setStartTime(normalizeTimeTo24h(startStr));
+      setEndTime(normalizeTimeTo24h(endStr));
       setPlan('');
     }
   }, [report, isOpen]);
@@ -56,9 +59,24 @@ export default function PlanningModal({ isOpen, onClose, onSave, report, diction
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (startTime === endTime) {
+      setValidationError("Start time and End time cannot be the same / শুরুর সময় এবং শেষ সময় একই হতে পারবে না।");
+      return;
+    }
+    const startMin = timeToMinutes(startTime);
+    let endMin = timeToMinutes(endTime);
+    if (endMin <= startMin) {
+      endMin += 24 * 60; // Handle overnight wrap-around
+    }
+    const duration = endMin - startMin;
+    if (duration > 18 * 60) {
+      setValidationError("A single slot cannot exceed 18 hours / একটি স্লট ১৮ ঘণ্টার বেশি হতে পারবে না।");
+      return;
+    }
+    setValidationError('');
     onSave({
-      hour: parseInt(hour, 10),
-      ampm,
+      startTime,
+      endTime,
       plan
     });
   };
@@ -96,35 +114,37 @@ export default function PlanningModal({ isOpen, onClose, onSave, report, diction
             <form onSubmit={handleSubmit}>
               <div className="modal-body p-4 bg-light">
                 
-                {/* Hour and AM/PM Pickers */}
+                {validationError && (
+                  <div className="alert alert-danger border-0 py-2 px-3 rounded-3 small mb-3 d-flex align-items-center gap-2 animate-fade-in" style={{ backgroundColor: '#FEE2E2', color: '#991B1B' }}>
+                    <i className="bi bi-exclamation-triangle-fill"></i>
+                    <span>{validationError}</span>
+                  </div>
+                )}
+                
+                {/* Start Time and End Time Pickers */}
                 <div className="row g-3 mb-3">
                   <div className="col-6">
-                    <label className="form-label fw-bold text-secondary small">Hour</label>
-                    <select 
-                      className="form-select border-0 py-2.5 shadow-sm rounded-3"
-                      value={hour}
-                      onChange={(e) => setHour(e.target.value)}
-                      disabled={!!report} // Cannot change time for existing slot to prevent overlapping
+                    <label className="form-label fw-bold text-secondary small">Start Time</label>
+                    <input 
+                      type="time"
+                      className="form-control border-0 py-2.5 shadow-sm rounded-3"
+                      value={startTime}
+                      onChange={(e) => { setStartTime(e.target.value); setValidationError(''); }}
                       style={{ fontSize: '0.95rem' }}
-                    >
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((h) => (
-                        <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                      ))}
-                    </select>
+                      required
+                    />
                   </div>
                   
                   <div className="col-6">
-                    <label className="form-label fw-bold text-secondary small">AM/PM</label>
-                    <select 
-                      className="form-select border-0 py-2.5 shadow-sm rounded-3"
-                      value={ampm}
-                      onChange={(e) => setAmpm(e.target.value)}
-                      disabled={!!report} // Cannot change time for existing slot
+                    <label className="form-label fw-bold text-secondary small">End Time</label>
+                    <input 
+                      type="time"
+                      className="form-control border-0 py-2.5 shadow-sm rounded-3"
+                      value={endTime}
+                      onChange={(e) => { setEndTime(e.target.value); setValidationError(''); }}
                       style={{ fontSize: '0.95rem' }}
-                    >
-                      <option value="AM">AM</option>
-                      <option value="PM">PM</option>
-                    </select>
+                      required
+                    />
                   </div>
                 </div>
 

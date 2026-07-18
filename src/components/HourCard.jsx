@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import PlanBubble from './PlanBubble';
 import ReportBubble from './ReportBubble';
-import { formatHourString } from '../utils/helpers';
+import { getIntervalTimes, formatTime12h, timeToMinutes } from '../utils/helpers';
 
 /**
  * HourCard component represents a single hour's tracking item.
@@ -10,7 +10,8 @@ import { formatHourString } from '../utils/helpers';
  */
 export default function HourCard({ 
   report, 
-  isCurrentHour, 
+  isCurrentHour,
+  currentTime,
   onEditPlan, 
   onEditReport, 
   onDelete,
@@ -18,7 +19,7 @@ export default function HourCard({
   onInlineUpdateReport,
   dictionaryData
 }) {
-  const { hour, ampm, plan, report: reportText, status, createdAt } = report;
+  const { plan, report: reportText, status, createdAt } = report;
 
   // Local state for inline editing
   const [isEditingPlan, setIsEditingPlan] = useState(false);
@@ -27,20 +28,28 @@ export default function HourCard({
   const [tempReport, setTempReport] = useState('');
   const [tempStatus, setTempStatus] = useState('Pending');
 
-  // Dynamic ticking timer for remaining minutes in active hour slot
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const times = getIntervalTimes(report);
+  const timeStr = `${formatTime12h(times.startTime)} - ${formatTime12h(times.endTime)}`;
 
-  useEffect(() => {
-    if (!isCurrentHour) return;
+  const startMin = timeToMinutes(times.startTime);
+  let endMin = timeToMinutes(times.endTime);
+  if (endMin < startMin) {
+    endMin += 24 * 60; // Handle overnight wrap-around
+  }
+  const durationMin = endMin - startMin;
 
-    setCurrentTime(new Date());
-
-    const interval = setInterval(() => {
-      setCurrentTime(new Date());
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [isCurrentHour]);
+  // Only compute progress for the active slot
+  let minutesLeft = 0;
+  let progressPercent = 0;
+  if (isCurrentHour && currentTime) {
+    const currentMinVal = currentTime.getHours() * 60 + currentTime.getMinutes();
+    let adjustedCurrentMinVal = currentMinVal;
+    if (endMin >= 24 * 60 && currentMinVal < (endMin % (24 * 60))) {
+      adjustedCurrentMinVal += 24 * 60;
+    }
+    minutesLeft = endMin - adjustedCurrentMinVal;
+    progressPercent = durationMin > 0 ? Math.min(100, Math.max(0, ((adjustedCurrentMinVal - startMin) / durationMin) * 100)) : 0;
+  }
 
   const handleUpdatePlanDirect = async (updatedPlanText) => {
     await onInlineUpdatePlan(report, updatedPlanText);
@@ -94,7 +103,7 @@ export default function HourCard({
           <div 
             className="h-100 bg-success" 
             style={{ 
-              width: `${(currentTime.getMinutes() / 60) * 100}%`,
+              width: `${progressPercent}%`,
               backgroundColor: '#25D366',
               transition: 'width 0.5s ease-out'
             }}
@@ -102,21 +111,21 @@ export default function HourCard({
         </div>
       )}
       {/* Top Header info (Hour label and Status) */}
-      <div className="card-header bg-transparent border-0 d-flex justify-content-between align-items-center pt-3 px-3 pb-1">
-        <div className="d-flex align-items-center gap-2">
-          <span className="fs-5 fw-bold text-dark" style={{ letterSpacing: '0.5px' }}>
-            {formatHourString(hour, ampm)}
+      <div className="card-header bg-transparent border-0 d-flex justify-content-between align-items-start align-items-sm-center flex-column flex-sm-row pt-3 px-3 pb-1 gap-2">
+        <div className="d-flex align-items-center gap-2 flex-wrap">
+          <span className="fs-6 fs-sm-5 fw-bold text-dark animate-fade-in" style={{ letterSpacing: '0.5px' }}>
+            {timeStr}
           </span>
           {isCurrentHour && (
-            <>
+            <div className="d-flex align-items-center gap-1.5 flex-wrap">
               <span className="badge rounded-pill bg-success text-white px-2 py-1 fs-xs badge-now-pulse animate-pulse">
                 <i className="bi bi-clock-fill me-1"></i>NOW
               </span>
               <span className="badge rounded-pill bg-success-subtle text-success border border-success-subtle px-2 py-1 fs-xs d-flex align-items-center gap-1">
                 <i className="bi bi-hourglass-split animate-spin-slow"></i>
-                {60 - currentTime.getMinutes()}m left
+                {minutesLeft > 0 ? `${minutesLeft}m left` : '< 1m left'}
               </span>
-            </>
+            </div>
           )}
         </div>
         <div>
@@ -175,7 +184,7 @@ export default function HourCard({
               color: '#075E54', 
               border: '1px solid #C4E9A7' 
             }}
-            onClick={handleStartEditPlan}
+            onClick={() => onEditPlan(report)}
           >
             <i className="bi bi-compass-fill me-1"></i>Edit Plan
           </button>

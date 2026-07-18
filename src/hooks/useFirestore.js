@@ -15,7 +15,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
-import { sortReports, getDayHoursList } from '../utils/helpers';
+import { sortReports, getDayHoursList, get24Hour, getIntervalTimes, timeToMinutes } from '../utils/helpers';
 
 /**
  * useFirestore — Firestore hook with full trash/undo support.
@@ -218,12 +218,16 @@ export const useFirestore = (selectedDate, uid) => {
       where('date', '==', date)
     );
     const snap = await getDocs(q);
-    const existingKeys = new Set(
-      snap.docs.map((d) => {
-        const { hour, ampm } = d.data();
-        return `${hour}-${ampm}`;
-      })
-    );
+
+    // Map existing reports to their start and end times in minutes
+    const existingIntervals = snap.docs.map((d) => {
+      const data = d.data();
+      const times = getIntervalTimes(data);
+      const startMin = timeToMinutes(times.startTime);
+      let endMin = timeToMinutes(times.endTime);
+      if (endMin <= startMin) endMin += 24 * 60; // overnight wrap
+      return { startMin, endMin };
+    });
 
     const dayHours = getDayHoursList();
     const batch = writeBatch(db);
@@ -231,13 +235,28 @@ export const useFirestore = (selectedDate, uid) => {
     const newIds = [];
 
     dayHours.forEach(({ hour, ampm }) => {
-      if (!existingKeys.has(`${hour}-${ampm}`)) {
+      const h24 = get24Hour(hour, ampm);
+      const startStr = `${String(h24).padStart(2, '0')}:00`;
+      const endStr = `${String((h24 + 1) % 24).padStart(2, '0')}:00`;
+
+      const newStart = timeToMinutes(startStr);
+      let newEnd = timeToMinutes(endStr);
+      if (newEnd <= newStart) newEnd += 24 * 60; // overnight wrap
+
+      // Check if this default slot overlaps with any existing custom/default slots
+      const hasOverlap = existingIntervals.some(
+        (exist) => newStart < exist.endMin && newEnd > exist.startMin
+      );
+
+      if (!hasOverlap) {
         const ref = doc(reportsCol);
         batch.set(ref, {
           uid,
           date,
           hour,
           ampm,
+          startTime: startStr,
+          endTime: endStr,
           plan: '',
           report: '',
           status: 'Pending',

@@ -6,15 +6,95 @@
  */
 export const get24Hour = (hour, ampm) => {
   const h = parseInt(hour, 10);
-  if (ampm === 'AM') {
-    return h === 12 ? 0 : h;
-  } else {
+  if (isNaN(h)) return 0;
+  const isPM = typeof ampm === 'string' && ampm.toUpperCase() === 'PM';
+  if (isPM) {
     return h === 12 ? 12 : h + 12;
+  } else {
+    return h === 12 ? 0 : h;
   }
 };
 
 /**
  * Sorts reports by Date (ascending), then Hour (chronologically), then AM/PM.
+ */
+/**
+ * Convert HH:MM 24-hour time to 12-hour format with AM/PM (e.g., "14:30" -> "02:30 PM", "08:00" -> "08:00 AM")
+ */
+export const formatTime12h = (timeStr) => {
+  if (!timeStr) return '';
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return '';
+  let hours = parseInt(parts[0], 10);
+  const minutes = parts[1] || '00';
+  if (isNaN(hours)) return '';
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // Convert 0 to 12
+  return `${String(hours).padStart(2, '0')}:${minutes} ${ampm}`;
+};
+
+/**
+ * Reconstructs or extracts startTime and endTime from a report object.
+ * Falls back to computing them from hour and ampm if the new fields do not exist.
+ */
+export const getIntervalTimes = (report) => {
+  if (!report) {
+    return { startTime: '08:00', endTime: '09:00' };
+  }
+  if (typeof report.startTime === 'string' && typeof report.endTime === 'string' && report.startTime && report.endTime) {
+    return { startTime: report.startTime, endTime: report.endTime };
+  }
+  const hour = parseInt(report.hour, 10);
+  if (!isNaN(hour)) {
+    const ampm = (report.ampm || 'AM').toUpperCase();
+    const h24 = get24Hour(hour, ampm);
+    const startStr = `${String(h24).padStart(2, '0')}:00`;
+    const endStr = `${String((h24 + 1) % 24).padStart(2, '0')}:00`;
+    return { startTime: startStr, endTime: endStr };
+  }
+  return { startTime: '08:00', endTime: '09:00' };
+};
+
+/**
+ * Converts a "HH:MM" 24-hour string to minutes since midnight.
+ */
+export const timeToMinutes = (timeStr) => {
+  if (typeof timeStr !== 'string' || !timeStr) return 0;
+  const parts = timeStr.split(':');
+  if (parts.length < 2) return 0;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  if (isNaN(hours) || isNaN(minutes)) return 0;
+  return hours * 60 + minutes;
+};
+
+/**
+ * Converts any time string (like "08:00 AM", "2:30 PM", or "14:30") to standard HH:MM 24-hour format for time inputs.
+ */
+export const normalizeTimeTo24h = (timeStr) => {
+  if (typeof timeStr !== 'string' || !timeStr) return '08:00';
+  const cleanStr = timeStr.trim();
+  const match = cleanStr.match(/^(\d{1,2}):(\d{2})(?:\s*(AM|PM))?$/i);
+  if (match) {
+    let hours = parseInt(match[1], 10);
+    const minutes = match[2];
+    const ampm = match[3];
+    if (ampm) {
+      const isPM = ampm.toUpperCase() === 'PM';
+      if (isPM) {
+        hours = hours === 12 ? 12 : hours + 12;
+      } else {
+        hours = hours === 12 ? 0 : hours;
+      }
+    }
+    return `${String(hours).padStart(2, '0')}:${minutes}`;
+  }
+  return '08:00';
+};
+
+/**
+ * Sorts reports by Date (ascending), then by Start Time (chronologically).
  */
 export const sortReports = (reports) => {
   return [...reports].sort((a, b) => {
@@ -22,10 +102,10 @@ export const sortReports = (reports) => {
     if (a.date !== b.date) {
       return a.date.localeCompare(b.date);
     }
-    // Sort by Hour (chronological 24-hour)
-    const timeA = get24Hour(a.hour, a.ampm);
-    const timeB = get24Hour(b.hour, b.ampm);
-    return timeA - timeB;
+    // Sort by Start Time
+    const timesA = getIntervalTimes(a);
+    const timesB = getIntervalTimes(b);
+    return timesA.startTime.localeCompare(timesB.startTime);
   });
 };
 
@@ -69,24 +149,52 @@ export const getCurrentHourAndAMPM = () => {
 };
 
 /**
- * Calculates statistics for reports: Completed, Pending, Missed, Total Planned, and Productivity percentage.
+ * Calculates statistics for reports based on custom intervals.
+ * Returns both raw values (in minutes) and formatted friendly string representations.
  */
 export const calculateStats = (reports) => {
-  const completed = reports.filter((r) => r.status === 'Completed').length;
-  const pending = reports.filter((r) => r.status === 'Pending').length;
-  const missed = reports.filter((r) => r.status === 'Missed').length;
+  let completedMinutes = 0;
+  let pendingMinutes = 0;
+  let missedMinutes = 0;
   
-  // Total Planned is the sum of all tasks in the timeline
-  const totalPlanned = reports.length;
+  reports.forEach((r) => {
+    const times = getIntervalTimes(r);
+    const startMin = timeToMinutes(times.startTime);
+    let endMin = timeToMinutes(times.endTime);
+    if (endMin < startMin) {
+      endMin += 24 * 60; // Handle overnight wrap-around (e.g. 11 PM to 1 AM)
+    }
+    const duration = endMin - startMin;
+
+    if (r.status === 'Completed') {
+      completedMinutes += duration;
+    } else if (r.status === 'Pending') {
+      pendingMinutes += duration;
+    } else if (r.status === 'Missed') {
+      missedMinutes += duration;
+    }
+  });
   
-  // Productivity % = (Completed Hours / Total Planned Hours) * 100
-  const productivity = totalPlanned > 0 ? Math.round((completed / totalPlanned) * 100) : 0;
+  const totalMinutes = completedMinutes + pendingMinutes + missedMinutes;
+  const productivity = totalMinutes > 0 ? Math.round((completedMinutes / totalMinutes) * 100) : 0;
   
+  const formatFriendly = (mins) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h === 0) return `${m}m`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m}m`;
+  };
+
   return {
-    completed,
-    pending,
-    missed,
-    totalPlanned,
+    completed: formatFriendly(completedMinutes),
+    pending: formatFriendly(pendingMinutes),
+    missed: formatFriendly(missedMinutes),
+    totalPlanned: formatFriendly(totalMinutes),
+    completedRaw: completedMinutes,
+    pendingRaw: pendingMinutes,
+    missedRaw: missedMinutes,
+    totalPlannedRaw: totalMinutes,
     productivity
   };
 };

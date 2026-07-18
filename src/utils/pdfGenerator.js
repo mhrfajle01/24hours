@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { calculateStats, sortReports, formatFriendlyDate, formatHourString } from './helpers';
+import { calculateStats, sortReports, formatFriendlyDate, getIntervalTimes, formatTime12h } from './helpers';
 
 // Map of theme colors for styling the PDF
 const themeColors = {
@@ -128,22 +128,22 @@ export const generatePDF = async (reports, dateStr, user, options) => {
           Productivity Summary / সংক্ষিপ্ত বিবরণ
         </h2>
         
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
-          <div style="background-color: ${activeTheme.light}; border: 1px solid ${activeTheme.border}; border-radius: 12px; padding: 12px; text-align: center;">
-            <div style="font-size: 11px; font-weight: 600; color: #64748B; margin-bottom: 4px;">Total Hours / মোট ঘণ্টা</div>
-            <div style="font-size: 20px; font-weight: 800; color: ${activeTheme.primary};">${stats.totalPlanned}</div>
+        <div style="display: flex; gap: 12px; margin-bottom: 16px; width: 100%;">
+          <div style="flex: 1; min-width: 0; background-color: ${activeTheme.light}; border: 1px solid ${activeTheme.border}; border-radius: 12px; padding: 12px; text-align: center;">
+            <div style="font-size: 10px; font-weight: 600; color: #64748B; margin-bottom: 4px;">Total Duration / মোট সময়</div>
+            <div style="font-size: 16px; font-weight: 800; color: ${activeTheme.primary}; white-space: nowrap;">${stats.totalPlanned}</div>
           </div>
-          <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 12px; padding: 12px; text-align: center;">
-            <div style="font-size: 11px; font-weight: 600; color: #166534; margin-bottom: 4px;">Completed / সম্পন্ন</div>
-            <div style="font-size: 20px; font-weight: 800; color: #15803D;">${stats.completed}</div>
+          <div style="background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 12px; padding: 12px; text-align: center; flex: 1; min-width: 0;">
+            <div style="font-size: 10px; font-weight: 600; color: #166534; margin-bottom: 4px;">Completed / সম্পন্ন</div>
+            <div style="font-size: 16px; font-weight: 800; color: #15803D; white-space: nowrap;">${stats.completed}</div>
           </div>
-          <div style="background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 12px; padding: 12px; text-align: center;">
-            <div style="font-size: 11px; font-weight: 600; color: #92400E; margin-bottom: 4px;">Pending / চলমান</div>
-            <div style="font-size: 20px; font-weight: 800; color: #D97706;">${stats.pending}</div>
+          <div style="background-color: #FEF3C7; border: 1px solid #FDE68A; border-radius: 12px; padding: 12px; text-align: center; flex: 1; min-width: 0;">
+            <div style="font-size: 10px; font-weight: 600; color: #92400E; margin-bottom: 4px;">Pending / চলমান</div>
+            <div style="font-size: 16px; font-weight: 800; color: #D97706; white-space: nowrap;">${stats.pending}</div>
           </div>
-          <div style="background-color: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 12px; padding: 12px; text-align: center;">
-            <div style="font-size: 11px; font-weight: 600; color: #991B1B; margin-bottom: 4px;">Missed / বাদ পড়া</div>
-            <div style="font-size: 20px; font-weight: 800; color: #DC2626;">${stats.missed}</div>
+          <div style="background-color: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 12px; padding: 12px; text-align: center; flex: 1; min-width: 0;">
+            <div style="font-size: 10px; font-weight: 600; color: #991B1B; margin-bottom: 4px;">Missed / বাদ পড়া</div>
+            <div style="font-size: 16px; font-weight: 800; color: #DC2626; white-space: nowrap;">${stats.missed}</div>
           </div>
         </div>
 
@@ -167,9 +167,9 @@ export const generatePDF = async (reports, dateStr, user, options) => {
           <h2 style="font-size: 15px; font-weight: 700; color: ${activeTheme.primary}; margin: 0 0 4px 0;">Plan Overview / পরিকল্পনা রূপরেখা</h2>
           <span style="font-size: 12px; color: #64748B;">Successfully scheduled plan items for this day.</span>
         </div>
-        <div style="background-color: #FFFFFF; border: 1px solid ${activeTheme.border}; border-radius: 8px; padding: 8px 16px; text-align: center;">
-          <div style="font-size: 10px; font-weight: 600; color: #64748B;">Planned Hours / নির্ধারিত ঘণ্টা</div>
-          <div style="font-size: 18px; font-weight: 800; color: ${activeTheme.primary};">${stats.totalPlanned}</div>
+        <div style="background-color: #FFFFFF; border: 1px solid ${activeTheme.border}; border-radius: 8px; padding: 8px 16px; text-align: center; min-width: 140px;">
+          <div style="font-size: 10px; font-weight: 600; color: #64748B; margin-bottom: 2px;">Total Planned / মোট সময়</div>
+          <div style="font-size: 16px; font-weight: 800; color: ${activeTheme.primary}; white-space: nowrap;">${stats.totalPlanned}</div>
         </div>
       </div>
     `;
@@ -190,30 +190,31 @@ export const generatePDF = async (reports, dateStr, user, options) => {
       const isAlt = idx % 2 === 1;
       const rowBg = isAlt ? activeTheme.light : '#FFFFFF';
       
-      const timeStr = formatHourString(row.hour, row.ampm);
+      const times = getIntervalTimes(row);
+      const timeStr = `${formatTime12h(times.startTime)} - ${formatTime12h(times.endTime)}`;
       
       let statusBadge = '';
       if (row.status === 'Completed') {
-        statusBadge = `<span style="background-color: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; display: inline-block;">Completed / সম্পন্ন</span>`;
+        statusBadge = `<span style="background-color: #DCFCE7; color: #15803D; border: 1px solid #BBF7D0; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; display: inline-block;">Completed / সম্পন্ন</span>`;
       } else if (row.status === 'Pending') {
-        statusBadge = `<span style="background-color: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; display: inline-block;">Pending / চলমান</span>`;
+        statusBadge = `<span style="background-color: #FEF3C7; color: #D97706; border: 1px solid #FDE68A; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; display: inline-block;">Pending / চলমান</span>`;
       } else if (row.status === 'Missed') {
-        statusBadge = `<span style="background-color: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; display: inline-block;">Missed / বাদ পড়া</span>`;
+        statusBadge = `<span style="background-color: #FEE2E2; color: #DC2626; border: 1px solid #FCA5A5; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; display: inline-block;">Missed / বাদ পড়া</span>`;
       }
 
       if (templateType === 'report') {
         tableRowsHtml += `
           <tr style="background-color: ${rowBg};">
-            <td style="padding: 12px 14px; border-bottom: 1px solid ${activeTheme.border}; font-size: 13px; font-weight: 700; color: ${activeTheme.primary}; white-space: nowrap;">
+            <td style="padding: 12px 14px; border-bottom: 1px solid ${activeTheme.border}; font-size: 11px; font-weight: 700; color: ${activeTheme.primary}; vertical-align: top; line-height: 1.4;">
               ${timeStr}
             </td>
-            <td style="padding: 12px 14px; border-bottom: 1px solid ${activeTheme.border}; font-size: 13px; color: #334155; word-break: break-word;">
+            <td style="padding: 12px 14px; border-bottom: 1px solid ${activeTheme.border}; font-size: 11px; color: #334155; word-break: break-word; vertical-align: top; line-height: 1.4;">
               ${row.plan || '<span style="color: #94A3B8; font-style: italic;">No Plan / পরিকল্পনা নেই</span>'}
             </td>
-            <td style="padding: 12px 14px; border-bottom: 1px solid ${activeTheme.border}; font-size: 13px; color: #334155; word-break: break-word;">
+            <td style="padding: 12px 14px; border-bottom: 1px solid ${activeTheme.border}; font-size: 11px; color: #334155; word-break: break-word; vertical-align: top; line-height: 1.4;">
               ${row.report || '<span style="color: #94A3B8; font-style: italic;">No Report / রিপোর্ট নেই</span>'}
             </td>
-            <td style="padding: 12px 14px; border-bottom: 1px solid ${activeTheme.border}; text-align: center; white-space: nowrap;">
+            <td style="padding: 12px 14px; border-bottom: 1px solid ${activeTheme.border}; text-align: center; vertical-align: top; line-height: 1.4;">
               ${statusBadge}
             </td>
           </tr>
@@ -221,10 +222,10 @@ export const generatePDF = async (reports, dateStr, user, options) => {
       } else {
         tableRowsHtml += `
           <tr style="background-color: ${rowBg};">
-            <td style="padding: 14px 18px; border-bottom: 1px solid ${activeTheme.border}; font-size: 14px; font-weight: 700; color: ${activeTheme.primary}; width: 120px; white-space: nowrap;">
+            <td style="padding: 14px 18px; border-bottom: 1px solid ${activeTheme.border}; font-size: 12px; font-weight: 700; color: ${activeTheme.primary}; width: 160px; vertical-align: top; line-height: 1.4;">
               ${timeStr}
             </td>
-            <td style="padding: 14px 18px; border-bottom: 1px solid ${activeTheme.border}; font-size: 14px; color: #1E293B; word-break: break-word;">
+            <td style="padding: 14px 18px; border-bottom: 1px solid ${activeTheme.border}; font-size: 12px; color: #1E293B; word-break: break-word; vertical-align: top; line-height: 1.4;">
               ${row.plan || '<span style="color: #94A3B8; font-style: italic;">No Plan / পরিকল্পনা নেই</span>'}
             </td>
           </tr>
@@ -237,18 +238,18 @@ export const generatePDF = async (reports, dateStr, user, options) => {
     ? `
       <thead>
         <tr style="background-color: ${activeTheme.primary}; color: #FFFFFF;">
-          <th style="padding: 12px 14px; text-align: left; font-size: 13px; font-weight: 700; border-top-left-radius: 8px; width: 100px;">Time / সময়</th>
-          <th style="padding: 12px 14px; text-align: left; font-size: 13px; font-weight: 700;">Plan / পরিকল্পনা</th>
-          <th style="padding: 12px 14px; text-align: left; font-size: 13px; font-weight: 700;">Report / বাস্তবায়ন</th>
-          <th style="padding: 12px 14px; text-align: center; font-size: 13px; font-weight: 700; border-top-right-radius: 8px; width: 110px;">Status / অবস্থা</th>
+          <th style="padding: 12px 14px; text-align: left; font-size: 12px; font-weight: 700; border-top-left-radius: 8px; width: 160px;">Time / সময়</th>
+          <th style="padding: 12px 14px; text-align: left; font-size: 12px; font-weight: 700;">Plan / পরিকল্পনা</th>
+          <th style="padding: 12px 14px; text-align: left; font-size: 12px; font-weight: 700;">Report / বাস্তবায়ন</th>
+          <th style="padding: 12px 14px; text-align: center; font-size: 12px; font-weight: 700; border-top-right-radius: 8px; width: 110px;">Status / অবস্থা</th>
         </tr>
       </thead>
     `
     : `
       <thead>
         <tr style="background-color: ${activeTheme.primary}; color: #FFFFFF;">
-          <th style="padding: 14px 18px; text-align: left; font-size: 14px; font-weight: 700; border-top-left-radius: 8px; width: 130px;">Time / সময়</th>
-          <th style="padding: 14px 18px; text-align: left; font-size: 14px; font-weight: 700; border-top-right-radius: 8px;">Plan & Targets / কর্মপরিকল্পনা ও লক্ষ্য</th>
+          <th style="padding: 14px 18px; text-align: left; font-size: 13px; font-weight: 700; border-top-left-radius: 8px; width: 160px;">Time / সময়</th>
+          <th style="padding: 14px 18px; text-align: left; font-size: 13px; font-weight: 700; border-top-right-radius: 8px;">Plan & Targets / কর্মপরিকল্পনা ও লক্ষ্য</th>
         </tr>
       </thead>
     `;

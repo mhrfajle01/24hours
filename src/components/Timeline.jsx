@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import HourCard from './HourCard';
-import { getTodayDateString } from '../utils/helpers';
+import { getTodayDateString, getIntervalTimes, timeToMinutes } from '../utils/helpers';
 
 /**
  * Timeline component rendering the list of hourly tracking cards or
@@ -8,7 +8,7 @@ import { getTodayDateString } from '../utils/helpers';
  */
 export default function Timeline({ 
   reports, 
-  currentHourData, 
+  currentTime, 
   selectedDate, 
   onEditPlan, 
   onEditReport, 
@@ -24,7 +24,7 @@ export default function Timeline({
 
   useEffect(() => {
     // Only scroll once when today's data is loaded
-    if (isTodaySelected && reports.length > 0 && currentHourData && !scrolledRef.current) {
+    if (isTodaySelected && reports.length > 0 && currentTime && !scrolledRef.current) {
       const timer = setTimeout(() => {
         if (currentCardRef.current) {
           currentCardRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -33,7 +33,7 @@ export default function Timeline({
       }, 500); // Small timeout to ensure rendering is complete
       return () => clearTimeout(timer);
     }
-  }, [isTodaySelected, reports.length, currentHourData]);
+  }, [isTodaySelected, reports.length, currentTime]);
 
   // Reset scrolledRef when date changes
   useEffect(() => {
@@ -70,13 +70,45 @@ export default function Timeline({
     );
   }
 
+  // Find the single active report (the first one matching current time)
+  let activeReportId = null;
+  if (isTodaySelected && currentTime && reports.length > 0) {
+    const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+    
+    // Find all matching reports
+    const matchingReports = reports.filter((report) => {
+      const times = getIntervalTimes(report);
+      const startMin = timeToMinutes(times.startTime);
+      let endMin = timeToMinutes(times.endTime);
+      if (endMin < startMin) {
+        endMin += 24 * 60;
+      }
+      return (endMin >= 24 * 60)
+        ? (currentMin >= startMin || currentMin < (endMin % (24 * 60)))
+        : (currentMin >= startMin && currentMin < endMin);
+    });
+
+    if (matchingReports.length > 0) {
+      // Pick the best match (the one that starts closest to currentMin)
+      let bestMatch = matchingReports[0];
+      let minDiff = Infinity;
+      matchingReports.forEach(r => {
+        const times = getIntervalTimes(r);
+        const startMin = timeToMinutes(times.startTime);
+        const diff = currentMin - startMin;
+        if (diff >= 0 && diff < minDiff) {
+          minDiff = diff;
+          bestMatch = r;
+        }
+      });
+      activeReportId = bestMatch.id;
+    }
+  }
+
   return (
     <div className="container-fluid max-width-container ps-5 pe-3 pb-5 mb-5 timeline-wrapper">
       {reports.map((report) => {
-        // Highlight card only if it is today and the hour/ampm matches current time
-        const isCurrentHour = isTodaySelected && 
-          report.hour === currentHourData.hour && 
-          report.ampm === currentHourData.ampm;
+        const isCurrentHour = report.id === activeReportId;
 
         return (
           <div 
@@ -85,11 +117,12 @@ export default function Timeline({
             className="position-relative"
           >
             {/* Timeline bullet indicator outside of HourCard (avoids overflow clip) */}
-            <div className={`timeline-dot ${isCurrentHour ? 'active' : ''} ${report.status.toLowerCase()}`} />
+            <div className={`timeline-dot ${report.status.toLowerCase()} ${isCurrentHour ? 'active' : ''}`} />
             
             <HourCard
               report={report}
               isCurrentHour={isCurrentHour}
+              currentTime={currentTime}
               onEditPlan={onEditPlan}
               onEditReport={onEditReport}
               onDelete={onDelete}

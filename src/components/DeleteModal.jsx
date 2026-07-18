@@ -1,11 +1,14 @@
 import React from 'react';
-import { formatHourString } from '../utils/helpers';
+import { getIntervalTimes, formatTime12h } from '../utils/helpers';
 
 /**
  * DeleteModal provides a double-check confirmation dialog before deleting an hourly slot.
  */
 export default function DeleteModal({ isOpen, onClose, onConfirm, report }) {
   if (!isOpen || !report) return null;
+
+  const times = getIntervalTimes(report);
+  const timeStr = `${formatTime12h(times.startTime)} - ${formatTime12h(times.endTime)}`;
 
   return (
     <>
@@ -43,7 +46,7 @@ export default function DeleteModal({ isOpen, onClose, onConfirm, report }) {
               </div>
               <h5 className="fw-bold text-dark mb-2">Move to Trash?</h5>
               <p className="text-secondary mb-0" style={{ fontSize: '0.95rem' }}>
-                The block for <strong>{formatHourString(report.hour, report.ampm)}</strong> will be moved to Trash.
+                The block for <strong>{timeStr}</strong> will be moved to Trash.
                 You can restore it anytime from the Trash section.
               </p>
             </div>

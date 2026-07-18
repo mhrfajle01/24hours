@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { formatHourString } from '../utils/helpers';
+import { getIntervalTimes, formatTime12h } from '../utils/helpers';
 import SuggestionHelper from './SuggestionHelper';
 
 /**
@@ -27,6 +27,9 @@ export default function ReportModal({ isOpen, onClose, onSave, report, dictionar
     });
   };
 
+  const times = getIntervalTimes(report);
+  const timeStr = `${formatTime12h(times.startTime)} - ${formatTime12h(times.endTime)}`;
+
   return (
     <>
       {/* Backdrop */}
@@ -47,7 +50,7 @@ export default function ReportModal({ isOpen, onClose, onSave, report, dictionar
             <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
               <h5 className="modal-title fw-bold d-flex align-items-center gap-2">
                 <i className="bi bi-journal-check"></i>
-                Report Hour: {formatHourString(report.hour, report.ampm)}
+                Report Slot: {timeStr}
               </h5>
               <button 
                 type="button" 

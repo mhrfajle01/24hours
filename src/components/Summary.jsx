@@ -57,25 +57,25 @@ export default function Summary({ reports, selectedDate, onDateChange, onGenerat
           <div className="col-6 col-sm-3">
             <div className="p-2 bg-light rounded-3 border-start border-4 border-success">
               <div className="text-secondary small fw-semibold text-uppercase" style={{ fontSize: '0.75rem' }}>Completed</div>
-              <div className="fs-4 fw-extrabold text-success">{completed}h</div>
+              <div className="fs-4 fw-extrabold text-success">{completed}</div>
             </div>
           </div>
           <div className="col-6 col-sm-3">
             <div className="p-2 bg-light rounded-3 border-start border-4 border-warning">
               <div className="text-secondary small fw-semibold text-uppercase" style={{ fontSize: '0.75rem' }}>Pending</div>
-              <div className="fs-4 fw-extrabold text-warning">{pending}h</div>
+              <div className="fs-4 fw-extrabold text-warning">{pending}</div>
             </div>
           </div>
           <div className="col-6 col-sm-3">
             <div className="p-2 bg-light rounded-3 border-start border-4 border-danger">
               <div className="text-secondary small fw-semibold text-uppercase" style={{ fontSize: '0.75rem' }}>Missed</div>
-              <div className="fs-4 fw-extrabold text-danger">{missed}h</div>
+              <div className="fs-4 fw-extrabold text-danger">{missed}</div>
             </div>
           </div>
           <div className="col-6 col-sm-3">
             <div className="p-2 bg-light rounded-3 border-start border-4 border-primary">
-              <div className="text-secondary small fw-semibold text-uppercase" style={{ fontSize: '0.75rem' }}>Total Hours</div>
-              <div className="fs-4 fw-extrabold text-primary">{totalPlanned}h</div>
+              <div className="text-secondary small fw-semibold text-uppercase" style={{ fontSize: '0.75rem' }}>Total Planned</div>
+              <div className="fs-4 fw-extrabold text-primary">{totalPlanned}</div>
             </div>
           </div>
         </div>

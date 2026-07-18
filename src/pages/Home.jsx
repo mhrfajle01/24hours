@@ -10,7 +10,7 @@ import ProfileModal from '../components/ProfileModal';
 import TrashModal from '../components/TrashModal';
 import AuthPage from '../components/AuthPage';
 import { useFirestore } from '../hooks/useFirestore';
-import { getTodayDateString, getCurrentHourAndAMPM } from '../utils/helpers';
+import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes } from '../utils/helpers';
 import defaultDictionary from '../constants/dictionary.json';
 import { db, auth } from '../firebase/firebase';
 import {
@@ -44,6 +44,7 @@ export default function Home() {
   // ── Date / time ─────────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   // ── Firestore hook ───────────────────────────────────────────────────────
   const {
@@ -100,7 +101,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const t = setInterval(() => setCurrentHourData(getCurrentHourAndAMPM()), 60000);
+    const t = setInterval(() => {
+      setCurrentTime(new Date());
+      setCurrentHourData(getCurrentHourAndAMPM());
+    }, 10000); // Central clock ticks every 10s
     return () => clearInterval(t);
   }, []);
 
@@ -331,26 +335,66 @@ export default function Home() {
 
   const handleSavePlan = async (planData) => {
     try {
+      // ── Overlap Detection ──────────────────────────────────────────────
+      const newStart = timeToMinutes(planData.startTime);
+      let newEnd = timeToMinutes(planData.endTime);
+      if (newEnd <= newStart) newEnd += 24 * 60; // overnight wrap
+
+      const overlapping = reports.find((r) => {
+        // Skip self when editing
+        if (selectedReport && r.id === selectedReport.id) return false;
+
+        const times = getIntervalTimes(r);
+        let existStart = timeToMinutes(times.startTime);
+        let existEnd = timeToMinutes(times.endTime);
+        if (existEnd <= existStart) existEnd += 24 * 60; // overnight wrap
+
+        // Two ranges overlap if one starts before the other ends and vice versa
+        return newStart < existEnd && newEnd > existStart;
+      });
+
+      if (overlapping) {
+        const oTimes = getIntervalTimes(overlapping);
+        showToast(
+          `Time overlaps with existing slot: ${formatTime12h(oTimes.startTime)} - ${formatTime12h(oTimes.endTime)}. Please choose a different time range.`,
+          'danger'
+        );
+        return;
+      }
+      // ──────────────────────────────────────────────────────────────────
+
+      const startHour24 = parseInt(planData.startTime.split(':')[0], 10);
+      const displayHour = startHour24 % 12 || 12;
+      const ampm = startHour24 >= 12 ? 'PM' : 'AM';
+
       if (selectedReport) {
         // Edit
-        const previousData = { plan: selectedReport.plan };
-        const newData = { plan: planData.plan };
+        const oldTimes = getIntervalTimes(selectedReport);
+        const previousData = { 
+          plan: selectedReport.plan,
+          startTime: oldTimes.startTime,
+          endTime: oldTimes.endTime,
+          hour: selectedReport.hour || parseInt(oldTimes.startTime.split(':')[0], 10) % 12 || 12,
+          ampm: selectedReport.ampm || (parseInt(oldTimes.startTime.split(':')[0], 10) >= 12 ? 'PM' : 'AM')
+        };
+        const newData = { 
+          plan: planData.plan,
+          startTime: planData.startTime,
+          endTime: planData.endTime,
+          hour: displayHour,
+          ampm: ampm
+        };
         await updateReport(selectedReport.id, newData);
         pushUndo({ type: 'UPDATE_PLAN', docId: selectedReport.id, previousData, newData });
         showToast('Updated Successfully', 'success');
       } else {
         // Create
-        const isDuplicate = reports.some(
-          (r) => r.hour === planData.hour && r.ampm === planData.ampm
-        );
-        if (isDuplicate) {
-          showToast(`Hour slot ${planData.hour}:00 ${planData.ampm} already exists.`, 'danger');
-          return;
-        }
         const data = {
           date: selectedDate,
-          hour: planData.hour,
-          ampm: planData.ampm,
+          startTime: planData.startTime,
+          endTime: planData.endTime,
+          hour: displayHour,
+          ampm: ampm,
           plan: planData.plan,
           report: '',
           status: 'Pending',
@@ -362,7 +406,7 @@ export default function Home() {
       handleCloseModal();
     } catch (err) {
       console.error(err);
-      showToast('Something went wrong.', 'danger');
+      showToast(`Failed to save plan: ${err.message || err}`, 'danger');
     }
   };
 
@@ -470,13 +514,16 @@ export default function Home() {
       existingSnap.docs.forEach((d) => batch.delete(d.ref));
 
       const reportsCol = collection(db, 'reports');
-      importedData.forEach((item) => {
+       importedData.forEach((item) => {
         const ref = doc(reportsCol);
+        const times = getIntervalTimes(item);
         batch.set(ref, {
           uid: currentUser.uid,
           date: selectedDate,
-          hour: item.hour,
-          ampm: item.ampm,
+          hour: item.hour || parseInt(times.startTime.split(':')[0], 10),
+          ampm: item.ampm || (parseInt(times.startTime.split(':')[0], 10) >= 12 ? 'PM' : 'AM'),
+          startTime: times.startTime,
+          endTime: times.endTime,
           plan: item.plan || '',
           report: item.report || '',
           status: item.status || 'Pending',
@@ -499,9 +546,18 @@ export default function Home() {
         showToast('No data to export.', 'info');
         return;
       }
-      const cleanedData = reports.map(({ hour, ampm, plan, report, status }) => ({
-        hour, ampm, plan, report, status,
-      }));
+      const cleanedData = reports.map((r) => {
+        const times = getIntervalTimes(r);
+        return {
+          hour: r.hour || parseInt(times.startTime.split(':')[0], 10),
+          ampm: r.ampm || (parseInt(times.startTime.split(':')[0], 10) >= 12 ? 'PM' : 'AM'),
+          startTime: times.startTime,
+          endTime: times.endTime,
+          plan: r.plan || '',
+          report: r.report || '',
+          status: r.status || 'Pending',
+        };
+      });
       const blob = new Blob([JSON.stringify(cleanedData, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -569,6 +625,7 @@ export default function Home() {
       {/* Sticky Header */}
       <Header
         selectedDate={selectedDate}
+        reports={reports}
         onOpenSettings={handleOpenSettings}
         onOpenProfile={handleOpenProfile}
         onOpenTrash={handleOpenTrash}
@@ -617,7 +674,7 @@ export default function Home() {
             />
             <Timeline
               reports={reports}
-              currentHourData={currentHourData}
+              currentTime={currentTime}
               selectedDate={selectedDate}
               onEditPlan={handleOpenEditPlan}
               onEditReport={handleOpenEditReport}
