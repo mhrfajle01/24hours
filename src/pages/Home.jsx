@@ -9,6 +9,7 @@ import SettingsModal from '../components/SettingsModal';
 import ProfileModal from '../components/ProfileModal';
 import TrashModal from '../components/TrashModal';
 import AuthPage from '../components/AuthPage';
+import PendingReviewModal from '../components/PendingReviewModal';
 import { useFirestore } from '../hooks/useFirestore';
 import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes } from '../utils/helpers';
 import defaultDictionary from '../constants/dictionary.json';
@@ -86,6 +87,12 @@ export default function Home() {
   // ── Toast ────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
+  // ── Pending Review States ────────────────────────────────────────────────
+  const [pastPendingReports, setPastPendingReports] = useState([]);
+  const [showPendingToast, setShowPendingToast] = useState(false);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [awayDuration, setAwayDuration] = useState(null); // { minutes, label, lastSeenTime }
+
   // ── Effects ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -124,6 +131,82 @@ export default function Home() {
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Scan for past pending reports — smart re-entry detection
+  useEffect(() => {
+    if (firestoreLoading || !reports.length || selectedDate !== getTodayDateString()) {
+      return;
+    }
+
+    const STORAGE_KEY_LAST_SEEN   = 'hourlog_last_seen';       // timestamp (ms)
+    const STORAGE_KEY_REVIEW_DATE = 'hourlog_last_review_date'; // YYYY-MM-DD
+    const today = getTodayDateString();
+    const now = new Date();
+    const nowMs = now.getTime();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    const lastSeenMs   = parseInt(localStorage.getItem(STORAGE_KEY_LAST_SEEN) || '0', 10);
+    const lastReviewDate = localStorage.getItem(STORAGE_KEY_REVIEW_DATE) || '';
+    const isNewDay     = lastReviewDate !== today;
+    const gapMs        = lastSeenMs ? nowMs - lastSeenMs : Infinity;
+    const gapMinutes   = Math.floor(gapMs / 60000);
+
+    // Always record the current visit time
+    localStorage.setItem(STORAGE_KEY_LAST_SEEN, String(nowMs));
+
+    // Session guard: if same session already checked AND not a new day, skip
+    const sessionChecked = sessionStorage.getItem('pending_review_checked');
+    if (sessionChecked === 'true' && !isNewDay) {
+      return;
+    }
+
+    // Ignore brief absences (< 15 minutes), unless it's a brand new day
+    if (!isNewDay && gapMinutes < 15) {
+      sessionStorage.setItem('pending_review_checked', 'true');
+      return;
+    }
+
+    // Mark as checked for this session and update daily reset date
+    sessionStorage.setItem('pending_review_checked', 'true');
+    localStorage.setItem(STORAGE_KEY_REVIEW_DATE, today);
+
+    // Build human-readable away duration
+    let durationLabel = '';
+    if (lastSeenMs && gapMinutes < Infinity) {
+      if (gapMinutes < 60) {
+        durationLabel = `${gapMinutes} minute${gapMinutes !== 1 ? 's' : ''}`;
+      } else {
+        const hrs = Math.floor(gapMinutes / 60);
+        const mins = gapMinutes % 60;
+        durationLabel = mins > 0 ? `${hrs}h ${mins}m` : `${hrs} hour${hrs !== 1 ? 's' : ''}`;
+      }
+    }
+
+    const lastSeenTime = lastSeenMs
+      ? new Date(lastSeenMs).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+      : null;
+
+    const foundPastPending = reports.filter((r) => {
+      if (r.status !== 'Pending') return false;
+      const times = getIntervalTimes(r);
+      const endMin = timeToMinutes(times.endTime);
+      let adjustedEndMin = endMin;
+      const startMin = timeToMinutes(times.startTime);
+      if (endMin < startMin) adjustedEndMin += 24 * 60;
+      return adjustedEndMin <= nowMin;
+    });
+
+    if (foundPastPending.length > 0) {
+      setPastPendingReports(foundPastPending);
+      setAwayDuration({ minutes: gapMinutes, label: durationLabel, lastSeenTime });
+      // Auto-open modal if away > 4 hours; otherwise show floating toast
+      if (gapMinutes >= 240 || isNewDay) {
+        setIsReviewModalOpen(true);
+      } else {
+        setShowPendingToast(true);
+      }
+    }
+  }, [reports, firestoreLoading, selectedDate]);
 
   // Single keyboard listener; calls via refs to avoid stale closures
   useEffect(() => {
@@ -422,6 +505,22 @@ export default function Home() {
     } catch (err) {
       console.error(err);
       showToast('Something went wrong.', 'danger');
+    }
+  };
+
+  const handleSavePendingReview = async (updates) => {
+    try {
+      const batch = writeBatch(db);
+      updates.forEach(({ id, status }) => {
+        const docRef = doc(db, 'reports', id);
+        batch.update(docRef, { status });
+      });
+      await batch.commit();
+      showToast('All blocks updated successfully', 'success');
+      setPastPendingReports([]);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to update blocks.', 'danger');
     }
   };
 
@@ -806,6 +905,10 @@ export default function Home() {
         onExportData={handleExportData}
         dictionaryData={finalDictionary}
         onUpdateDictionary={updateDictionary}
+        onTriggerPendingReview={() => {
+          setIsReviewModalOpen(true);
+          setShowPendingToast(false);
+        }}
       />
 
       <ProfileModal
@@ -825,6 +928,14 @@ export default function Home() {
         onPermanentDelete={handlePermanentDeleteFromTrash}
         onEmptyTrash={handleEmptyTrash}
         onRestoreAll={handleRestoreAllFromTrash}
+      />
+
+      <PendingReviewModal
+        isOpen={isReviewModalOpen}
+        onClose={() => setIsReviewModalOpen(false)}
+        pendingReports={pastPendingReports}
+        onSave={handleSavePendingReview}
+        awayDuration={awayDuration}
       />
 
       {/* ── Toast notification ───────────────────────────────────────────── */}
@@ -859,6 +970,58 @@ export default function Home() {
               />
               <span className="fw-bold small">{toast.message}</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast reminder for pending slots */}
+      {showPendingToast && pastPendingReports.length > 0 && (
+        <div
+          className="position-fixed d-flex align-items-center gap-2 p-3 rounded-4 shadow-lg animate-slide-up border"
+          style={{
+            bottom: '96px',
+            left: '24px',
+            zIndex: 999,
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(10px)',
+            maxWidth: '320px',
+            borderColor: '#075E54'
+          }}
+        >
+          <div className="d-flex align-items-center gap-2">
+            <div 
+              className="rounded-circle d-flex align-items-center justify-content-center text-white" 
+              style={{ width: '36px', height: '36px', backgroundColor: '#FFC107' }}
+            >
+              <i className="bi bi-bell-fill animate-pulse"></i>
+            </div>
+            <div>
+              <div className="fw-bold text-dark" style={{ fontSize: '0.85rem' }}>
+                {pastPendingReports.length} Unchecked Blocks
+              </div>
+              <div className="text-secondary" style={{ fontSize: '0.75rem' }}>
+                You have slots from earlier today.
+              </div>
+            </div>
+          </div>
+          <div className="d-flex flex-column gap-1 ms-auto">
+            <button
+              className="btn btn-xs text-white fw-bold rounded-pill px-2.5 py-1 border-0"
+              style={{ backgroundColor: '#075E54', fontSize: '0.7rem' }}
+              onClick={() => {
+                setIsReviewModalOpen(true);
+                setShowPendingToast(false);
+              }}
+            >
+              Review
+            </button>
+            <button
+              className="btn btn-xs btn-link text-secondary text-decoration-none p-0 fw-bold border-0"
+              style={{ fontSize: '0.65rem' }}
+              onClick={() => setShowPendingToast(false)}
+            >
+              Dismiss
+            </button>
           </div>
         </div>
       )}

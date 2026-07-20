@@ -18,6 +18,7 @@ export default function SettingsModal({
   onExportData,
   dictionaryData = [],
   onUpdateDictionary,
+  onTriggerPendingReview,
 }) {
   const fileInputRef = useRef(null);
 
@@ -394,6 +395,20 @@ export default function SettingsModal({
                   >
                     <span className="small fw-semibold">
                       <i className="bi bi-magic me-2" />Auto-Generate Hour Blocks
+                    </span>
+                    <i className="bi bi-chevron-right text-muted small" />
+                  </button>
+                  <button
+                    className="btn text-start py-2 rounded-3 d-flex align-items-center justify-content-between shadow-none border"
+                    style={{ borderColor: '#FFC107', color: '#856404', backgroundColor: '#FFFBEA' }}
+                    onClick={() => {
+                      onTriggerPendingReview?.();
+                      onClose();
+                    }}
+                  >
+                    <span className="small fw-semibold">
+                      <i className="bi bi-clock-history me-2" style={{ color: '#FFC107' }} />
+                      Review Pending Blocks
                     </span>
                     <i className="bi bi-chevron-right text-muted small" />
                   </button>
