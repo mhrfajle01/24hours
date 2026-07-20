@@ -140,80 +140,80 @@ export default function Home() {
     };
   }, []);
 
-  // Scan for past pending reports — smart re-entry detection
+  // Scan for past pending reports — polls every 60s so newly-ended blocks are detected live
   useEffect(() => {
-    if (firestoreLoading || !reports.length || selectedDate !== getTodayDateString()) {
-      return;
-    }
+    const STORAGE_KEY_LAST_SEEN   = 'hourlog_last_seen';
+    const STORAGE_KEY_REVIEW_DATE = 'hourlog_last_review_date';
 
-    const STORAGE_KEY_LAST_SEEN   = 'hourlog_last_seen';       // timestamp (ms)
-    const STORAGE_KEY_REVIEW_DATE = 'hourlog_last_review_date'; // YYYY-MM-DD
-    const today = getTodayDateString();
-    const now = new Date();
-    const nowMs = now.getTime();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const checkPendingBlocks = () => {
+      if (firestoreLoading || !reports.length || selectedDate !== getTodayDateString()) return;
 
-    const lastSeenMs   = parseInt(localStorage.getItem(STORAGE_KEY_LAST_SEEN) || '0', 10);
-    const lastReviewDate = localStorage.getItem(STORAGE_KEY_REVIEW_DATE) || '';
-    const isNewDay     = lastReviewDate !== today;
-    const gapMs        = lastSeenMs ? nowMs - lastSeenMs : Infinity;
-    const gapMinutes   = Math.floor(gapMs / 60000);
+      const today = getTodayDateString();
+      const now = new Date();
+      const nowMs = now.getTime();
+      const nowMin = now.getHours() * 60 + now.getMinutes();
 
-    // Always record the current visit time
-    localStorage.setItem(STORAGE_KEY_LAST_SEEN, String(nowMs));
+      const lastSeenMs     = parseInt(localStorage.getItem(STORAGE_KEY_LAST_SEEN) || '0', 10);
+      const lastReviewDate = localStorage.getItem(STORAGE_KEY_REVIEW_DATE) || '';
+      const isNewDay       = lastReviewDate !== today;
+      const gapMs          = lastSeenMs ? nowMs - lastSeenMs : Infinity;
+      const gapMinutes     = Math.floor(gapMs / 60000);
 
-    // Session guard: if same session already checked AND not a new day, skip
-    const sessionChecked = sessionStorage.getItem('pending_review_checked');
-    if (sessionChecked === 'true' && !isNewDay) {
-      return;
-    }
+      // Always update last-seen timestamp
+      localStorage.setItem(STORAGE_KEY_LAST_SEEN, String(nowMs));
+      localStorage.setItem(STORAGE_KEY_REVIEW_DATE, today);
 
-    // Ignore brief absences (< 15 minutes), unless it's a brand new day
-    if (!isNewDay && gapMinutes < 15) {
-      sessionStorage.setItem('pending_review_checked', 'true');
-      return;
-    }
-
-    // Mark as checked for this session and update daily reset date
-    sessionStorage.setItem('pending_review_checked', 'true');
-    localStorage.setItem(STORAGE_KEY_REVIEW_DATE, today);
-
-    // Build human-readable away duration
-    let durationLabel = '';
-    if (lastSeenMs && gapMinutes < Infinity) {
-      if (gapMinutes < 60) {
-        durationLabel = `${gapMinutes} minute${gapMinutes !== 1 ? 's' : ''}`;
-      } else {
-        const hrs = Math.floor(gapMinutes / 60);
-        const mins = gapMinutes % 60;
-        durationLabel = mins > 0 ? `${hrs}h ${mins}m` : `${hrs} hour${hrs !== 1 ? 's' : ''}`;
+      // Build human-readable away duration
+      let durationLabel = '';
+      if (lastSeenMs && gapMinutes < Infinity) {
+        if (gapMinutes < 60) {
+          durationLabel = `${gapMinutes} minute${gapMinutes !== 1 ? 's' : ''}`;
+        } else {
+          const hrs = Math.floor(gapMinutes / 60);
+          const mins = gapMinutes % 60;
+          durationLabel = mins > 0 ? `${hrs}h ${mins}m` : `${hrs} hour${hrs !== 1 ? 's' : ''}`;
+        }
       }
-    }
 
-    const lastSeenTime = lastSeenMs
-      ? new Date(lastSeenMs).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
-      : null;
+      const lastSeenTime = lastSeenMs
+        ? new Date(lastSeenMs).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+        : null;
 
-    const foundPastPending = reports.filter((r) => {
-      if (r.status !== 'Pending') return false;
-      const times = getIntervalTimes(r);
-      const endMin = timeToMinutes(times.endTime);
-      let adjustedEndMin = endMin;
-      const startMin = timeToMinutes(times.startTime);
-      if (endMin < startMin) adjustedEndMin += 24 * 60;
-      return adjustedEndMin <= nowMin;
-    });
+      // Find all pending blocks whose end time has already passed
+      const foundPastPending = reports.filter((r) => {
+        if (r.status !== 'Pending') return false;
+        const times = getIntervalTimes(r);
+        const endMin = timeToMinutes(times.endTime);
+        const startMin = timeToMinutes(times.startTime);
+        let adjustedEndMin = endMin;
+        if (endMin < startMin) adjustedEndMin += 24 * 60;
+        return adjustedEndMin <= nowMin;
+      });
 
-    if (foundPastPending.length > 0) {
-      setPastPendingReports(foundPastPending);
-      setAwayDuration({ minutes: gapMinutes, label: durationLabel, lastSeenTime });
-      // Auto-open modal if away > 4 hours; otherwise show floating toast
-      if (gapMinutes >= 240 || isNewDay) {
-        setIsReviewModalOpen(true);
+      if (foundPastPending.length > 0) {
+        setPastPendingReports(foundPastPending);
+        setAwayDuration({ minutes: gapMinutes, label: durationLabel, lastSeenTime });
+
+        // If modal is already open, just refresh data silently
+        setIsReviewModalOpen((prev) => {
+          if (prev) return prev; // already open — don't flicker
+          // Show modal directly — no gap-based suppression
+          setShowPendingToast(true);
+          return false;
+        });
       } else {
-        setShowPendingToast(true);
+        // All pending blocks resolved — hide toast
+        setPastPendingReports([]);
+        setShowPendingToast(false);
       }
-    }
+    };
+
+    // Run immediately on mount / when reports change
+    checkPendingBlocks();
+
+    // Then keep polling every 60 seconds so newly-ended blocks are caught live
+    const intervalId = setInterval(checkPendingBlocks, 60_000);
+    return () => clearInterval(intervalId);
   }, [reports, firestoreLoading, selectedDate]);
 
   // Single keyboard listener; calls via refs to avoid stale closures
