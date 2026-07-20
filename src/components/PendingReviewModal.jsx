@@ -35,14 +35,20 @@ export default function PendingReviewModal({ isOpen, onClose, pendingReports, on
       id: r.id,
       status: updatedStatuses[r.id] || r.status,
     }));
+    // Validate: No block is allowed to be saved as "Pending"
+    const hasPending = updates.some((r) => r.status === 'Pending');
+    if (hasPending) {
+      alert('Please mark all blocks as Completed or Missed. No pending blocks can be skipped / অনুগ্রহ করে সব কয়টি স্লট Completed অথবা Missed হিসেবে চিহ্নিত করুন।');
+      return;
+    }
     await onSave(updates);
     onClose();
   };
 
   return (
     <>
-      {/* Backdrop */}
-      <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1050 }} onClick={onClose}></div>
+      {/* Backdrop — disable close on backdrop click */}
+      <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1050 }}></div>
 
       {/* Modal Dialog */}
       <div
@@ -61,12 +67,6 @@ export default function PendingReviewModal({ isOpen, onClose, pendingReports, on
                 <i className="bi bi-clock-history"></i>
                 Review Past Time Blocks
               </h5>
-              <button
-                type="button"
-                className="btn-close btn-close-white shadow-none"
-                onClick={onClose}
-                aria-label="Close"
-              ></button>
             </div>
 
             <form onSubmit={handleFormSubmit}>
@@ -162,18 +162,11 @@ export default function PendingReviewModal({ isOpen, onClose, pendingReports, on
                 </div>
               </div>
 
-              {/* Action Footer */}
+              {/* Action Footer — removed Skip button */}
               <div className="modal-footer border-0 bg-white py-3 px-4 d-flex justify-content-end gap-2 shadow-sm">
                 <button
-                  type="button"
-                  className="btn btn-white border rounded-pill px-4 py-2 text-secondary shadow-sm hover-scale fw-bold"
-                  onClick={onClose}
-                >
-                  Skip for Now
-                </button>
-                <button
                   type="submit"
-                  className="btn text-white border-0 rounded-pill px-4 py-2 shadow-sm hover-scale fw-bold"
+                  className="btn text-white border-0 rounded-pill px-5 py-2 shadow-sm hover-scale fw-bold"
                   style={{ backgroundColor: '#075E54' }}
                 >
                   <i className="bi bi-check2-all me-1"></i>Save All Changes

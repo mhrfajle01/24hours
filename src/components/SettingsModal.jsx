@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { generatePDF } from '../utils/pdfGenerator';
+import TagDropdown from './TagDropdown';
 
 /**
  * SettingsModal — handles app-level configuration only.
@@ -248,10 +249,16 @@ export default function SettingsModal({
     }
   };
 
-  const filteredEntries = dictionaryData.filter(entry => 
-    (entry.tag || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (entry.keywords || []).some(kw => kw.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredEntries = dictionaryData.filter(entry => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (entry.tag || '').toLowerCase().includes(q) ||
+      (entry.keywords || []).some(kw => kw.toLowerCase().includes(q)) ||
+      (entry.plan_en || '').toLowerCase().includes(q) ||
+      (entry.plan_bn || '').includes(q)
+    );
+  });
 
   return (
     <>
@@ -425,6 +432,32 @@ export default function SettingsModal({
                 </div>
               </div>
 
+              {/* Security Scan Section */}
+              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
+                  <i className="bi bi-shield-lock-fill text-danger fs-5" />
+                  Security Timing-Block Scan
+                </h6>
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem', lineHeight: '1.4' }}>
+                  Scan the UI structure for any previous timing blocks (Pending / Completed) missing tag closures.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-danger w-100 py-2 rounded-3 fw-bold small shadow-none d-flex align-items-center justify-content-center gap-2 text-white border-0"
+                  style={{ backgroundColor: '#DC3545', transition: 'all 0.2s' }}
+                  onClick={() => {
+                    if (window.triggerManualSecurityScan) {
+                      window.triggerManualSecurityScan();
+                    } else {
+                      showAlert('Scan service starting...', 'success');
+                    }
+                  }}
+                >
+                  <i className="bi bi-shield-fill-exclamation" />
+                  Scan Now (ম্যানুয়াল স্ক্যান)
+                </button>
+              </div>
+
               {/* PDF Export Section */}
               <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
@@ -529,24 +562,30 @@ export default function SettingsModal({
 
               {/* Suggestion Dictionary Editor */}
               <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
-                <div className="d-flex justify-content-between align-items-center mb-3">
+                <div className="d-flex justify-content-between align-items-center mb-2">
                   <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
-                    <i className="bi bi-magic" style={{ color: '#075E54' }} />
-                    Custom Suggestions (অভিধান)
+                    <i className="bi bi-tags-fill" style={{ color: '#075E54' }} />
+                    Tag Library
+                    <span
+                      className="badge rounded-pill fw-bold"
+                      style={{ backgroundColor: '#DCF8C6', color: '#065F46', fontSize: '0.65rem' }}
+                    >
+                      {dictionaryData.length || 0}
+                    </span>
                   </h6>
                   <button
                     type="button"
                     className="btn btn-sm btn-link text-danger text-decoration-none p-0 fw-bold small shadow-none border-0"
                     onClick={handleResetDictionary}
                     style={{ fontSize: '0.72rem' }}
-                    title="Revert all changes to default 100 entries"
+                    title="Revert all changes to default entries"
                   >
-                    <i className="bi bi-arrow-counterclockwise"></i> Reset to Default
+                    <i className="bi bi-arrow-counterclockwise"></i> Reset
                   </button>
                 </div>
 
-                <p className="text-secondary small mb-3" style={{ fontSize: '0.72rem', lineHeight: '1.3' }}>
-                  Manage the tags and templates used by the dynamic suggestions helper. Add new tags or search and edit existing keyword templates.
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem', lineHeight: '1.4' }}>
+                  Manage tags and templates used by the suggestions helper. Search, add, edit, or delete entries. Supports both English and Bengali keywords.
                 </p>
 
                 {/* Add Entry Button */}
@@ -566,74 +605,102 @@ export default function SettingsModal({
 
                 {/* Add Entry Form */}
                 {showAddForm && (
-                  <div className="border border-success rounded-3 p-3 bg-success bg-opacity-10 mb-3 animate-fade-in text-start">
-                    <h6 className="fw-bold text-success small mb-2.5">New Dictionary Entry</h6>
-                    <div className="row g-2 mb-2">
-                      <div className="col-6">
-                        <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Tag (e.g. work)</label>
-                        <input
-                          type="text"
-                          className="form-control form-control-sm rounded-3 border py-1.5 shadow-none"
-                          placeholder="Tag"
-                          value={newTag}
-                          onChange={(e) => setNewTag(e.target.value)}
-                        />
+                  <div className="border border-success rounded-3 p-3 mb-3 animate-fade-in text-start" style={{ backgroundColor: '#F0FDF4' }}>
+                    <div className="d-flex align-items-center gap-2 mb-3">
+                      <div
+                        className="rounded-circle d-flex align-items-center justify-content-center"
+                        style={{ width: '28px', height: '28px', backgroundColor: '#075E54', flexShrink: 0 }}
+                      >
+                        <i className="bi bi-plus-lg text-white" style={{ fontSize: '0.75rem' }} />
                       </div>
-                      <div className="col-6">
-                        <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Keywords (separated by comma)</label>
-                        <input
-                          type="text"
-                          className="form-control form-control-sm rounded-3 border py-1.5 shadow-none"
-                          placeholder="e.g. gym, walk"
-                          value={newKeywords}
-                          onChange={(e) => setNewKeywords(e.target.value)}
-                        />
-                      </div>
+                      <h6 className="fw-bold m-0" style={{ color: '#065F46', fontSize: '0.82rem' }}>New Tag Entry</h6>
                     </div>
+
+                    {/* Tag name row */}
                     <div className="mb-2">
-                      <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Plan (English)</label>
+                      <label className="text-secondary fw-bold mb-1 d-block" style={{ fontSize: '0.68rem' }}>
+                        Tag Name <span className="text-danger">*</span>
+                      </label>
                       <input
                         type="text"
-                        className="form-control form-control-sm rounded-3 border py-1.5 shadow-none mb-1"
-                        placeholder="English Plan Template"
+                        className="form-control form-control-sm rounded-3 border shadow-none"
+                        placeholder="e.g. work, পড়াশোনা"
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        style={{ fontFamily: "'Noto Sans Bengali', 'Outfit', sans-serif" }}
+                      />
+                      <div className="text-muted mt-1" style={{ fontSize: '0.63rem' }}>
+                        Use an existing tag name to add more keywords, or create a brand new tag.
+                      </div>
+                    </div>
+
+                    {/* Keywords */}
+                    <div className="mb-2">
+                      <label className="text-secondary fw-bold mb-1 d-block" style={{ fontSize: '0.68rem' }}>
+                        Keywords <span className="text-danger">*</span> <span className="fw-normal">(comma separated, English &amp; Bengali)</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm rounded-3 border shadow-none"
+                        placeholder="e.g. gym, walk, ব্যায়াম, হাঁটা"
+                        value={newKeywords}
+                        onChange={(e) => setNewKeywords(e.target.value)}
+                        style={{ fontFamily: "'Noto Sans Bengali', 'Outfit', sans-serif" }}
+                      />
+                    </div>
+
+                    {/* Plan templates */}
+                    <div className="mb-2">
+                      <label className="text-secondary fw-bold mb-1 d-block" style={{ fontSize: '0.68rem' }}>
+                        Plan Template <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control form-control-sm rounded-3 border shadow-none mb-1"
+                        placeholder="🇧🇩 বাংলা প্ল্যান টেমপ্লেট"
+                        value={newPlanBn}
+                        onChange={(e) => setNewPlanBn(e.target.value)}
+                        style={{ fontFamily: "'Noto Sans Bengali', 'Outfit', sans-serif" }}
+                      />
+                      <input
+                        type="text"
+                        className="form-control form-control-sm rounded-3 border shadow-none"
+                        placeholder="🇬🇧 English Plan Template"
                         value={newPlanEn}
                         onChange={(e) => setNewPlanEn(e.target.value)}
                       />
-                      <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Plan (বাংলা)</label>
-                      <input
-                        type="text"
-                        className="form-control form-control-sm rounded-3 border py-1.5 shadow-none"
-                        placeholder="বাংলা প্ল্যান টেমপ্লেট"
-                        value={newPlanBn}
-                        onChange={(e) => setNewPlanBn(e.target.value)}
-                      />
                     </div>
+
+                    {/* Report templates */}
                     <div className="mb-3">
-                      <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Report (English)</label>
+                      <label className="text-secondary fw-bold mb-1 d-block" style={{ fontSize: '0.68rem' }}>
+                        Report Template <span className="fw-normal text-muted">(optional)</span>
+                      </label>
                       <input
                         type="text"
-                        className="form-control form-control-sm rounded-3 border py-1.5 shadow-none mb-1"
-                        placeholder="English Report (Optional)"
+                        className="form-control form-control-sm rounded-3 border shadow-none mb-1"
+                        placeholder="🇧🇩 বাংলা রিপোর্ট (না দিলে প্ল্যান ব্যবহার হবে)"
+                        value={newReportBn}
+                        onChange={(e) => setNewReportBn(e.target.value)}
+                        style={{ fontFamily: "'Noto Sans Bengali', 'Outfit', sans-serif" }}
+                      />
+                      <input
+                        type="text"
+                        className="form-control form-control-sm rounded-3 border shadow-none"
+                        placeholder="🇬🇧 English Report (optional)"
                         value={newReportEn}
                         onChange={(e) => setNewReportEn(e.target.value)}
                       />
-                      <label className="text-secondary small fw-bold mb-1" style={{ fontSize: '0.7rem' }}>Report (বাংলা)</label>
-                      <input
-                        type="text"
-                        className="form-control form-control-sm rounded-3 border py-1.5 shadow-none"
-                        placeholder="বাংলা রিপোর্ট (অপশনাল)"
-                        value={newReportBn}
-                        onChange={(e) => setNewReportBn(e.target.value)}
-                      />
                     </div>
+
                     <div className="d-flex gap-2">
                       <button
                         type="button"
-                        className="btn btn-sm btn-success rounded-pill px-3 py-1 text-white border-0 fw-bold"
+                        className="btn btn-sm text-white border-0 fw-bold rounded-pill px-3 py-1 d-flex align-items-center gap-1"
                         style={{ backgroundColor: '#075E54', fontSize: '0.75rem' }}
                         onClick={handleAddEntry}
                       >
-                        Save Entry
+                        <i className="bi bi-check-lg" /> Save Tag
                       </button>
                       <button
                         type="button"
@@ -647,22 +714,38 @@ export default function SettingsModal({
                   </div>
                 )}
 
-                {/* Search Bar */}
-                <div className="input-group input-group-sm mb-2.5">
-                  <span className="input-group-text bg-white border rounded-start-3 text-secondary">
-                    <i className="bi bi-search" />
-                  </span>
-                  <input
-                    type="text"
-                    className="form-control border-start-0 border rounded-end-3 py-1.5 shadow-none bg-white"
-                    placeholder="Search keywords or tags..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                {/* Search Bar with TagDropdown */}
+                <div className="mb-2">
+                  <TagDropdown
+                    dictionaryData={dictionaryData}
+                    selectedTags={searchQuery ? [searchQuery] : []}
+                    onChange={(tags) => setSearchQuery(tags[0] || '')}
+                    placeholder="Search tags, keywords, or Bengali text..."
+                    multiSelect={false}
                   />
+                  {searchQuery && (
+                    <div className="d-flex align-items-center gap-1 mt-1" style={{ fontSize: '0.68rem' }}>
+                      <span className="text-secondary">Filtering by:</span>
+                      <span
+                        className="badge rounded-pill fw-bold"
+                        style={{ backgroundColor: '#DCF8C6', color: '#065F46', fontSize: '0.65rem' }}
+                      >
+                        #{searchQuery}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-link p-0 text-danger text-decoration-none fw-bold border-0 shadow-none"
+                        style={{ fontSize: '0.65rem' }}
+                        onClick={() => setSearchQuery('')}
+                      >
+                        ✕ Clear
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Dictionary Scrollable List */}
-                <div className="overflow-y-auto px-1 border rounded-3 bg-light" style={{ maxHeight: '180px' }}>
+                <div className="overflow-y-auto px-1 border rounded-3 bg-light" style={{ maxHeight: '220px' }}>
                   {filteredEntries.length === 0 ? (
                     <div className="text-muted text-center py-4 small">No matching items found.</div>
                   ) : (
@@ -755,26 +838,90 @@ export default function SettingsModal({
                         );
                       }
 
+                      // Compute a consistent color for this tag
+                      const TAG_COLORS = [
+                        { bg: '#DCF8C6', text: '#065F46' },
+                        { bg: '#DBEAFE', text: '#1E40AF' },
+                        { bg: '#FEF3C7', text: '#92400E' },
+                        { bg: '#FCE7F3', text: '#9D174D' },
+                        { bg: '#EDE9FE', text: '#5B21B6' },
+                        { bg: '#FEE2E2', text: '#991B1B' },
+                        { bg: '#D1FAE5', text: '#065F46' },
+                        { bg: '#E0F2FE', text: '#075985' },
+                      ];
+                      let tagHash = 0;
+                      for (let i = 0; i < (entry.tag || '').length; i++)
+                        tagHash = entry.tag.charCodeAt(i) + ((tagHash << 5) - tagHash);
+                      const tagColor = TAG_COLORS[Math.abs(tagHash) % TAG_COLORS.length];
+
                       return (
-                        <div 
-                          key={idx} 
-                          className="border-bottom p-2 bg-white rounded-2 my-1 border-light shadow-sm hover-bg-light transition-all text-start"
+                        <div
+                          key={idx}
+                          className="border-bottom p-2 bg-white rounded-2 my-1 transition-all text-start"
                           onClick={() => handleStartEdit(actualIndex, entry)}
-                          style={{ cursor: 'pointer' }}
-                          title="Click to edit suggestion keywords or templates"
+                          style={{
+                            cursor: 'pointer',
+                            borderLeft: '3px solid transparent',
+                            transition: 'border-color 0.15s ease, background 0.15s ease',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#F0FDF4';
+                            e.currentTarget.style.borderLeftColor = '#075E54';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = '#fff';
+                            e.currentTarget.style.borderLeftColor = 'transparent';
+                          }}
+                          title="Click to edit"
                         >
-                          <div className="d-flex justify-content-between align-items-center mb-1">
-                            <span className="badge rounded-pill fw-bold text-uppercase" style={{ backgroundColor: '#DCF8C6', color: '#075E54', fontSize: '0.62rem' }}>
+                          <div className="d-flex align-items-center gap-2 mb-1">
+                            <span
+                              className="badge rounded-pill fw-bold"
+                              style={{
+                                backgroundColor: tagColor.bg,
+                                color: tagColor.text,
+                                fontSize: '0.62rem',
+                                letterSpacing: '0.02em',
+                              }}
+                            >
                               #{entry.tag}
                             </span>
-                            <span className="text-secondary small fw-bold" style={{ fontSize: '0.65rem' }}>
-                              <i className="bi bi-pencil-fill me-0.5" /> Edit
+                            <div
+                              className="d-flex flex-wrap gap-1 flex-grow-1"
+                              style={{ overflow: 'hidden' }}
+                            >
+                              {(entry.keywords || []).slice(0, 5).map((kw) => (
+                                <span
+                                  key={kw}
+                                  className="rounded-pill"
+                                  style={{
+                                    backgroundColor: '#F3F4F6',
+                                    color: '#4B5563',
+                                    fontSize: '0.58rem',
+                                    padding: '1px 6px',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {kw}
+                                </span>
+                              ))}
+                              {(entry.keywords || []).length > 5 && (
+                                <span style={{ fontSize: '0.58rem', color: '#9CA3AF' }}>
+                                  +{entry.keywords.length - 5}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-muted ms-auto" style={{ fontSize: '0.6rem', flexShrink: 0 }}>
+                              <i className="bi bi-pencil-fill" />
                             </span>
                           </div>
-                          <div className="small fw-bold mb-1 text-dark" style={{ fontSize: '0.76rem' }}>
-                            Keywords: <span className="text-secondary fw-normal">{(entry.keywords || []).join(', ')}</span>
-                          </div>
-                          <div className="text-muted small text-truncate" style={{ fontSize: '0.72rem' }}>
+                          <div
+                            className="text-muted text-truncate"
+                            style={{
+                              fontSize: '0.7rem',
+                              fontFamily: "'Noto Sans Bengali', 'Outfit', sans-serif",
+                            }}
+                          >
                             🇧🇩 {entry.plan_bn}
                           </div>
                         </div>
@@ -782,6 +929,130 @@ export default function SettingsModal({
                     })
                   )}
                 </div>
+              </div>
+
+              {/* Tag Analysis Dashboard */}
+              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border text-start">
+                <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
+                  <i className="bi bi-bar-chart-line-fill" style={{ color: '#075E54' }} />
+                  Tag Analysis Dashboard (ট্যাগ বিশ্লেষণ)
+                </h6>
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem', lineHeight: '1.4' }}>
+                  A dynamic analysis of your active task categories for today. Helps track where you spend your time.
+                </p>
+
+                {(() => {
+                  // Compile tag statistics from active reports
+                  const tagStats = {};
+                  let totalCount = 0;
+
+                  reports.forEach((r) => {
+                    // Detect tag (check explicit tag field first, fallback to matching report content)
+                    let activeTag = r.tag;
+                    if (!activeTag && r.report) {
+                      const matched = (dictionaryData || []).find(d => 
+                        (d.report_bn && d.report_bn === r.report) ||
+                        (d.plan_bn && d.plan_bn === r.report) ||
+                        (d.report_en && d.report_en === r.report) ||
+                        (d.plan_en && d.plan_en === r.report)
+                      );
+                      if (matched) activeTag = matched.tag;
+                    }
+
+                    if (!activeTag) return; // skip untagged/pending empty blocks
+
+                    totalCount++;
+                    if (!tagStats[activeTag]) {
+                      tagStats[activeTag] = { count: 0, completed: 0, missed: 0 };
+                    }
+                    tagStats[activeTag].count++;
+                    if (r.status === 'Completed') {
+                      tagStats[activeTag].completed++;
+                    } else if (r.status === 'Missed') {
+                      tagStats[activeTag].missed++;
+                    }
+                  });
+
+                  if (totalCount === 0) {
+                    return (
+                      <div className="text-muted text-center py-4 small" style={{ backgroundColor: '#F9FAFB', borderRadius: '8px' }}>
+                        <i className="bi bi-pie-chart text-secondary mb-2 d-block" style={{ fontSize: '1.5rem' }}></i>
+                        No tags logged today yet / আজকে কোনো ট্যাগ পাওয়া যায়নি।
+                      </div>
+                    );
+                  }
+
+                  // Sort tags by frequency
+                  const sortedStats = Object.entries(tagStats).sort((a, b) => b[1].count - a[1].count);
+
+                  return (
+                    <div className="d-flex flex-column gap-3 mt-2">
+                      <div className="d-flex align-items-center justify-content-between p-2.5 rounded-3" style={{ backgroundColor: '#E8F5E9', border: '1px solid #C8E6C9' }}>
+                        <div>
+                          <div className="fw-bold text-success" style={{ fontSize: '0.8rem' }}>Total Tagged Blocks</div>
+                          <div className="text-secondary" style={{ fontSize: '0.65rem' }}>Number of active categories today</div>
+                        </div>
+                        <span className="fs-4 fw-bold text-success">{totalCount}</span>
+                      </div>
+
+                      <div className="d-flex flex-column gap-2">
+                        {sortedStats.map(([tagName, stats]) => {
+                          const percentage = Math.round((stats.count / totalCount) * 100);
+                          const completionRate = stats.count > 0 ? Math.round((stats.completed / stats.count) * 100) : 0;
+                          
+                          // Consistent tag color
+                          const TAG_COLORS = [
+                            { bg: '#DCF8C6', text: '#065F46', bar: '#25D366' },
+                            { bg: '#DBEAFE', text: '#1E40AF', bar: '#3B82F6' },
+                            { bg: '#FEF3C7', text: '#92400E', bar: '#F59E0B' },
+                            { bg: '#FCE7F3', text: '#9D174D', bar: '#EC4899' },
+                            { bg: '#EDE9FE', text: '#5B21B6', bar: '#8B5CF6' },
+                            { bg: '#FEE2E2', text: '#991B1B', bar: '#EF4444' },
+                            { bg: '#D1FAE5', text: '#065F46', bar: '#10B981' },
+                            { bg: '#E0F2FE', text: '#075985', bar: '#0EA5E9' },
+                          ];
+                          let hash = 0;
+                          for (let i = 0; i < tagName.length; i++) hash = tagName.charCodeAt(i) + ((hash << 5) - hash);
+                          const color = TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+
+                          return (
+                            <div key={tagName} className="p-2 border rounded-3 bg-white shadow-xs">
+                              <div className="d-flex align-items-center justify-content-between mb-1.5">
+                                <span className="badge rounded-pill fw-bold text-uppercase" style={{ backgroundColor: color.bg, color: color.text, fontSize: '0.63rem' }}>
+                                  #{tagName}
+                                </span>
+                                <div className="text-secondary fw-semibold" style={{ fontSize: '0.68rem' }}>
+                                  {stats.count} block{stats.count !== 1 ? 's' : ''} ({percentage}%)
+                                </div>
+                              </div>
+
+                              {/* Progress bar */}
+                              <div className="progress mb-1" style={{ height: '6px', borderRadius: '999px', backgroundColor: '#F3F4F6' }}>
+                                <div 
+                                  className="progress-bar" 
+                                  role="progressbar" 
+                                  style={{ width: `${percentage}%`, backgroundColor: color.bar, borderRadius: '999px' }}
+                                  aria-valuenow={percentage} 
+                                  aria-valuemin="0" 
+                                  aria-valuemax="100"
+                                ></div>
+                              </div>
+
+                              <div className="d-flex justify-content-between align-items-center" style={{ fontSize: '0.62rem' }}>
+                                <span className="text-muted">
+                                  Done: <span className="text-success fw-bold">{stats.completed}</span> | Missed: <span className="text-danger fw-bold">{stats.missed}</span>
+                                </span>
+                                <span className="fw-bold" style={{ color: completionRate > 50 ? '#075E54' : '#6B7280' }}>
+                                  Success Rate: {completionRate}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Backup / Export / Import */}

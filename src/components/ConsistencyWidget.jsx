@@ -2,6 +2,48 @@ import React, { useState, useEffect } from 'react';
 import { calculateStats } from '../utils/helpers';
 
 /**
+ * Renders a live countdown timer showing remaining time until 12:00 AM midnight reset.
+ */
+function StreakCountdown() {
+  const [timeLeft, setTimeLeft] = useState('');
+
+  useEffect(() => {
+    const updateCountdown = () => {
+      const now = new Date();
+      const midnight = new Date();
+      midnight.setHours(24, 0, 0, 0); // Sets to next midnight 12:00 AM
+
+      const diffMs = midnight - now;
+      if (diffMs <= 0) {
+        setTimeLeft('00:00:00');
+        return;
+      }
+
+      const hrs = String(Math.floor(diffMs / 3600000)).padStart(2, '0');
+      const mins = String(Math.floor((diffMs % 3600000) / 60000)).padStart(2, '0');
+      const secs = String(Math.floor((diffMs % 60000) / 1000)).padStart(2, '0');
+
+      setTimeLeft(`${hrs}:${mins}:${secs}`);
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <span 
+      className="badge rounded-pill bg-dark bg-opacity-10 text-dark border border-dark border-opacity-10 d-inline-flex align-items-center gap-1"
+      style={{ fontSize: '0.7rem', fontWeight: 600 }}
+      title="Time remaining until daily streak reset at midnight"
+    >
+      <i className="bi bi-stopwatch-fill animate-pulse text-danger"></i>
+      Reset: {timeLeft || '--:--:--'}
+    </span>
+  );
+}
+
+/**
  * ConsistencyWidget - Exposes streaks, daily goal completion ring, inline goal adjuster,
  * and a collapsible drawer containing weekly analytics and a 30-day GitHub-style contribution heatmap.
  */
@@ -118,13 +160,14 @@ export default function ConsistencyWidget({
                   Day Streak
                 </span>
               </div>
-              <div className="text-muted small" style={{ fontSize: '0.8rem' }}>
-                Longest Streak: <strong className="text-secondary">{streakData.longestStreak || 0}d</strong>
+              <div className="text-muted small d-flex flex-wrap align-items-center gap-2" style={{ fontSize: '0.78rem' }}>
+                <span>Longest Streak: <strong className="text-secondary">{streakData.longestStreak || 0}d</strong></span>
                 {streakData.currentStreak > 0 && (
-                  <span className="text-success ms-2 fw-semibold">
-                    <i className="bi bi-shield-check me-0.5"></i>Active
+                  <span className="text-success fw-semibold d-inline-flex align-items-center gap-0.5">
+                    <i className="bi bi-shield-check"></i>Active
                   </span>
                 )}
+                <StreakCountdown />
               </div>
             </div>
           </div>

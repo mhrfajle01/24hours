@@ -11,8 +11,10 @@ import ProfileModal from '../components/ProfileModal';
 import TrashModal from '../components/TrashModal';
 import AuthPage from '../components/AuthPage';
 import PendingReviewModal from '../components/PendingReviewModal';
+import SecurityScanModal from '../components/SecurityScanModal';
 import { useFirestore } from '../hooks/useFirestore';
 import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes } from '../utils/helpers';
+import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
 import defaultDictionary from '../constants/dictionary.json';
 import { db, auth } from '../firebase/firebase';
 import {
@@ -101,7 +103,60 @@ export default function Home() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [awayDuration, setAwayDuration] = useState(null); // { minutes, label, lastSeenTime }
 
+  // ── Security Scan States ────────────────────────────────────────────────
+  const [securityInvalidBlocks, setSecurityInvalidBlocks] = useState([]);
+
   // ── Effects ──────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    // Start periodic 5 min scan using the utility helper
+    const handleScanResult = (report) => {
+      if (report && report.invalidCount > 0) {
+        setSecurityInvalidBlocks(report.invalid);
+      } else {
+        setSecurityInvalidBlocks([]);
+      }
+    };
+
+    const stopScan = startPeriodicScan(handleScanResult);
+
+    // Setup manual trigger callable globally / from settings modal
+    window.triggerManualSecurityScan = () => {
+      const report = runFullUIScan();
+      handleScanResult(report);
+      if (report.invalidCount === 0) {
+        showToast('Security scan complete: No issues found!', 'success');
+      } else {
+        showToast(`Security scan complete: ${report.invalidCount} issue(s) found!`, 'danger');
+      }
+    };
+
+    return () => {
+      stopScan();
+      delete window.triggerManualSecurityScan;
+    };
+  }, []);
+
+  const handleResolveSecurityBlocks = async (resolutions) => {
+    try {
+      const batch = writeBatch(db);
+      Object.keys(resolutions).forEach((id) => {
+        const docRef = doc(db, 'reports', id);
+        // Tag closing by updating data-timing-closed attribute logic (or report update)
+        batch.update(docRef, {
+          report: resolutions[id].report,
+          status: resolutions[id].status, // dynamic status selection (Completed or Missed)
+          tag: resolutions[id].tag // marking with the selected tag category
+        });
+      });
+      await batch.commit();
+      showToast('Timing blocks successfully closed and saved.', 'success');
+      setSecurityInvalidBlocks([]);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to resolve timing blocks.', 'danger');
+    }
+  };
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -368,16 +423,51 @@ export default function Home() {
     }
   };
 
+  // ── Workflow Validation ───────────────────────────────────────────────────
+  const getHasPastPendingBefore = (targetReport) => {
+    if (selectedDate !== getTodayDateString()) return false;
+    let targetMin = Infinity;
+    const now = new Date();
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+
+    if (targetReport) {
+      const times = getIntervalTimes(targetReport);
+      targetMin = timeToMinutes(times.startTime);
+    } else {
+      targetMin = currentMin;
+    }
+
+    return reports.some((r) => {
+      if (r.status !== 'Pending') return false;
+      if (targetReport && r.id === targetReport.id) return false;
+      const times = getIntervalTimes(r);
+      const startMin = timeToMinutes(times.startTime);
+      const endMin = timeToMinutes(times.endTime);
+      let adjustedEndMin = endMin;
+      if (endMin < startMin) adjustedEndMin += 24 * 60;
+      return adjustedEndMin <= targetMin && adjustedEndMin <= currentMin;
+    });
+  };
+
+  const checkWorkflowValidation = (targetReport) => {
+    if (getHasPastPendingBefore(targetReport)) {
+      showToast('Please resolve previous pending blocks first / পূর্ববর্তী পেন্ডিং স্লটগুলো প্রথমে সমাধান করুন।', 'danger');
+      setIsReviewModalOpen(true);
+      return false;
+    }
+    return true;
+  };
+
   // Keep refs in sync with latest handler instances
   undoFnRef.current = handleUndo;
   redoFnRef.current = handleRedo;
 
   // ── Modal handlers ────────────────────────────────────────────────────────
 
-  const handleOpenAddPlan    = () => { setSelectedReport(null); setActiveModal('planning'); };
-  const handleOpenEditPlan   = (r) => { setSelectedReport(r);   setActiveModal('planning'); };
-  const handleOpenEditReport = (r) => { setSelectedReport(r);   setActiveModal('report');   };
-  const handleOpenDelete     = (r) => { setSelectedReport(r);   setActiveModal('delete');   };
+  const handleOpenAddPlan    = () => { if (!checkWorkflowValidation(null)) return; setSelectedReport(null); setActiveModal('planning'); };
+  const handleOpenEditPlan   = (r) => { if (!checkWorkflowValidation(r)) return; setSelectedReport(r);   setActiveModal('planning'); };
+  const handleOpenEditReport = (r) => { if (!checkWorkflowValidation(r)) return; setSelectedReport(r);   setActiveModal('report');   };
+  const handleOpenDelete     = (r) => { if (!checkWorkflowValidation(r)) return; setSelectedReport(r);   setActiveModal('delete');   };
   const handleOpenSettings   = () => setActiveModal('settings');
   const handleOpenProfile    = () => setActiveModal('profile');
   const handleOpenTrash      = () => setActiveModal('trash');
@@ -504,8 +594,8 @@ export default function Home() {
   const handleSaveReport = async (reportData) => {
     try {
       if (!selectedReport) return;
-      const previousData = { report: selectedReport.report, status: selectedReport.status };
-      const newData = { report: reportData.report, status: reportData.status };
+      const previousData = { report: selectedReport.report, status: selectedReport.status, tag: selectedReport.tag || '' };
+      const newData = { report: reportData.report, status: reportData.status, tag: reportData.tag || '' };
       await updateReport(selectedReport.id, newData);
       pushUndo({ type: 'UPDATE_REPORT', docId: selectedReport.id, previousData, newData });
       showToast('Saved Successfully', 'success');
@@ -533,6 +623,7 @@ export default function Home() {
   };
 
   const handleInlineUpdatePlan = async (reportItem, newPlan) => {
+    if (!checkWorkflowValidation(reportItem)) return;
     try {
       const previousData = { plan: reportItem.plan };
       const newData = { plan: newPlan };
@@ -546,6 +637,7 @@ export default function Home() {
   };
 
   const handleInlineUpdateReport = async (reportItem, newReportText, newStatus) => {
+    if (!checkWorkflowValidation(reportItem)) return;
     try {
       const previousData = { report: reportItem.report, status: reportItem.status };
       const newData = { report: newReportText, status: newStatus };
@@ -903,6 +995,7 @@ export default function Home() {
         onSave={handleSaveReport}
         report={selectedReport}
         dictionaryData={finalDictionary}
+        isMandatory={true}
       />
 
       <DeleteModal
@@ -955,6 +1048,12 @@ export default function Home() {
         pendingReports={pastPendingReports}
         onSave={handleSavePendingReview}
         awayDuration={awayDuration}
+      />
+
+      <SecurityScanModal
+        invalidBlocks={securityInvalidBlocks}
+        onResolve={handleResolveSecurityBlocks}
+        dictionaryData={finalDictionary}
       />
 
       {/* ── Toast notification ───────────────────────────────────────────── */}

@@ -93,6 +93,11 @@ export default function HourCard({
         backdropFilter: 'blur(8px)',
         borderRadius: '18px',
       }}
+      data-timing-id={report.id}
+      data-timing-state={status.toLowerCase()}
+      data-timing-plan={plan || ''}
+      data-timing-time={timeStr}
+      {...(report.tag === 'security-resolved' || (reportText && reportText.trim()) ? { 'data-timing-closed': 'true' } : {})}
     >
       {/* Top progress bar for active hour slot */}
       {isCurrentHour && (
