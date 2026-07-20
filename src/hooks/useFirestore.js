@@ -15,7 +15,21 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
-import { sortReports, getDayHoursList, get24Hour, getIntervalTimes, timeToMinutes } from '../utils/helpers';
+import { sortReports, getDayHoursList, get24Hour, getIntervalTimes, timeToMinutes, getTodayDateString } from '../utils/helpers';
+
+/** Returns YYYY-MM-DD for N days ago */
+const getDateNDaysAgo = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+};
+
+/** Returns weekday name for a YYYY-MM-DD string */
+const getWeekdayName = (dateStr) => {
+  const parts = dateStr.split('-');
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  return d.toLocaleDateString('en-US', { weekday: 'long' });
+};
 
 /**
  * useFirestore — Firestore hook with full trash/undo support.
@@ -341,6 +355,239 @@ export const useFirestore = (selectedDate, uid) => {
     await setDoc(ref, { items: newItems, updatedAt: serverTimestamp() }, { merge: true });
   };
 
+  // ─── Daily Goal ── declared FIRST so all downstream effects can read it ─
+  const [dailyGoal, setDailyGoalState] = useState(6);
+
+  useEffect(() => {
+    if (!uid) return;
+    const ref = doc(db, 'goals', uid);
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        setDailyGoalState(snap.data().dailyGoal ?? 6);
+      }
+    });
+    return () => unsub();
+  }, [uid]);
+
+  const updateDailyGoal = async (newGoal) => {
+    if (!uid) return;
+    const ref = doc(db, 'goals', uid);
+    await setDoc(ref, { dailyGoal: newGoal, updatedAt: serverTimestamp() }, { merge: true });
+  };
+
+  // ─── Streak helper ────────────────────────────────────────────────────
+  const getMissingDaysBetween = (fromDate, toDate, excusedDays = []) => {
+    if (!fromDate || !toDate || fromDate >= toDate) return [];
+    const missing = [];
+    let cur = new Date(fromDate + 'T00:00:00');
+    while (true) {
+      cur.setDate(cur.getDate() + 1);
+      const curStr = cur.toISOString().slice(0, 10);
+      if (curStr >= toDate) break;
+      if (!excusedDays.includes(curStr)) missing.push(curStr);
+    }
+    return missing;
+  };
+
+  // ─── Streak ───────────────────────────────────────────────────────────
+  const [streakData, setStreakData] = useState({ currentStreak: 0, longestStreak: 0, lastActiveDate: null, streakFreezes: 1, excusedDays: [] });
+
+  const refreshStreak = async () => {
+    if (!uid) return;
+    const today = getTodayDateString();
+    const ref = doc(db, 'streaks', uid);
+    const snap = await getDoc(ref);
+    const existing = snap.exists() ? snap.data() : {};
+
+    let {
+      currentStreak = 0,
+      longestStreak = 0,
+      lastActiveDate = null,
+      streakFreezes = 1,
+      excusedDays = [],
+    } = existing;
+
+    const todayQ = query(collection(db, 'reports'), where('uid', '==', uid), where('date', '==', today));
+    const todaySnap = await getDocs(todayQ);
+    const todayHasCompleted = todaySnap.docs.some((d) => d.data().status === 'Completed');
+
+    const missingDays = getMissingDaysBetween(lastActiveDate, today, excusedDays);
+    const neededFreezes = missingDays.length;
+
+    if (todayHasCompleted) {
+      if (lastActiveDate !== today) {
+        if (neededFreezes <= streakFreezes) {
+          if (neededFreezes > 0) {
+            streakFreezes = Math.max(0, streakFreezes - neededFreezes);
+            excusedDays = [...excusedDays, ...missingDays];
+          }
+          currentStreak = (currentStreak || 0) + 1;
+          longestStreak = Math.max(longestStreak || 0, currentStreak);
+        } else {
+          currentStreak = 1;
+          longestStreak = Math.max(longestStreak || 0, 1);
+        }
+        lastActiveDate = today;
+      }
+      await setDoc(ref, { currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays, updatedAt: serverTimestamp() }, { merge: true });
+    } else {
+      // No completions today — check if gap already exceeded
+      if (neededFreezes > streakFreezes && currentStreak > 0) {
+        currentStreak = 0;
+        await setDoc(ref, { currentStreak, updatedAt: serverTimestamp() }, { merge: true });
+      }
+    }
+    setStreakData({ currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays });
+  };
+
+  const excuseDay = async (dateStr) => {
+    if (!uid) return;
+    const ref = doc(db, 'streaks', uid);
+    const snap = await getDoc(ref);
+    const existing = snap.exists() ? snap.data() : {};
+    const excusedDays = [...(existing.excusedDays || [])];
+    if (!excusedDays.includes(dateStr)) {
+      excusedDays.push(dateStr);
+      await setDoc(ref, { excusedDays, updatedAt: serverTimestamp() }, { merge: true });
+      await refreshStreak();
+    }
+  };
+
+  const addStreakFreeze = async () => {
+    if (!uid) return;
+    const ref = doc(db, 'streaks', uid);
+    const snap = await getDoc(ref);
+    const existing = snap.exists() ? snap.data() : {};
+    const newFreezes = (existing.streakFreezes || 0) + 1;
+    await setDoc(ref, { streakFreezes: newFreezes, updatedAt: serverTimestamp() }, { merge: true });
+    await refreshStreak();
+  };
+
+  useEffect(() => {
+    if (uid) refreshStreak();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
+
+  useEffect(() => {
+    if (uid && reports.length > 0) refreshStreak();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reports]);
+
+  // ─── Weekly Stats ─────────────────────────────────────────────────────
+  const [weeklyStats, setWeeklyStats] = useState(null);
+
+  useEffect(() => {
+    if (!uid) return;
+    const dates = Array.from({ length: 7 }, (_, i) => getDateNDaysAgo(i));
+    const q = query(
+      collection(db, 'reports'),
+      where('uid', '==', uid),
+      where('date', 'in', dates)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const docs = snap.docs.map((d) => d.data());
+      let completedHours = 0;
+      let missedHours = 0;
+      const today = getTodayDateString();
+      const now = new Date();
+        docs.forEach((d) => {
+          const times = getIntervalTimes(d);
+          const isOvernight = endMin < startMin;
+          if (isOvernight) endMin += 24 * 60; // overnight wrap
+          const durationHours = (endMin - startMin) / 60;
+
+          // Build end timestamp
+          const endDateTimeStr = `${d.date}T${times.endTime}:00`;
+          let endDate = new Date(endDateTimeStr);
+          // If overnight, add a day
+          if (isOvernight) {
+            endDate = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+          }
+
+          if (d.status === 'Completed') {
+            completedHours += durationHours;
+          } else {
+            // Count as missed only if the block has already ended
+            if (endDate <= now) {
+              missedHours += durationHours;
+            }
+          }
+        });
+      completedHours = Number(completedHours.toFixed(1));
+      missedHours = Number(missedHours.toFixed(1));
+      
+      const weeklyTarget = 7 * dailyGoal;
+      const completionRate = Math.min(Math.round((completedHours / weeklyTarget) * 100), 100);
+      const missedRate = Math.min(Math.round((missedHours / weeklyTarget) * 100), 100);
+
+      // Best day: weekday with most completed hours
+      const dayMap = {};
+      docs.forEach((d) => {
+        if (d.status === 'Completed') {
+          const day = getWeekdayName(d.date);
+          const times = getIntervalTimes(d);
+          const startMin = timeToMinutes(times.startTime);
+          let endMin = timeToMinutes(times.endTime);
+          if (endMin < startMin) endMin += 24 * 60;
+          const durationHours = (endMin - startMin) / 60;
+          dayMap[day] = (dayMap[day] || 0) + durationHours;
+        }
+      });
+      const bestDay = Object.keys(dayMap).length > 0
+        ? Object.entries(dayMap).sort((a, b) => b[1] - a[1])[0][0]
+        : null;
+
+      setWeeklyStats({ completed: completedHours, missed: missedHours, completionRate, missedRate, bestDay });
+    });
+    return () => unsub();
+  }, [uid, dailyGoal]);
+
+  // ─── Heatmap Data (Last 30 Days) ──────────────────────────────────────
+  const [heatmapData, setHeatmapData] = useState({});
+
+  useEffect(() => {
+    if (!uid) {
+      setHeatmapData({});
+      return;
+    }
+    const startDate = getDateNDaysAgo(30);
+    const q = query(
+      collection(db, 'reports'),
+      where('uid', '==', uid)
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const counts = {};
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (data.status === 'Completed' && data.date >= startDate) {
+            const date = data.date;
+            const times = getIntervalTimes(data);
+            const startMin = timeToMinutes(times.startTime);
+            let endMin = timeToMinutes(times.endTime);
+            if (endMin < startMin) {
+              endMin += 24 * 60; // overnight wrap
+            }
+            const durationHours = (endMin - startMin) / 60;
+            counts[date] = (counts[date] || 0) + durationHours;
+          }
+        });
+        // Round to 1 decimal place to clean up float addition
+        for (const date in counts) {
+          counts[date] = Number(counts[date].toFixed(1));
+        }
+        setHeatmapData(counts);
+      },
+      (err) => {
+        console.error('Firestore heatmap data error:', err);
+      }
+    );
+    return () => unsub();
+  }, [uid]);
+
+// Duplicate daily goal block removed – keep the earlier declaration above
+
   return {
     // Reports
     reports,
@@ -364,5 +611,13 @@ export const useFirestore = (selectedDate, uid) => {
     userDictionary,
     dictionaryLoading,
     updateDictionary,
+    // Consistency
+    streakData,
+    weeklyStats,
+    dailyGoal,
+    updateDailyGoal,
+    heatmapData,
+    excuseDay,
+    addStreakFreeze,
   };
 };

@@ -27,5 +27,15 @@ service cloud.firestore {
     match /dictionaries/{userId} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
+
+    // Rules for user streaks tracking
+    match /streaks/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Rules for user daily goals
+    match /goals/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
   }
 }

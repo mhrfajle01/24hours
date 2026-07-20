@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Header from '../components/Header';
 import Summary from '../components/Summary';
+import ConsistencyWidget from '../components/ConsistencyWidget';
 import Timeline from '../components/Timeline';
 import PlanningModal from '../components/PlanningModal';
 import ReportModal from '../components/ReportModal';
@@ -67,6 +68,13 @@ export default function Home() {
     userDictionary,
     dictionaryLoading,
     updateDictionary,
+    streakData,
+    weeklyStats,
+    dailyGoal,
+    updateDailyGoal,
+    heatmapData,
+    excuseDay,
+    addStreakFreeze,
   } = useFirestore(selectedDate, currentUser?.uid);
 
   const finalDictionary = userDictionary && userDictionary.length > 0 ? userDictionary : defaultDictionary;
@@ -764,6 +772,17 @@ export default function Home() {
         {/* Normal View */}
         {!error && !firestoreLoading && (
           <>
+            <ConsistencyWidget
+              reports={reports}
+              streakData={streakData}
+              weeklyStats={weeklyStats}
+              dailyGoal={dailyGoal}
+              onUpdateDailyGoal={updateDailyGoal}
+              heatmapData={heatmapData}
+              onExcuseDay={excuseDay}
+              onAddStreakFreeze={addStreakFreeze}
+              selectedDate={selectedDate}
+            />
             <Summary
               reports={reports}
               selectedDate={selectedDate}
