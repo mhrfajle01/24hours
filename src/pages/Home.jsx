@@ -106,6 +106,13 @@ export default function Home() {
   // ── Security Scan States ────────────────────────────────────────────────
   const [securityInvalidBlocks, setSecurityInvalidBlocks] = useState([]);
 
+  // ── Tag Filter State ─────────────────────────────────────────────────────
+  const [selectedTag, setSelectedTag] = useState(null);
+
+  useEffect(() => {
+    setSelectedTag(null);
+  }, [selectedDate]);
+
   // ── Effects ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -174,7 +181,7 @@ export default function Home() {
     const t = setInterval(() => {
       setCurrentTime(new Date());
       setCurrentHourData(getCurrentHourAndAMPM());
-    }, 10000); // Central clock ticks every 10s
+    }, 1000); // Central clock ticks every 1s
     return () => clearInterval(t);
   }, []);
 
@@ -201,9 +208,18 @@ export default function Home() {
     const STORAGE_KEY_REVIEW_DATE = 'hourlog_last_review_date';
 
     const checkPendingBlocks = () => {
-      if (firestoreLoading || !reports.length || selectedDate !== getTodayDateString()) return;
+      if (firestoreLoading || !reports.length) return;
 
       const today = getTodayDateString();
+      const isToday = selectedDate === today;
+      const isPastDay = selectedDate < today;
+
+      if (!isToday && !isPastDay) {
+        setPastPendingReports([]);
+        setShowPendingToast(false);
+        return;
+      }
+
       const now = new Date();
       const nowMs = now.getTime();
       const nowMin = now.getHours() * 60 + now.getMinutes();
@@ -214,13 +230,15 @@ export default function Home() {
       const gapMs          = lastSeenMs ? nowMs - lastSeenMs : Infinity;
       const gapMinutes     = Math.floor(gapMs / 60000);
 
-      // Always update last-seen timestamp
-      localStorage.setItem(STORAGE_KEY_LAST_SEEN, String(nowMs));
-      localStorage.setItem(STORAGE_KEY_REVIEW_DATE, today);
+      // Always update last-seen timestamp only if today
+      if (isToday) {
+        localStorage.setItem(STORAGE_KEY_LAST_SEEN, String(nowMs));
+        localStorage.setItem(STORAGE_KEY_REVIEW_DATE, today);
+      }
 
       // Build human-readable away duration
       let durationLabel = '';
-      if (lastSeenMs && gapMinutes < Infinity) {
+      if (isToday && lastSeenMs && gapMinutes < Infinity) {
         if (gapMinutes < 60) {
           durationLabel = `${gapMinutes} minute${gapMinutes !== 1 ? 's' : ''}`;
         } else {
@@ -230,13 +248,15 @@ export default function Home() {
         }
       }
 
-      const lastSeenTime = lastSeenMs
+      const lastSeenTime = (isToday && lastSeenMs)
         ? new Date(lastSeenMs).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
         : null;
 
       // Find all pending blocks whose end time has already passed
       const foundPastPending = reports.filter((r) => {
         if (r.status !== 'Pending') return false;
+        if (isPastDay) return true; // all pending blocks on a past day are in the past
+        
         const times = getIntervalTimes(r);
         const endMin = timeToMinutes(times.endTime);
         const startMin = timeToMinutes(times.startTime);
@@ -247,15 +267,20 @@ export default function Home() {
 
       if (foundPastPending.length > 0) {
         setPastPendingReports(foundPastPending);
-        setAwayDuration({ minutes: gapMinutes, label: durationLabel, lastSeenTime });
+        if (isToday) {
+          setAwayDuration({ minutes: gapMinutes, label: durationLabel, lastSeenTime });
 
-        // If modal is already open, just refresh data silently
-        setIsReviewModalOpen((prev) => {
-          if (prev) return prev; // already open — don't flicker
-          // Show modal directly — no gap-based suppression
-          setShowPendingToast(true);
-          return false;
-        });
+          // If modal is already open, just refresh data silently
+          setIsReviewModalOpen((prev) => {
+            if (prev) return prev; // already open — don't flicker
+            // Show modal directly — no gap-based suppression
+            setShowPendingToast(true);
+            return false;
+          });
+        } else {
+          setAwayDuration(null);
+          setShowPendingToast(false);
+        }
       } else {
         // All pending blocks resolved — hide toast
         setPastPendingReports([]);
@@ -881,9 +906,43 @@ export default function Home() {
               onDateChange={setSelectedDate}
               onGenerateToday={handleGenerateToday}
               onOpenPDFSettings={handleOpenSettings}
+              dictionaryData={finalDictionary}
+              selectedTag={selectedTag}
+              onSelectTag={setSelectedTag}
             />
+            {selectedTag && (
+              <div className="container-fluid max-width-container px-3 mb-3">
+                <div className="alert alert-info border-0 rounded-3 shadow-sm d-flex justify-content-between align-items-center mb-0 py-2.5 bg-info-subtle border-start border-4 border-info">
+                  <span className="small fw-semibold text-info-emphasis">
+                    <i className="bi bi-filter-circle-fill me-1.5 fs-6 text-info"></i>
+                    Filtering timeline by: <strong className="text-uppercase">#{selectedTag}</strong>
+                  </span>
+                  <button 
+                    className="btn btn-xs btn-outline-info text-info-emphasis border-0 rounded-pill py-0 px-2 fw-bold text-dark hover-bg-info-subtle"
+                    onClick={() => setSelectedTag(null)}
+                  >
+                    Clear Filter
+                  </button>
+                </div>
+              </div>
+            )}
             <Timeline
-              reports={reports}
+              reports={(() => {
+                if (!selectedTag) return reports;
+                return reports.filter(r => {
+                  let activeTag = r.tag;
+                  if (!activeTag && r.report) {
+                    const matched = finalDictionary.find(d => 
+                      (d.report_bn && d.report_bn === r.report) ||
+                      (d.plan_bn && d.plan_bn === r.report) ||
+                      (d.report_en && d.report_en === r.report) ||
+                      (d.plan_en && d.plan_en === r.report)
+                    );
+                    if (matched) activeTag = matched.tag;
+                  }
+                  return activeTag === selectedTag;
+                });
+              })()}
               currentTime={currentTime}
               selectedDate={selectedDate}
               onEditPlan={handleOpenEditPlan}
@@ -1018,8 +1077,12 @@ export default function Home() {
         dictionaryData={finalDictionary}
         onUpdateDictionary={updateDictionary}
         onTriggerPendingReview={() => {
-          setIsReviewModalOpen(true);
-          setShowPendingToast(false);
+          if (pastPendingReports.length === 0) {
+            showToast('No pending blocks to review from earlier today! / আজ আর কোনো পেন্ডিং স্লট নেই!', 'info');
+          } else {
+            setIsReviewModalOpen(true);
+            setShowPendingToast(false);
+          }
         }}
       />
 

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import PlanBubble from './PlanBubble';
 import ReportBubble from './ReportBubble';
-import { getIntervalTimes, formatTime12h, timeToMinutes } from '../utils/helpers';
+import { getIntervalTimes, formatTime12h, timeToMinutes, getTodayDateString } from '../utils/helpers';
 
 /**
  * HourCard component represents a single hour's tracking item.
@@ -39,17 +39,30 @@ export default function HourCard({
   const durationMin = endMin - startMin;
 
   // Only compute progress for the active slot
-  let minutesLeft = 0;
+  let secondsLeft = 0;
   let progressPercent = 0;
   if (isCurrentHour && currentTime) {
-    const currentMinVal = currentTime.getHours() * 60 + currentTime.getMinutes();
-    let adjustedCurrentMinVal = currentMinVal;
-    if (endMin >= 24 * 60 && currentMinVal < (endMin % (24 * 60))) {
-      adjustedCurrentMinVal += 24 * 60;
+    const currentSecVal = currentTime.getHours() * 3600 + currentTime.getMinutes() * 60 + currentTime.getSeconds();
+    const startSec = startMin * 60;
+    let endSec = endMin * 60;
+    let adjustedCurrentSecVal = currentSecVal;
+    if (endMin >= 24 * 60 && currentSecVal < ((endMin % (24 * 60)) * 60)) {
+      adjustedCurrentSecVal += 24 * 3600;
     }
-    minutesLeft = endMin - adjustedCurrentMinVal;
-    progressPercent = durationMin > 0 ? Math.min(100, Math.max(0, ((adjustedCurrentMinVal - startMin) / durationMin) * 100)) : 0;
+    secondsLeft = endSec - adjustedCurrentSecVal;
+    const durationSec = durationMin * 60;
+    progressPercent = durationSec > 0 ? Math.min(100, Math.max(0, ((adjustedCurrentSecVal - startSec) / durationSec) * 100)) : 0;
   }
+
+  const isPast = (() => {
+    if (!currentTime) return false;
+    const todayStr = getTodayDateString();
+    if (report.date < todayStr) return true;
+    if (report.date > todayStr) return false;
+    
+    const currentMin = currentTime.getHours() * 60 + currentTime.getMinutes();
+    return endMin <= currentMin;
+  })();
 
   const handleUpdatePlanDirect = async (updatedPlanText) => {
     await onInlineUpdatePlan(report, updatedPlanText);
@@ -97,6 +110,7 @@ export default function HourCard({
       data-timing-state={status.toLowerCase()}
       data-timing-plan={plan || ''}
       data-timing-time={timeStr}
+      data-timing-past={isPast ? 'true' : 'false'}
       {...(report.tag === 'security-resolved' || (reportText && reportText.trim()) ? { 'data-timing-closed': 'true' } : {})}
     >
       {/* Top progress bar for active hour slot */}
@@ -116,28 +130,38 @@ export default function HourCard({
         </div>
       )}
       {/* Top Header info (Hour label and Status) */}
-      <div className="card-header bg-transparent border-0 d-flex justify-content-between align-items-start align-items-sm-center flex-column flex-sm-row pt-3 px-3 pb-1 gap-2">
-        <div className="d-flex align-items-center gap-2 flex-wrap">
+      <div className="card-header bg-transparent border-0 pt-3 px-3 pb-1">
+        {/* Top row: Time range and Status */}
+        <div className="d-flex justify-content-between align-items-center mb-1">
           <span className="fs-6 fs-sm-5 fw-bold text-dark animate-fade-in" style={{ letterSpacing: '0.5px' }}>
             {timeStr}
           </span>
-          {isCurrentHour && (
-            <div className="d-flex align-items-center gap-1.5 flex-wrap">
-              <span className="badge rounded-pill bg-success text-white px-2 py-1 fs-xs badge-now-pulse animate-pulse">
-                <i className="bi bi-clock-fill me-1"></i>NOW
-              </span>
-              <span className="badge rounded-pill bg-success-subtle text-success border border-success-subtle px-2 py-1 fs-xs d-flex align-items-center gap-1">
-                <i className="bi bi-hourglass-split animate-spin-slow"></i>
-                {minutesLeft > 0 ? `${minutesLeft}m left` : '< 1m left'}
-              </span>
-            </div>
-          )}
-        </div>
-        <div>
           <span className={`badge rounded-pill px-3 py-1.5 fw-bold text-uppercase fs-xs ${statusBadgeClass}`}>
             {status}
           </span>
         </div>
+        
+        {/* Active block row: Now & Time Left badges */}
+        {isCurrentHour && (
+          <div className="d-flex align-items-center gap-1.5 flex-wrap mt-1">
+            <span className="badge rounded-pill bg-success text-white px-2 py-1 fs-xs badge-now-pulse animate-pulse">
+              <i className="bi bi-clock-fill me-1"></i>NOW
+            </span>
+            <span className="badge rounded-pill bg-success-subtle text-success border border-success-subtle px-2 py-1 fs-xs d-flex align-items-center gap-1">
+              <i className="bi bi-hourglass-split animate-spin-slow"></i>
+              {(() => {
+                if (secondsLeft <= 0) return '< 00:00:01 left';
+                const hrs = Math.floor(secondsLeft / 3600);
+                const mins = Math.floor((secondsLeft % 3600) / 60);
+                const secs = secondsLeft % 60;
+                const hh = String(hrs).padStart(2, '0');
+                const mm = String(mins).padStart(2, '0');
+                const ss = String(secs).padStart(2, '0');
+                return `${hh}:${mm}:${ss} left`;
+              })()}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Bubbles Area */}

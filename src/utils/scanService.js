@@ -16,7 +16,8 @@ export function collectTimingBlocks() {
     const plan = el.dataset.timingPlan || '';
     const time = el.dataset.timingTime || '';
     const hasClose = !!el.dataset.timingClosed;
-    blocks.push({ id, state, plan, time, hasClose, element: el });
+    const isPast = el.dataset.timingPast === 'true';
+    blocks.push({ id, state, plan, time, hasClose, isPast, element: el });
   });
   return blocks;
 }
@@ -26,7 +27,7 @@ export function collectTimingBlocks() {
  */
 export function findInvalidBlocks(blocks) {
   return blocks.filter(b =>
-    (b.state === 'pending' || b.state === 'completed') && !b.hasClose
+    b.isPast && (b.state === 'pending' || b.state === 'completed') && !b.hasClose
   );
 }
 
