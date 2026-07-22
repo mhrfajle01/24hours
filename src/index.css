@@ -12,6 +12,7 @@
 /* Reset baseline defaults */
 body {
   background-color: var(--wa-bg) !important;
+  transition: background-color 0.3s ease;
   font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   margin: 0;
   padding: 0;
@@ -278,4 +279,72 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     transform: rotate(360deg);
   }
 }
+
+/* Islamic Vibe Theme Overrides */
+[data-theme="islamic"] {
+  --wa-bg: #f4efe6 !important; /* Soft warm cream/parchment background */
+  --wa-teal: #064e3b !important; /* Rich deep Emerald Green */
+  --wa-teal-dark: #022c22 !important;
+  --wa-accent: #d97706 !important; /* Elegant gold accent */
+  --wa-bubble-plan: #e6f4ea !important; /* Very soft emerald bubble for plans */
+  --wa-bubble-report: #ffffff !important;
+}
+
+[data-theme="islamic"] body,
+.islamic-page {
+  font-family: 'Hind Siliguri', 'Noto Sans Bengali', 'Outfit', sans-serif !important;
+  background-color: var(--wa-bg) !important;
+}
+
+[data-theme="islamic"] .btn-success {
+  background-color: var(--wa-teal) !important;
+  border-color: var(--wa-teal) !important;
+}
+
+[data-theme="islamic"] .btn-outline-success {
+  color: var(--wa-teal) !important;
+  border-color: var(--wa-teal) !important;
+}
+
+[data-theme="islamic"] .btn-outline-success:hover,
+[data-theme="islamic"] .btn-outline-success:active {
+  background-color: var(--wa-teal) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="islamic"] .text-success {
+  color: var(--wa-teal) !important;
+}
+
+[data-theme="islamic"] .bg-success {
+  background-color: var(--wa-teal) !important;
+}
+
+/* Prayer Checklist Animations */
+@keyframes islamicActivePulse {
+  0%, 100% {
+    box-shadow: 0 0 8px rgba(217, 119, 6, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(217, 119, 6, 0.5);
+  }
+}
+
+.prayer-active-glow {
+  animation: islamicActivePulse 2.5s infinite ease-in-out;
+}
+
+/* Islamic theme: Crescent/star background motif (subtle) */
+[data-theme="islamic"] .max-width-container::after {
+  content: '☪';
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  font-size: 2rem;
+  opacity: 0.06;
+  pointer-events: none;
+  color: #064e3b;
+}
+
+
 

@@ -20,6 +20,8 @@ export default function SettingsModal({
   dictionaryData = [],
   onUpdateDictionary,
   onTriggerPendingReview,
+  theme,
+  onThemeChange,
 }) {
   const fileInputRef = useRef(null);
 
@@ -367,25 +369,59 @@ export default function SettingsModal({
                   <i className="bi bi-palette-fill" style={{ color: '#075E54' }} />
                   Theme Mode
                 </h6>
-                <div className="d-flex justify-content-between align-items-center">
-                  <span className="text-secondary small">Select display theme</span>
-                  <div className="btn-group btn-group-sm" role="group">
-                    <button
-                      type="button"
-                      className="btn btn-success px-3 active"
-                      style={{ backgroundColor: '#075E54', borderColor: '#075E54' }}
-                    >
-                      <i className="bi bi-sun-fill me-1" />Light
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary px-3"
-                      disabled
-                    >
-                      <i className="bi bi-moon-fill me-1" />Dark
-                      <span className="ms-1" style={{ fontSize: '0.65rem' }}>(Soon)</span>
-                    </button>
-                  </div>
+                <p className="text-secondary small mb-2">Select display theme for the app.</p>
+                <div className="d-grid gap-2">
+                  {/* Light Theme */}
+                  <button
+                    type="button"
+                    id="theme-light"
+                    onClick={() => onThemeChange && onThemeChange('light')}
+                    className={`btn d-flex align-items-center gap-2 rounded-3 py-2 px-3 text-start border ${theme === 'light' ? 'btn-success' : 'btn-outline-secondary'}`}
+                    style={theme === 'light' ? { backgroundColor: '#075E54', borderColor: '#075E54' } : {}}
+                  >
+                    <i className="bi bi-sun-fill" />
+                    <div>
+                      <div className="fw-semibold small">Light</div>
+                      <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>Default clean & minimal</div>
+                    </div>
+                    {theme === 'light' && <i className="bi bi-check-circle-fill ms-auto" />}
+                  </button>
+
+                  {/* Dark Theme - Soon */}
+                  <button
+                    type="button"
+                    id="theme-dark"
+                    className="btn btn-outline-secondary d-flex align-items-center gap-2 rounded-3 py-2 px-3 text-start"
+                    disabled
+                  >
+                    <i className="bi bi-moon-stars-fill" />
+                    <div>
+                      <div className="fw-semibold small">Dark <span style={{ fontSize: '0.65rem' }} className="badge bg-secondary ms-1">Soon</span></div>
+                      <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>Dark mode coming soon</div>
+                    </div>
+                  </button>
+
+                  {/* Islamic Vibe Theme */}
+                  <button
+                    type="button"
+                    id="theme-islamic"
+                    onClick={() => onThemeChange && onThemeChange('islamic')}
+                    className={`btn d-flex align-items-center gap-2 rounded-3 py-2 px-3 text-start border ${theme === 'islamic' ? 'text-white border-warning' : 'btn-outline-secondary'}`}
+                    style={theme === 'islamic'
+                      ? { background: 'linear-gradient(135deg, #022c22, #064e3b)', borderColor: '#d97706' }
+                      : {}}
+                  >
+                    <i className="bi bi-moon-stars-fill" style={{ color: theme === 'islamic' ? '#d97706' : undefined }} />
+                    <div>
+                      <div className={`fw-semibold small ${theme === 'islamic' ? 'text-warning' : ''}`}>
+                        🌙 Islamic Vibe (Noor)
+                      </div>
+                      <div style={{ fontSize: '0.7rem', opacity: 0.8 }} className={theme === 'islamic' ? 'text-white-50' : ''}>
+                        Emerald &amp; Gold • Prayer Checklist included
+                      </div>
+                    </div>
+                    {theme === 'islamic' && <i className="bi bi-check-circle-fill ms-auto text-warning" />}
+                  </button>
                 </div>
               </div>
 

@@ -12,6 +12,8 @@ import TrashModal from '../components/TrashModal';
 import AuthPage from '../components/AuthPage';
 import PendingReviewModal from '../components/PendingReviewModal';
 import SecurityScanModal from '../components/SecurityScanModal';
+import PrayerChecklist from '../components/PrayerChecklist';
+import IslamicPage from './IslamicPage';
 import { useFirestore } from '../hooks/useFirestore';
 import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes } from '../utils/helpers';
 import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
@@ -108,6 +110,14 @@ export default function Home() {
 
   // ── Tag Filter State ─────────────────────────────────────────────────────
   const [selectedTag, setSelectedTag] = useState(null);
+
+  // ── Theme State ──────────────────────────────────────────────────────────
+  const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'light');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('app-theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     setSelectedTag(null);
@@ -841,6 +851,37 @@ export default function Home() {
   const canUndo = undoStack.length > 0;
   const canRedo = redoStack.length > 0;
 
+  // ── Islamic Theme: Full separate page ────────────────────────────────────
+  if (theme === 'islamic') {
+    return (
+      <>
+        {/* Settings modal still accessible for theme switching back */}
+        <SettingsModal
+          isOpen={activeModal === 'settings'}
+          onClose={handleCloseModal}
+          reports={reports}
+          selectedDate={selectedDate}
+          currentUser={currentUser}
+          onGenerateToday={handleGenerateToday}
+          onClearData={handleClearTodayData}
+          onImportData={handleImportData}
+          onExportData={handleExportData}
+          dictionaryData={finalDictionary}
+          onUpdateDictionary={updateDictionary}
+          theme={theme}
+          onThemeChange={setTheme}
+          onTriggerPendingReview={() => {}}
+        />
+        <IslamicPage
+          selectedDate={selectedDate}
+          onDateChange={setSelectedDate}
+          onOpenSettings={handleOpenSettings}
+          onBack={() => setTheme('light')}
+        />
+      </>
+    );
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -900,6 +941,11 @@ export default function Home() {
               onAddStreakFreeze={addStreakFreeze}
               selectedDate={selectedDate}
             />
+            {theme === 'islamic' && (
+              <div className="container-fluid max-width-container px-3">
+                <PrayerChecklist selectedDate={selectedDate} />
+              </div>
+            )}
             <Summary
               reports={reports}
               selectedDate={selectedDate}
@@ -1076,6 +1122,8 @@ export default function Home() {
         onExportData={handleExportData}
         dictionaryData={finalDictionary}
         onUpdateDictionary={updateDictionary}
+        theme={theme}
+        onThemeChange={setTheme}
         onTriggerPendingReview={() => {
           if (pastPendingReports.length === 0) {
             showToast('No pending blocks to review from earlier today! / আজ আর কোনো পেন্ডিং স্লট নেই!', 'info');
