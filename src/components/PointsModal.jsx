@@ -4,6 +4,10 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
   const [activeTab, setActiveTab] = useState('shop'); // 'shop' | 'history' | 'rules'
   const [loadingPerk, setLoadingPerk] = useState(null);
 
+  // Mystery Box Animation States
+  const [isOpeningBox, setIsOpeningBox] = useState(false);
+  const [boxReward, setBoxReward] = useState(null); // { wonAmount, tier } | null
+
   if (!show) return null;
 
   const { points = 0, history = [] } = pointsData || {};
@@ -11,12 +15,32 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
   const handleRedeem = async (perkType, cost, payload = {}) => {
     try {
       setLoadingPerk(perkType);
-      await redeemPerk(perkType, cost, payload);
+      const res = await redeemPerk(perkType, cost, payload);
       showToast(`Successfully redeemed! (-${cost} pts)`, 'success');
+      return res;
     } catch (err) {
       showToast(err.message || 'Failed to redeem perk', 'danger');
+      throw err;
     } finally {
       setLoadingPerk(null);
+    }
+  };
+
+  const handleOpenMysteryBox = async () => {
+    try {
+      setIsOpeningBox(true);
+      setBoxReward(null);
+      // Call redeem perk which handles deduction and prize calculation
+      const res = await redeemPerk('MYSTERY_BOX', 50);
+
+      // Play 1.2s shaking animation before revealing reward
+      setTimeout(() => {
+        setIsOpeningBox(false);
+        setBoxReward(res);
+      }, 1200);
+
+    } catch (err) {
+      setIsOpeningBox(false);
     }
   };
 
@@ -71,7 +95,8 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
           <div className="modal-body p-4" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
             {activeTab === 'shop' && (
               <div className="row g-3">
-                <div className="col-md-6">
+                {/* Perk 1: Streak Freeze */}
+                <div className="col-md-4">
                   <div className="card h-100 border-0 shadow-sm p-3 bg-body rounded">
                     <div className="d-flex align-items-center gap-3 mb-2">
                       <span className="fs-1">🧊</span>
@@ -93,13 +118,14 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                   </div>
                 </div>
 
-                <div className="col-md-6">
+                {/* Perk 2: Excuse Yesterday */}
+                <div className="col-md-4">
                   <div className="card h-100 border-0 shadow-sm p-3 bg-body rounded">
                     <div className="d-flex align-items-center gap-3 mb-2">
                       <span className="fs-1">🛡️</span>
                       <div>
                         <h6 className="fw-bold mb-1">Excuse Yesterday</h6>
-                        <small className="text-muted">Excuse a missed day so it doesn't count against your goals.</small>
+                        <small className="text-muted">Excuse a missed day so it doesn't count against goals.</small>
                       </div>
                     </div>
                     <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
@@ -115,6 +141,33 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                         }}
                       >
                         {loadingPerk === 'EXCUSE_DAY' ? 'Redeeming...' : 'Excuse Day'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Perk 3: Mystery Loot Box */}
+                <div className="col-md-4">
+                  <div className="card h-100 border-0 shadow-sm p-3 bg-gradient rounded position-relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFF9E6 0%, #FFEDD5 100%)', borderColor: '#FFB703' }}>
+                    <span className="position-absolute top-0 end-0 badge bg-warning text-dark m-2 fw-bold" style={{ fontSize: '0.65rem' }}>HOT 🎁</span>
+                    <div className="d-flex align-items-center gap-3 mb-2">
+                      <span className="fs-1 animate-pulse">🎁</span>
+                      <div>
+                        <h6 className="fw-bold mb-1 text-dark">Mystery Box</h6>
+                        <small className="text-dark-50" style={{ fontSize: '0.78rem' }}>Win <strong>20 to 200 Points</strong> instantly!</small>
+                      </div>
+                    </div>
+                    <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top border-warning-subtle">
+                      <div>
+                        <span className="fw-bold text-warning-emphasis d-block">50 pts</span>
+                        <small className="text-muted" style={{ fontSize: '0.65rem' }}>Up to 4x payout!</small>
+                      </div>
+                      <button 
+                        className="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-3 shadow-sm hover-scale"
+                        disabled={points < 50 || isOpeningBox || loadingPerk === 'MYSTERY_BOX'}
+                        onClick={handleOpenMysteryBox}
+                      >
+                        {isOpeningBox ? 'Opening...' : 'Open Box'}
                       </button>
                     </div>
                   </div>
@@ -314,6 +367,73 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
 
         </div>
       </div>
+
+      {/* ── Mystery Box Shaking / Unboxing Overlay ──────────────────────── */}
+      {isOpeningBox && (
+        <div 
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center text-white" 
+          style={{ backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 1100 }}
+        >
+          <div className="animate-box-shake fs-1 mb-3" style={{ fontSize: '5rem' }}>🎁</div>
+          <h4 className="fw-bold animate-pulse text-warning">Opening Mystery Loot Box...</h4>
+          <span className="small text-white-50">Testing your luck...</span>
+        </div>
+      )}
+
+      {/* ── Mystery Box Win Announcement Modal ──────────────────────────── */}
+      {boxReward && (
+        <div 
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center px-3" 
+          style={{ backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1100 }}
+        >
+          <div className="card border-0 shadow-lg animate-box-reveal text-center p-4 max-width-container bg-white rounded-4 overflow-hidden position-relative" style={{ maxWidth: '420px', width: '100%' }}>
+            
+            {/* Top Badge */}
+            <div className="mb-2">
+              <span className={`badge rounded-pill px-3 py-1.5 fw-bold text-uppercase ${
+                boxReward.tier === 'jackpot' ? 'bg-warning text-dark' :
+                boxReward.tier === 'rare' ? 'bg-success text-white' :
+                boxReward.tier === 'uncommon' ? 'bg-primary text-white' : 'bg-secondary text-white'
+              }`}>
+                {boxReward.tier === 'jackpot' ? '💎 MEGA JACKPOT 💎' :
+                 boxReward.tier === 'rare' ? '🥇 RARE REWARD' :
+                 boxReward.tier === 'uncommon' ? '🥈 UNCOMMON REWARD' : '🥉 COMMON REWARD'}
+              </span>
+            </div>
+
+            {/* Main Icon */}
+            <div className="my-3">
+              <span style={{ fontSize: '4.5rem' }}>
+                {boxReward.tier === 'jackpot' ? '🎉💎' :
+                 boxReward.tier === 'rare' ? '🏆✨' :
+                 boxReward.tier === 'uncommon' ? '🎁🌟' : '🪙'}
+              </span>
+            </div>
+
+            {/* Title & Amount */}
+            <h3 className="fw-extrabold mb-1 text-dark">
+              {boxReward.tier === 'jackpot' ? 'JACKPOT WINNER!' : 'CONGRATULATIONS!'}
+            </h3>
+            <p className="text-secondary small mb-3">You opened a Mystery Loot Box and won:</p>
+
+            <div className="p-3 bg-light rounded-3 border mb-4">
+              <span className="fs-1 fw-extrabold text-success d-block">
+                +{boxReward.wonAmount} <span className="fs-5 text-muted fw-normal">pts</span>
+              </span>
+              <small className="text-muted">Added directly to your balance!</small>
+            </div>
+
+            {/* Collect Button */}
+            <button 
+              className="btn btn-lg btn-success w-100 rounded-pill fw-bold shadow-sm hover-scale"
+              onClick={() => setBoxReward(null)}
+            >
+              Collect Reward! 🚀
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

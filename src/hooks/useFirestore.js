@@ -672,7 +672,7 @@ export const useFirestore = (selectedDate, uid) => {
     return true;
   };
 
-  /** Redeem points for Streak Freeze or Excusing a missed day */
+  /** Redeem points for Streak Freeze, Excusing a missed day, or Mystery Box */
   const redeemPerk = async (perkType, cost, payload = {}) => {
     if (pointsData.points < cost) {
       throw new Error(`Insufficient points! You need ${cost} pts.`);
@@ -685,6 +685,43 @@ export const useFirestore = (selectedDate, uid) => {
       if (!payload.date) throw new Error('Date required to excuse missed day');
       await excuseDay(payload.date);
       await updatePoints(-cost, `Excused missed day (${payload.date})`, 'spend');
+    } else if (perkType === 'MYSTERY_BOX') {
+      // Calculate Mystery Box outcome based on weighted probabilities
+      // 50% Common (20-45), 35% Uncommon (50-90), 12% Rare (100-150), 3% Mega Jackpot (200)
+      const rand = Math.random() * 100;
+      let wonAmount = 20;
+      let tier = 'common'; // 'common' | 'uncommon' | 'rare' | 'jackpot'
+
+      if (rand < 3) {
+        // 3% chance for 200 pts Jackpot
+        wonAmount = 200;
+        tier = 'jackpot';
+      } else if (rand < 15) {
+        // 12% chance for 100 - 150 pts Rare
+        wonAmount = Math.floor(Math.random() * 51) + 100;
+        tier = 'rare';
+      } else if (rand < 50) {
+        // 35% chance for 50 - 90 pts Uncommon
+        wonAmount = Math.floor(Math.random() * 41) + 50;
+        tier = 'uncommon';
+      } else {
+        // 50% chance for 20 - 45 pts Common
+        wonAmount = Math.floor(Math.random() * 26) + 20;
+        tier = 'common';
+      }
+
+      // Deduct cost first
+      await updatePoints(-cost, 'Opened Mystery Loot Box 🎁', 'spend');
+      // Award prize
+      const tierTitleMap = {
+        jackpot: '💎 MEGA JACKPOT Mystery Box Prize!',
+        rare: '🥇 Rare Mystery Box Prize!',
+        uncommon: '🥈 Uncommon Mystery Box Prize!',
+        common: '🥉 Mystery Box Prize',
+      };
+      await updatePoints(wonAmount, `${tierTitleMap[tier]} (+${wonAmount} pts)`, 'earn');
+
+      return { wonAmount, tier };
     }
   };
 

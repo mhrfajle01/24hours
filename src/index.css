@@ -265,6 +265,29 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   transform: scale(0.99);
 }
 
+/* Mystery Box Animations */
+.animate-box-shake {
+  animation: boxShake 0.6s infinite ease-in-out;
+}
+
+.animate-box-reveal {
+  animation: boxReveal 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+@keyframes boxShake {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  20% { transform: rotate(-8deg) scale(1.05); }
+  40% { transform: rotate(8deg) scale(1.05); }
+  60% { transform: rotate(-5deg) scale(1.08); }
+  80% { transform: rotate(5deg) scale(1.08); }
+}
+
+@keyframes boxReveal {
+  0% { transform: scale(0.3) rotate(-15deg); opacity: 0; }
+  50% { transform: scale(1.15) rotate(5deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+
 /* Micro-animations */
 .animate-spin-slow {
   animation: spinSlow 3s infinite linear;

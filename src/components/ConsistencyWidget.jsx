@@ -57,6 +57,7 @@ export default function ConsistencyWidget({
   selectedDate,
   onExcuseDay,
   onAddStreakFreeze,
+  onOpenPoints,
 }) {
   const [showInsights, setShowInsights] = useState(true);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
@@ -425,11 +426,11 @@ export default function ConsistencyWidget({
                 <div className="d-flex flex-wrap gap-2">
                   <button
                     className="btn btn-sm btn-outline-info fw-bold rounded-pill px-3 py-1.5 hover-scale transition-all"
-                    onClick={onAddStreakFreeze}
-                    title="Get a streak freeze token to protect your progress."
+                    onClick={onOpenPoints}
+                    title="Buy Streak Freeze token with points in Shop"
                     style={{ fontSize: '0.8rem' }}
                   >
-                    <i className="bi bi-plus-circle-fill me-1"></i>Earn Freeze
+                    <i className="bi bi-cart-plus me-1"></i>Buy Freeze in Shop
                   </button>
 
                   {streakData.excusedDays?.includes(selectedDate) ? (

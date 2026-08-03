@@ -1003,6 +1003,7 @@ export default function Home() {
               heatmapData={heatmapData}
               onExcuseDay={excuseDay}
               onAddStreakFreeze={addStreakFreeze}
+              onOpenPoints={handleOpenPoints}
               selectedDate={selectedDate}
             />
             {theme === 'islamic' && (
