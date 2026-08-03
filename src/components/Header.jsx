@@ -4,7 +4,7 @@ import { formatFriendlyDate, getCurrentTimeString, getCurrentHourAndAMPM, getInt
 /**
  * Sticky Header — profile avatar opens ProfileModal, gear opens SettingsModal.
  */
-export default function Header({ selectedDate, reports = [], onOpenSettings, onOpenProfile, onOpenTrash, trashCount, currentUser }) {
+export default function Header({ selectedDate, reports = [], onOpenSettings, onOpenProfile, onOpenTrash, trashCount, currentUser, userPoints = 0, onOpenPoints }) {
   const [timeStr, setTimeStr] = useState(getCurrentTimeString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -91,125 +91,132 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
   const displayTimeRange = activeSlotTime ? activeSlotTime : formatCurrentHourRange();
 
   return (
-    <header className="sticky-top shadow-sm px-3 py-2 text-white" style={{ backgroundColor: '#075E54', zIndex: 1020 }}>
-      <div className="container-fluid max-width-container d-flex align-items-center justify-content-between">
-        
-        {/* Left: Branding + Date */}
-        <div>
-          <h1 className="h4 m-0 fw-bold d-flex align-items-center gap-2">
-            <i className="bi bi-chat-left-text-fill" style={{ color: '#25D366' }} />
-            <span>HourLog</span>
-            {!isOnline && (
-              <span 
-                className="badge bg-warning text-dark rounded-pill fs-xs px-2 py-0.5 ms-1 fw-bold d-inline-flex align-items-center gap-1 animate-pulse"
-                title="Working offline. Changes will sync when connection is restored."
-              >
-                <i className="bi bi-cloud-slash-fill"></i> Offline
+    <header className="sticky-top shadow-sm text-white" style={{ backgroundColor: '#075E54', zIndex: 1020 }}>
+      <div className="container-fluid max-width-container px-3 py-2">
+        <div className="d-flex align-items-center justify-content-between flex-nowrap gap-2" style={{ minHeight: '44px' }}>
+          
+          {/* Left: Branding + Date */}
+          <div className="d-flex align-items-center gap-2 overflow-hidden">
+            <h1 className="h5 m-0 fw-bold d-flex align-items-center gap-1.5 text-nowrap">
+              <i className="bi bi-chat-left-text-fill" style={{ color: '#25D366' }} />
+              <span>HourLog</span>
+            </h1>
+            <div className="d-flex align-items-center gap-1">
+              {!isOnline ? (
+                <span 
+                  className="badge bg-warning text-dark rounded-pill fs-xs px-2 py-0.5 fw-bold d-inline-flex align-items-center gap-1"
+                  title="Working offline."
+                >
+                  <i className="bi bi-cloud-slash-fill"></i> <span className="d-none d-sm-inline">Offline</span>
+                </span>
+              ) : (
+                <span 
+                  className="badge bg-success-subtle text-success border border-success-subtle rounded-pill fs-xs px-2 py-0.5 d-none d-md-inline-flex align-items-center gap-1"
+                  style={{ opacity: 0.85 }}
+                  title="Synced"
+                >
+                  <i className="bi bi-cloud-check-fill"></i> Synced
+                </span>
+              )}
+              <span className="text-white-50 d-none d-sm-inline" style={{ fontSize: '0.78rem' }}>
+                • {formatFriendlyDate(selectedDate)}
               </span>
-            )}
-            {isOnline && (
-              <span 
-                className="badge bg-success-subtle text-success border border-success-subtle rounded-pill fs-xs px-2 py-0.5 ms-1 fw-semibold d-none d-md-inline-flex align-items-center gap-1"
-                style={{ opacity: 0.85 }}
-                title="Connected to server. All data synced."
-              >
-                <i className="bi bi-cloud-check-fill"></i> Synced
-              </span>
-            )}
-          </h1>
-          <span style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-            {formatFriendlyDate(selectedDate)}
-          </span>
-        </div>
- 
-        {/* Right: Clock + Profile + Settings */}
-        <div className="d-flex align-items-center gap-2">
- 
-          {/* Clock — desktop */}
-          <div className="text-end d-none d-sm-block me-1">
-            <div className="fw-semibold" style={{ color: '#25D366', fontSize: '0.95rem' }}>
-              {timeStr}
-            </div>
-            <div style={{ fontSize: '0.72rem', opacity: 0.85 }}>
-              NOW: {displayTimeRange}
             </div>
           </div>
- 
-          {/* Clock — mobile */}
-          <div className="text-end d-block d-sm-none me-1" style={{ fontSize: '0.8rem' }}>
-            <div className="fw-semibold" style={{ color: '#25D366' }}>{timeStr}</div>
-            <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
-              NOW: {displayTimeRange}
+   
+          {/* Right: Points + Clock + Actions */}
+          <div className="d-flex align-items-center gap-1.5 flex-shrink-0 ms-auto">
+   
+            {/* Clock */}
+            <div className="text-end me-1 text-nowrap" style={{ lineHeight: '1.2' }}>
+              <div className="fw-semibold" style={{ color: '#25D366', fontSize: '0.85rem' }}>
+                {timeStr}
+              </div>
+              <div className="d-none d-sm-block text-white-50" style={{ fontSize: '0.68rem' }}>
+                NOW: {displayTimeRange}
+              </div>
             </div>
-          </div>
-
-          {/* Profile Avatar → opens ProfileModal */}
-          {currentUser && (
+  
+            {/* Points Pill Button */}
             <button
               type="button"
-              className="btn p-0 border-0 bg-transparent hover-scale"
-              onClick={onOpenProfile}
-              title={`${currentUser.displayName || 'Profile'} — Edit Profile`}
-              aria-label="Open Profile"
+              className="btn btn-sm rounded-pill px-2 py-0.5 d-flex align-items-center gap-1 border border-warning-subtle shadow-sm hover-scale"
+              onClick={onOpenPoints}
+              title="Points & Rewards"
+              style={{ backgroundColor: 'rgba(0,0,0,0.3)', fontSize: '0.8rem', lineHeight: '1.2' }}
+            >
+              <span style={{ fontSize: '0.85rem' }}>🪙</span>
+              <span className="fw-bold text-warning">{(userPoints || 0).toLocaleString()}</span>
+            </button>
+  
+            {/* Profile Avatar */}
+            {currentUser && (
+              <button
+                type="button"
+                className="btn p-0 border-0 bg-transparent hover-scale"
+                onClick={onOpenProfile}
+                title={`${currentUser.displayName || 'Profile'} — Edit Profile`}
+                aria-label="Open Profile"
+                style={{ outline: 'none', boxShadow: 'none' }}
+              >
+                <div
+                  className="rounded-circle overflow-hidden d-flex align-items-center justify-content-center border border-2 border-white"
+                  style={{ width: '30px', height: '30px', minWidth: '30px', backgroundColor: '#128C7E' }}
+                >
+                  {currentUser.photoURL ? (
+                    <img
+                      src={currentUser.photoURL}
+                      alt="Profile"
+                      className="w-100 h-100 object-fit-cover"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <span className="text-white fw-bold" style={{ fontSize: '0.75rem' }}>
+                      {avatarInitial}
+                    </span>
+                  )}
+                </div>
+              </button>
+            )}
+  
+            {/* Trash Button */}
+            <button
+              type="button"
+              className="btn p-0 border-0 bg-transparent hover-scale position-relative text-white ms-1"
+              onClick={onOpenTrash}
+              title="Trash"
+              aria-label="Open Trash"
               style={{ outline: 'none', boxShadow: 'none' }}
             >
-              <div
-                className="rounded-circle overflow-hidden d-flex align-items-center justify-content-center border border-2 border-white"
-                style={{ width: '34px', height: '34px', minWidth: '34px', backgroundColor: '#128C7E' }}
-              >
-                {currentUser.photoURL ? (
-                  <img
-                    src={currentUser.photoURL}
-                    alt="Profile"
-                    className="w-100 h-100 object-fit-cover"
-                    onError={(e) => {
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                ) : (
-                  <span className="text-white fw-bold" style={{ fontSize: '0.85rem' }}>
-                    {avatarInitial}
-                  </span>
-                )}
-              </div>
+              <i className="bi bi-trash3" style={{ fontSize: '1.1rem' }} />
+              {trashCount > 0 && (
+                <span
+                  className="position-absolute top-0 start-100 translate-middle badge rounded-pill"
+                  style={{
+                    backgroundColor: '#ef5350',
+                    fontSize: '0.55rem',
+                    padding: '2px 4px',
+                    minWidth: '14px',
+                    lineHeight: '1',
+                  }}
+                >
+                  {trashCount > 99 ? '99+' : trashCount}
+                </span>
+              )}
             </button>
-          )}
-
-          {/* Trash Button → opens TrashModal */}
-          <button
-            type="button"
-            className="btn p-0 border-0 bg-transparent hover-scale position-relative"
-            onClick={onOpenTrash}
-            title="Trash"
-            aria-label="Open Trash"
-            style={{ outline: 'none', boxShadow: 'none' }}
-          >
-            <i className="bi bi-trash3 text-white" style={{ fontSize: '1.25rem' }} />
-            {trashCount > 0 && (
-              <span
-                className="position-absolute top-0 start-100 translate-middle badge rounded-pill"
-                style={{
-                  backgroundColor: '#ef5350',
-                  fontSize: '0.6rem',
-                  padding: '2px 5px',
-                  minWidth: '16px',
-                  lineHeight: '1.4',
-                }}
-              >
-                {trashCount > 99 ? '99+' : trashCount}
-              </span>
-            )}
-          </button>
-
-          {/* Settings Gear → opens SettingsModal */}
-          <button
-            className="btn btn-link text-white p-1 border-0 shadow-none hover-scale"
-            onClick={onOpenSettings}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <i className="bi bi-gear-fill fs-4" />
-          </button>
+  
+            {/* Settings Gear */}
+            <button
+              className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5"
+              onClick={onOpenSettings}
+              title="Settings"
+              aria-label="Settings"
+            >
+              <i className="bi bi-gear-fill fs-5" />
+            </button>
+          </div>
         </div>
       </div>
     </header>

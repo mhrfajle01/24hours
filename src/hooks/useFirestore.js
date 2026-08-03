@@ -428,13 +428,33 @@ export const useFirestore = (selectedDate, uid) => {
           longestStreak = Math.max(longestStreak || 0, 1);
         }
         lastActiveDate = today;
+
+        // Award streak bonus points based on streak count (20 pts per streak day)
+        const streakBonus = currentStreak * 20;
+        updatePoints(streakBonus, `🔥 Day ${currentStreak} Streak Bonus (+${streakBonus} pts)`, 'earn');
+        await setDoc(ref, { currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays, lastBonusStreakDay: currentStreak, updatedAt: serverTimestamp() }, { merge: true });
+      } else {
+        // Backfill: If active today, and lastBonusStreakDay hasn't awarded for this streak count yet
+        if (existing.lastBonusStreakDay !== currentStreak && currentStreak > 0) {
+          const streakBonus = currentStreak * 20;
+          updatePoints(streakBonus, `🔥 Day ${currentStreak} Streak Bonus Adjustment (+${streakBonus} pts)`, 'earn');
+          await setDoc(ref, { lastBonusStreakDay: currentStreak, updatedAt: serverTimestamp() }, { merge: true });
+        }
       }
-      await setDoc(ref, { currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays, updatedAt: serverTimestamp() }, { merge: true });
     } else {
       // No completions today — check if gap already exceeded
       if (neededFreezes > streakFreezes && currentStreak > 0) {
+        // Calculate penalty based on lost streak count (20 pts per streak day lost)
+        const penalty = currentStreak * 20;
+        updatePoints(-penalty, `💔 Streak Broken Penalty (${currentStreak} day streak lost, -${penalty} pts)`, 'spend');
+
         currentStreak = 0;
-        await setDoc(ref, { currentStreak, updatedAt: serverTimestamp() }, { merge: true });
+        await setDoc(ref, { currentStreak, lastBonusStreakDay: 0, updatedAt: serverTimestamp() }, { merge: true });
+      } else if (existing.lastBonusStreakDay !== currentStreak && currentStreak > 0) {
+        // Backfill for active current streak if not yet awarded
+        const streakBonus = currentStreak * 20;
+        updatePoints(streakBonus, `🔥 Day ${currentStreak} Streak Bonus Adjustment (+${streakBonus} pts)`, 'earn');
+        await setDoc(ref, { lastBonusStreakDay: currentStreak, updatedAt: serverTimestamp() }, { merge: true });
       }
     }
     setStreakData({ currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays });
@@ -588,6 +608,103 @@ export const useFirestore = (selectedDate, uid) => {
 
 // Duplicate daily goal block removed – keep the earlier declaration above
 
+  // ─── Points System ───────────────────────────────────────────────────
+  const [pointsData, setPointsData] = useState({ points: 0, history: [] });
+
+  useEffect(() => {
+    if (!uid) {
+      setPointsData({ points: 0, history: [] });
+      return;
+    }
+    const ref = doc(db, 'points', uid);
+    const unsub = onSnapshot(ref, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        setPointsData({
+          points: data.points || 0,
+          history: data.history || [],
+        });
+      } else {
+        // Initial setup for new/existing user without points doc
+        const initPoints = {
+          points: 20,
+          history: [{
+            id: 'init_' + Date.now(),
+            title: 'Welcome Check-in Bonus',
+            amount: 20,
+            date: new Date().toISOString(),
+            type: 'earn'
+          }],
+          lastDailyCheckin: getTodayDateString()
+        };
+        setDoc(ref, { ...initPoints, updatedAt: serverTimestamp() });
+        setPointsData({ points: 20, history: initPoints.history });
+      }
+    });
+
+    return () => unsub();
+  }, [uid]);
+
+  /** Add or remove points with history record */
+  const updatePoints = async (amount, title, type = 'earn') => {
+    if (!uid) return false;
+    const ref = doc(db, 'points', uid);
+    const snap = await getDoc(ref);
+    const current = snap.exists() ? snap.data() : { points: 0, history: [] };
+
+    const newPoints = Math.max(0, (current.points || 0) + amount);
+    const newRecord = {
+      id: 'pts_' + Date.now(),
+      title,
+      amount,
+      date: new Date().toISOString(),
+      type, // 'earn' | 'spend'
+    };
+
+    const newHistory = [newRecord, ...(current.history || [])].slice(0, 50); // keep last 50 entries
+
+    await setDoc(ref, {
+      points: newPoints,
+      history: newHistory,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    return true;
+  };
+
+  /** Redeem points for Streak Freeze or Excusing a missed day */
+  const redeemPerk = async (perkType, cost, payload = {}) => {
+    if (pointsData.points < cost) {
+      throw new Error(`Insufficient points! You need ${cost} pts.`);
+    }
+
+    if (perkType === 'STREAK_FREEZE') {
+      await addStreakFreeze();
+      await updatePoints(-cost, 'Purchased Streak Freeze', 'spend');
+    } else if (perkType === 'EXCUSE_DAY') {
+      if (!payload.date) throw new Error('Date required to excuse missed day');
+      await excuseDay(payload.date);
+      await updatePoints(-cost, `Excused missed day (${payload.date})`, 'spend');
+    }
+  };
+
+  // Check Daily Sign-in bonus once a day
+  useEffect(() => {
+    if (!uid) return;
+    const today = getTodayDateString();
+    const ref = doc(db, 'points', uid);
+
+    getDoc(ref).then((snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.lastDailyCheckin !== today) {
+          updatePoints(20, `Daily Check-in (${today})`, 'earn');
+          setDoc(ref, { lastDailyCheckin: today }, { merge: true });
+        }
+      }
+    });
+  }, [uid]);
+
   return {
     // Reports
     reports,
@@ -619,5 +736,9 @@ export const useFirestore = (selectedDate, uid) => {
     heatmapData,
     excuseDay,
     addStreakFreeze,
+    // Points System
+    pointsData,
+    updatePoints,
+    redeemPerk,
   };
 };

@@ -13,9 +13,10 @@ import AuthPage from '../components/AuthPage';
 import PendingReviewModal from '../components/PendingReviewModal';
 import SecurityScanModal from '../components/SecurityScanModal';
 import PrayerChecklist from '../components/PrayerChecklist';
+import PointsModal from '../components/PointsModal';
 import IslamicPage from './IslamicPage';
 import { useFirestore } from '../hooks/useFirestore';
-import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes } from '../utils/helpers';
+import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, calculateBlockPoints } from '../utils/helpers';
 import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
 import defaultDictionary from '../constants/dictionary.json';
 import { db, auth } from '../firebase/firebase';
@@ -79,12 +80,15 @@ export default function Home() {
     heatmapData,
     excuseDay,
     addStreakFreeze,
+    pointsData,
+    updatePoints,
+    redeemPerk,
   } = useFirestore(selectedDate, currentUser?.uid);
 
   const finalDictionary = userDictionary && userDictionary.length > 0 ? userDictionary : defaultDictionary;
 
   // ── Modal state ──────────────────────────────────────────────────────────
-  // 'planning' | 'report' | 'delete' | 'settings' | 'profile' | 'trash' | null
+  // 'planning' | 'report' | 'delete' | 'settings' | 'profile' | 'trash' | 'points' | null
   const [activeModal, setActiveModal] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
 
@@ -506,6 +510,7 @@ export default function Home() {
   const handleOpenSettings   = () => setActiveModal('settings');
   const handleOpenProfile    = () => setActiveModal('profile');
   const handleOpenTrash      = () => setActiveModal('trash');
+  const handleOpenPoints     = () => setActiveModal('points');
 
   const handleCloseModal = () => {
     setActiveModal(null);
@@ -626,6 +631,43 @@ export default function Home() {
     }
   };
 
+  const processReportPointsChange = async (oldStatus, oldReport, newStatus, newReport, reportObj) => {
+    const wasCompleted = oldStatus === 'Completed' || Boolean(oldReport);
+    const isNowCompleted = newStatus === 'Completed' || Boolean(newReport);
+
+    const wasMissed = oldStatus === 'Missed';
+    const isNowMissed = newStatus === 'Missed';
+
+    const wasPending = !wasCompleted && !wasMissed;
+    const isNowPending = !isNowCompleted && !isNowMissed;
+
+    const pts = calculateBlockPoints(reportObj);
+
+    // Case 1: Switching TO Completed (Earn block points)
+    if (!wasCompleted && isNowCompleted) {
+      await updatePoints(pts, `Completed block (+${pts} pts)`, 'earn');
+    }
+    // Case 2: Switching FROM Completed TO Pending (Rollback earned points)
+    else if (wasCompleted && isNowPending) {
+      await updatePoints(-pts, `Reverted block to Pending (-${pts} pts)`, 'spend');
+    }
+    // Case 3: Switching TO Missed (Deduct penalty points)
+    else if (!wasMissed && isNowMissed) {
+      // If it was completed before, revoke earned points first
+      if (wasCompleted) {
+        await updatePoints(-pts, `Reverted Completed block (-${pts} pts)`, 'spend');
+      }
+      // Apply missed penalty (half of block points value, min 5 pts)
+      const penalty = Math.max(5, Math.round(pts / 2));
+      await updatePoints(-penalty, `Missed block penalty (-${penalty} pts)`, 'spend');
+    }
+    // Case 4: Switching FROM Missed to Pending (Refund missed penalty)
+    else if (wasMissed && isNowPending) {
+      const penalty = Math.max(5, Math.round(pts / 2));
+      await updatePoints(penalty, `Refunded missed penalty (+${penalty} pts)`, 'earn');
+    }
+  };
+
   const handleSaveReport = async (reportData) => {
     try {
       if (!selectedReport) return;
@@ -633,6 +675,15 @@ export default function Home() {
       const newData = { report: reportData.report, status: reportData.status, tag: reportData.tag || '' };
       await updateReport(selectedReport.id, newData);
       pushUndo({ type: 'UPDATE_REPORT', docId: selectedReport.id, previousData, newData });
+      
+      const fullReportObj = { ...selectedReport, ...newData };
+      await processReportPointsChange(selectedReport.status, selectedReport.report, reportData.status, reportData.report, fullReportObj);
+
+      // Check if all 24 slots completed for 50 pts bonus
+      if (reports.length >= 24 && reports.every(r => r.id === selectedReport.id ? (reportData.report || reportData.status === 'Completed') : (r.report || r.status === 'Completed'))) {
+        await updatePoints(50, `24-Hour Master Completion Bonus (${selectedDate})`, 'earn');
+      }
+
       showToast('Saved Successfully', 'success');
       handleCloseModal();
     } catch (err) {
@@ -644,11 +695,18 @@ export default function Home() {
   const handleSavePendingReview = async (updates) => {
     try {
       const batch = writeBatch(db);
-      updates.forEach(({ id, status }) => {
+      for (const update of updates) {
+        const { id, status } = update;
         const docRef = doc(db, 'reports', id);
         batch.update(docRef, { status });
-      });
+
+        const reportObj = reports.find(r => r.id === id);
+        if (reportObj) {
+          await processReportPointsChange(reportObj.status, reportObj.report, status, reportObj.report, { ...reportObj, status });
+        }
+      }
       await batch.commit();
+
       showToast('All blocks updated successfully', 'success');
       setPastPendingReports([]);
     } catch (err) {
@@ -678,6 +736,10 @@ export default function Home() {
       const newData = { report: newReportText, status: newStatus };
       await updateReport(reportItem.id, newData);
       pushUndo({ type: 'UPDATE_REPORT', docId: reportItem.id, previousData, newData });
+
+      const fullReportObj = { ...reportItem, ...newData };
+      await processReportPointsChange(reportItem.status, reportItem.report, newStatus, newReportText, fullReportObj);
+
       showToast('Report updated', 'success');
     } catch (err) {
       console.error(err);
@@ -894,6 +956,8 @@ export default function Home() {
         onOpenSettings={handleOpenSettings}
         onOpenProfile={handleOpenProfile}
         onOpenTrash={handleOpenTrash}
+        onOpenPoints={handleOpenPoints}
+        userPoints={pointsData?.points || 0}
         trashCount={trashItems.length}
         currentUser={currentUser}
       />
@@ -1151,6 +1215,14 @@ export default function Home() {
         onPermanentDelete={handlePermanentDeleteFromTrash}
         onEmptyTrash={handleEmptyTrash}
         onRestoreAll={handleRestoreAllFromTrash}
+      />
+
+      <PointsModal
+        show={activeModal === 'points'}
+        onClose={handleCloseModal}
+        pointsData={pointsData}
+        redeemPerk={redeemPerk}
+        showToast={showToast}
       />
 
       <PendingReviewModal

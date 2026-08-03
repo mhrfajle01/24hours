@@ -57,6 +57,29 @@ export const getIntervalTimes = (report) => {
 };
 
 /**
+ * Calculates points based on block duration:
+ * 15 mins -> 10 points
+ * 30 mins -> 20 points
+ * 45 mins -> 30 points
+ * 60 mins (1 hr) -> 40 points
+ */
+export const calculateBlockPoints = (report) => {
+  const times = getIntervalTimes(report);
+  const startMin = timeToMinutes(times.startTime);
+  let endMin = timeToMinutes(times.endTime);
+  if (endMin <= startMin) endMin += 24 * 60; // handle overnight wrap
+
+  const durationMin = endMin - startMin;
+
+  if (durationMin <= 15) return 10;
+  if (durationMin <= 30) return 20;
+  if (durationMin <= 45) return 30;
+  if (durationMin <= 60) return 40;
+  // Scaled for longer custom durations: 40 pts per hour
+  return Math.round((durationMin / 60) * 40);
+};
+
+/**
  * Converts a "HH:MM" 24-hour string to minutes since midnight.
  */
 export const timeToMinutes = (timeStr) => {
