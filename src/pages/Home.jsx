@@ -15,6 +15,8 @@ import SecurityScanModal from '../components/SecurityScanModal';
 import PrayerChecklist from '../components/PrayerChecklist';
 import PointsModal from '../components/PointsModal';
 import IslamicPage from './IslamicPage';
+import PomodoroModal from '../components/PomodoroModal';
+import InsightsModal from '../components/InsightsModal';
 import { useFirestore } from '../hooks/useFirestore';
 import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, calculateBlockPoints } from '../utils/helpers';
 import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
@@ -83,6 +85,7 @@ export default function Home() {
     pointsData,
     updatePoints,
     redeemPerk,
+    unlockFeature,
   } = useFirestore(selectedDate, currentUser?.uid);
 
   const finalDictionary = userDictionary && userDictionary.length > 0 ? userDictionary : defaultDictionary;
@@ -91,6 +94,13 @@ export default function Home() {
   // 'planning' | 'report' | 'delete' | 'settings' | 'profile' | 'trash' | 'points' | null
   const [activeModal, setActiveModal] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
+
+  // ── Pomodoro Timer State ────────────────────────────────────────────────
+  const [isPomodoroOpen, setIsPomodoroOpen] = useState(false);
+  const [pomodoroReport, setPomodoroReport] = useState(null);
+
+  // ── Insights Modal State ────────────────────────────────────────────────
+  const [isInsightsOpen, setIsInsightsOpen] = useState(false);
 
   // ── Undo / Redo ──────────────────────────────────────────────────────────
   const [undoStack, setUndoStack] = useState([]);
@@ -119,9 +129,16 @@ export default function Home() {
   const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'light');
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('app-theme', theme);
-  }, [theme]);
+    // If islamic theme is set in localStorage but not unlocked, fallback to light theme
+    if (theme === 'islamic' && pointsData && !pointsData.unlockedFeatures?.islamic_theme) {
+      setTheme('light');
+      localStorage.setItem('app-theme', 'light');
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('app-theme', theme);
+    }
+  }, [theme, pointsData]);
 
   useEffect(() => {
     setSelectedTag(null);
@@ -932,6 +949,9 @@ export default function Home() {
           onUpdateDictionary={updateDictionary}
           theme={theme}
           onThemeChange={setTheme}
+          pointsData={pointsData}
+          unlockFeature={unlockFeature}
+          onOpenPoints={() => setActiveModal('points')}
           onTriggerPendingReview={() => {}}
         />
         <IslamicPage
@@ -957,6 +977,7 @@ export default function Home() {
         onOpenProfile={handleOpenProfile}
         onOpenTrash={handleOpenTrash}
         onOpenPoints={handleOpenPoints}
+        onOpenInsights={() => setIsInsightsOpen(true)}
         userPoints={pointsData?.points || 0}
         trashCount={trashItems.length}
         currentUser={currentUser}
@@ -1005,6 +1026,8 @@ export default function Home() {
               onAddStreakFreeze={addStreakFreeze}
               onOpenPoints={handleOpenPoints}
               selectedDate={selectedDate}
+              pointsData={pointsData}
+              onUnlockFeature={unlockFeature}
             />
             {theme === 'islamic' && (
               <div className="container-fluid max-width-container px-3">
@@ -1063,6 +1086,10 @@ export default function Home() {
               onInlineUpdatePlan={handleInlineUpdatePlan}
               onInlineUpdateReport={handleInlineUpdateReport}
               dictionaryData={finalDictionary}
+              onOpenPomodoro={(report) => {
+                setPomodoroReport(report);
+                setIsPomodoroOpen(true);
+              }}
             />
           </>
         )}
@@ -1189,6 +1216,9 @@ export default function Home() {
         onUpdateDictionary={updateDictionary}
         theme={theme}
         onThemeChange={setTheme}
+        pointsData={pointsData}
+        unlockFeature={unlockFeature}
+        onOpenPoints={() => setActiveModal('points')}
         onTriggerPendingReview={() => {
           if (pastPendingReports.length === 0) {
             showToast('No pending blocks to review from earlier today! / আজ আর কোনো পেন্ডিং স্লট নেই!', 'info');
@@ -1327,6 +1357,48 @@ export default function Home() {
           </div>
         </div>
       )}
+      {/* ── Pomodoro Focus Modal ────────────────────────────────────── */}
+      <PomodoroModal
+        isOpen={isPomodoroOpen}
+        onClose={() => {
+          setIsPomodoroOpen(false);
+          setPomodoroReport(null);
+        }}
+        activeReport={pomodoroReport}
+        onAwardPoints={async (pts, reason) => {
+          try {
+            await updatePoints(pts, reason, 'earn');
+          } catch (e) {
+            console.error('Failed to award Pomodoro points:', e);
+          }
+        }}
+        onUpdateReportText={handleInlineUpdateReport}
+        pointsData={pointsData}
+        onUnlockFeature={async (key, cost, name) => {
+          try {
+            await unlockFeature(key, cost, name);
+          } catch (e) {
+            console.error('Unlock error:', e);
+            throw e;
+          }
+        }}
+      />
+
+      {/* ── Consistency Insights Fullscreen Modal ───────────────────── */}
+      <InsightsModal
+        isOpen={isInsightsOpen}
+        onClose={() => setIsInsightsOpen(false)}
+        reports={reports}
+        streakData={streakData}
+        weeklyStats={weeklyStats}
+        dailyGoal={dailyGoal}
+        heatmapData={heatmapData}
+        selectedDate={selectedDate}
+        onExcuseDay={excuseDay}
+        onOpenPoints={handleOpenPoints}
+        pointsData={pointsData}
+        onUnlockFeature={unlockFeature}
+      />
     </div>
   );
 }

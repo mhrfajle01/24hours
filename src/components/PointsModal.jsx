@@ -80,7 +80,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                 className={`btn btn-sm ${activeTab === 'history' ? 'btn-success' : 'btn-outline-secondary'}`}
                 onClick={() => setActiveTab('history')}
               >
-                📜 History
+                {!(pointsData?.unlockedFeatures?.history) ? '🔒 📜 History (30 pts)' : '📜 History'}
               </button>
               <button 
                 className={`btn btn-sm ${activeTab === 'rules' ? 'btn-success' : 'btn-outline-secondary'}`}
@@ -146,38 +146,106 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                   </div>
                 </div>
 
-                {/* Perk 3: Mystery Loot Box */}
+                {/* Perk 3: Consistency Insights */}
                 <div className="col-md-4">
-                  <div className="card h-100 border-0 shadow-sm p-3 bg-gradient rounded position-relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFF9E6 0%, #FFEDD5 100%)', borderColor: '#FFB703' }}>
-                    <span className="position-absolute top-0 end-0 badge bg-warning text-dark m-2 fw-bold" style={{ fontSize: '0.65rem' }}>HOT 🎁</span>
+                  <div className="card h-100 border-0 shadow-sm p-3 bg-body rounded">
                     <div className="d-flex align-items-center gap-3 mb-2">
-                      <span className="fs-1 animate-pulse">🎁</span>
+                      <span className="fs-1">📊</span>
                       <div>
-                        <h6 className="fw-bold mb-1 text-dark">Mystery Box</h6>
-                        <small className="text-dark-50" style={{ fontSize: '0.78rem' }}>Win <strong>20 to 200 Points</strong> instantly!</small>
+                        <h6 className="fw-bold mb-1">Consistency Insights</h6>
+                        <small className="text-muted" style={{ fontSize: '0.78rem' }}>Unlock the 30-day consistency calendar & weekly metrics.</small>
                       </div>
                     </div>
-                    <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top border-warning-subtle">
-                      <div>
-                        <span className="fw-bold text-warning-emphasis d-block">50 pts</span>
-                        <small className="text-muted" style={{ fontSize: '0.65rem' }}>Up to 4x payout!</small>
-                      </div>
+                    <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
+                      <span className="fw-bold text-success">40 pts</span>
                       <button 
-                        className="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-3 shadow-sm hover-scale"
-                        disabled={points < 50 || isOpeningBox || loadingPerk === 'MYSTERY_BOX'}
-                        onClick={handleOpenMysteryBox}
+                        className="btn btn-sm btn-outline-success rounded-pill px-3"
+                        disabled={points < 40 || loadingPerk === 'UNLOCK_FEATURE' || !!pointsData?.unlockedFeatures?.consistency_insights}
+                        onClick={async () => {
+                          try {
+                            setLoadingPerk('UNLOCK_FEATURE');
+                            await redeemPerk('UNLOCK_FEATURE', 40, { featureKey: 'consistency_insights', featureName: 'Consistency Insights' });
+                            showToast('Successfully unlocked Consistency Insights! (-40 pts)', 'success');
+                          } catch (err) {
+                            showToast(err.message || 'Failed to unlock', 'danger');
+                          } finally {
+                            setLoadingPerk(null);
+                          }
+                        }}
                       >
-                        {isOpeningBox ? 'Opening...' : 'Open Box'}
+                        {!!pointsData?.unlockedFeatures?.consistency_insights ? 'Unlocked' : 'Unlock'}
                       </button>
                     </div>
                   </div>
+                </div>
+
+                {/* Perk 4: Mystery Loot Box */}
+                <div className="col-md-4">
+                  {(() => {
+                    const todayStr = new Date().toISOString().slice(0, 10);
+                    const opensToday = pointsData?.mysteryBoxOpens?.[todayStr] || 0;
+                    const isLimitReached = opensToday >= 3;
+
+                    return (
+                      <div className="card h-100 border-0 shadow-sm p-3 bg-gradient rounded position-relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #FFF9E6 0%, #FFEDD5 100%)', borderColor: '#FFB703' }}>
+                        <span className="position-absolute top-0 end-0 badge bg-warning text-dark m-2 fw-bold" style={{ fontSize: '0.65rem' }}>
+                          {isLimitReached ? 'MAX 3/3 🔒' : `${opensToday}/3 Today 🎁`}
+                        </span>
+                        <div className="d-flex align-items-center gap-3 mb-2">
+                          <span className="fs-1 animate-pulse">🎁</span>
+                          <div>
+                            <h6 className="fw-bold mb-1 text-dark">Mystery Box</h6>
+                            <small className="text-dark-50" style={{ fontSize: '0.78rem' }}>Win <strong>20 to 200 Points</strong> instantly!</small>
+                          </div>
+                        </div>
+                        <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top border-warning-subtle">
+                          <div>
+                            <span className="fw-bold text-warning-emphasis d-block">50 pts</span>
+                            <small className="text-muted" style={{ fontSize: '0.65rem' }}>
+                              {isLimitReached ? 'Daily limit (3/3) reached' : `Opened ${opensToday}/3 times`}
+                            </small>
+                          </div>
+                          <button 
+                            className="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-3 shadow-sm hover-scale"
+                            disabled={points < 50 || isOpeningBox || loadingPerk === 'MYSTERY_BOX' || isLimitReached}
+                            onClick={handleOpenMysteryBox}
+                          >
+                            {isOpeningBox ? 'Opening...' : isLimitReached ? 'Limit Reached' : 'Open Box'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             )}
 
             {activeTab === 'history' && (
               <div>
-                {history.length === 0 ? (
+                {!(pointsData?.unlockedFeatures?.history) ? (
+                  <div className="text-center py-4 bg-light rounded-3 border p-4">
+                    <div className="fs-1 mb-2">🔒</div>
+                    <h5 className="fw-bold text-dark mb-1">History Locked</h5>
+                    <p className="text-muted small mb-3">Pay to view full points transaction history.</p>
+                    <button
+                      className="btn btn-warning text-dark fw-bold rounded-pill px-4"
+                      disabled={points < 30 || loadingPerk === 'UNLOCK_FEATURE'}
+                      onClick={async () => {
+                        try {
+                          setLoadingPerk('UNLOCK_FEATURE');
+                          await redeemPerk('UNLOCK_FEATURE', 30, { featureKey: 'history', featureName: 'History Tab' });
+                          showToast('Successfully unlocked History Tab! (-30 pts)', 'success');
+                        } catch (err) {
+                          showToast(err.message || 'Failed to unlock History Tab', 'danger');
+                        } finally {
+                          setLoadingPerk(null);
+                        }
+                      }}
+                    >
+                      {loadingPerk === 'UNLOCK_FEATURE' ? 'Unlocking...' : '🔒 Unlock History (30 pts)'}
+                    </button>
+                  </div>
+                ) : history.length === 0 ? (
                   <p className="text-muted text-center py-4">No points history recorded yet.</p>
                 ) : (
                   <ul className="list-group list-group-flush border-top">
@@ -335,21 +403,45 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                 {/* Section 3: Spending & Perks */}
                 <div className="card border-0 shadow-sm overflow-hidden">
                   <div className="card-header bg-info-subtle text-info-emphasis border-0 fw-bold py-2 d-flex align-items-center justify-content-between">
-                    <span><i className="bi bi-cart-check me-2"></i>3. Perks & Rewards Shop</span>
-                    <span className="badge bg-info text-dark">PERKS</span>
+                    <span><i className="bi bi-cart-check me-2"></i>3. Perks & Feature Unlocks</span>
+                    <span className="badge bg-info text-dark">UNLOCKS</span>
                   </div>
                   <div className="card-body p-3">
                     <div className="row g-2">
-                      <div className="col-6">
+                      <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">🧊 Streak Freeze (50 pts)</strong>
-                          <span className="small text-muted">Protects your streak if you miss a day.</span>
+                          <strong className="d-block text-dark">📄 PDF Export (100 pts)</strong>
+                          <span className="small text-muted">Download PDF reports & plans.</span>
                         </div>
                       </div>
-                      <div className="col-6">
+                      <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">🛡️ Excuse Yesterday (50 pts)</strong>
-                          <span className="small text-muted">Excuses yesterday so streak stays unbroken.</span>
+                          <strong className="d-block text-dark">🔍 Security Scan (50 pts)</strong>
+                          <span className="small text-muted">Manual timing-block scan.</span>
+                        </div>
+                      </div>
+                      <div className="col-6 col-md-4">
+                        <div className="p-2 border rounded bg-light">
+                          <strong className="d-block text-dark">🌙 Islamic Vibe Theme (150 pts)</strong>
+                          <span className="small text-muted">Unlock Noor theme & Prayer Checklist.</span>
+                        </div>
+                      </div>
+                      <div className="col-6 col-md-4">
+                        <div className="p-2 border rounded bg-light">
+                          <strong className="d-block text-dark">📜 History Tab (30 pts)</strong>
+                          <span className="small text-muted">View points transaction history.</span>
+                        </div>
+                      </div>
+                      <div className="col-6 col-md-4">
+                        <div className="p-2 border rounded bg-light">
+                          <strong className="d-block text-dark">📥 Import JSON (80 pts)</strong>
+                          <span className="small text-muted">Import backup JSON data.</span>
+                        </div>
+                      </div>
+                      <div className="col-6 col-md-4">
+                        <div className="p-2 border rounded bg-light">
+                          <strong className="d-block text-dark">🎁 Mystery Box (50 pts)</strong>
+                          <span className="small text-muted">Win 20 to 200 pts reward.</span>
                         </div>
                       </div>
                     </div>

@@ -16,7 +16,8 @@ export default function Timeline({
   onGenerateToday,
   onInlineUpdatePlan,
   onInlineUpdateReport,
-  dictionaryData
+  dictionaryData,
+  onOpenPomodoro
 }) {
   const isTodaySelected = selectedDate === getTodayDateString();
   const currentCardRef = useRef(null);
@@ -129,6 +130,7 @@ export default function Timeline({
               onInlineUpdatePlan={onInlineUpdatePlan}
               onInlineUpdateReport={onInlineUpdateReport}
               dictionaryData={dictionaryData}
+              onOpenPomodoro={onOpenPomodoro}
             />
           </div>
         );

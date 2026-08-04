@@ -58,7 +58,26 @@ export default function ConsistencyWidget({
   onExcuseDay,
   onAddStreakFreeze,
   onOpenPoints,
+  pointsData,
+  onUnlockFeature,
 }) {
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [unlockError, setUnlockError] = useState('');
+
+  const isConsistencyUnlocked = !!(pointsData?.unlockedFeatures?.consistency_insights);
+
+  const handleUnlockConsistency = async () => {
+    if (!onUnlockFeature) return;
+    setIsUnlocking(true);
+    setUnlockError('');
+    try {
+      await onUnlockFeature('consistency_insights', 40, 'Consistency Insights');
+    } catch (e) {
+      setUnlockError(e.message || 'Failed to unlock.');
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
   const [showInsights, setShowInsights] = useState(true);
   const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [tempGoal, setTempGoal] = useState(dailyGoal);
@@ -273,191 +292,6 @@ export default function ConsistencyWidget({
           </div>
 
         </div>
-
-        {/* Action Toggle - Drawer Trigger */}
-        <div className="border-top mt-3 pt-2 d-flex justify-content-center">
-          <button 
-            className="btn btn-link text-decoration-none text-secondary p-0 fs-7 d-flex align-items-center gap-1 hover-scale shadow-none"
-            onClick={() => setShowInsights(!showInsights)}
-            style={{ fontSize: '0.85rem', color: '#128C7E' }}
-          >
-            <span>{showInsights ? 'Collapse Insights' : 'Show Consistency Insights & Heatmap'}</span>
-            <i className={`bi ${showInsights ? 'bi-chevron-up' : 'bi-chevron-down'}`}></i>
-          </button>
-        </div>
-
-        {/* Collapsible Consistency Panel */}
-        {showInsights && (
-          <div className="mt-3 border-top pt-3 animate-slide-up">
-            
-            {/* Row 1: Weekly Stats Summarized */}
-            {weeklyStats && (
-              <div className="row g-3 mb-4">
-                <div className="col-12 col-md-6">
-                  <h6 className="text-secondary fw-bold small mb-2 text-uppercase">Weekly Metrics</h6>
-                  <div className="p-3 bg-light rounded-3 d-flex flex-column gap-2" style={{ borderLeft: '3px solid #128C7E' }}>
-                    <div className="d-flex justify-content-between text-secondary small">
-                      <span>vs Weekly Goal <span className="text-muted">({dailyGoal * 7} hrs target)</span>:</span>
-                      <strong className="text-dark">{weeklyStats.completionRate}%</strong>
-                    </div>
-                    <div className="progress" style={{ height: '7px' }}>
-                      <div 
-                        className="progress-bar" 
-                        role="progressbar" 
-                        style={{ width: `${weeklyStats.completionRate}%`, backgroundColor: weeklyStats.completionRate >= 80 ? '#25D366' : weeklyStats.completionRate >= 50 ? '#128C7E' : '#FFB703' }}
-                        aria-valuenow={weeklyStats.completionRate} 
-                        aria-valuemin="0" 
-                        aria-valuemax="100"
-                      />
-                    </div>
-                    <div className="d-flex justify-content-between text-secondary mt-1" style={{ fontSize: '0.75rem' }}>
-                      <span>✅ Logged: <strong className="text-success">{weeklyStats.completed} hrs</strong></span>
-                      <span>❌ Missed: <strong className="text-danger">{weeklyStats.missed} hrs</strong></span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="col-12 col-md-6">
-                  <h6 className="text-secondary fw-bold small mb-2 text-uppercase">Consistency Peak</h6>
-                  <div className="p-3 bg-light rounded-3 d-flex align-items-center justify-content-between" style={{ borderLeft: '3px solid #25D366' }}>
-                    <div>
-                      <div className="small text-secondary">Your peak focus day is:</div>
-                      <div className="fw-bold text-dark fs-6 mt-1">
-                        {weeklyStats.bestDay ? (
-                          <>
-                            <i className="bi bi-trophy-fill text-warning me-1.5"></i>
-                            {weeklyStats.bestDay}
-                          </>
-                        ) : (
-                          'No activity this week'
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-center bg-white px-2 py-1.5 rounded-pill shadow-xs border">
-                      <span className="fw-extrabold text-success" style={{ fontSize: '0.8rem' }}>
-                        {weeklyStats.completionRate >= 80 ? '🔥 Habit King' : weeklyStats.completionRate >= 50 ? '🌱 Builder' : '💤 Start Log'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Row 2: Heatmap Contribution Grid */}
-            <div>
-              <h6 className="text-secondary fw-bold small mb-2 text-uppercase d-flex justify-content-between align-items-center">
-                <span>30-Day Consistency Grid</span>
-                <span className="text-muted text-lowercase fw-normal" style={{ fontSize: '0.72rem' }}>
-                  (hours logged vs {dailyGoal}h goal)
-                </span>
-              </h6>
-              
-              <div className="bg-light p-3 rounded-4 border">
-                <div className="d-flex flex-wrap gap-1.5 justify-content-start align-items-center">
-                  {past30Days.map((day, idx) => {
-                    const completedHrs = heatmapData[day.dateStr] || 0;
-                    const displayHrs = completedHrs % 1 === 0 ? completedHrs : completedHrs.toFixed(1);
-                    const metGoal = completedHrs >= dailyGoal;
-                    const tooltipText = `${day.monthLabel} ${day.dayLabel}: ${displayHrs}h logged${metGoal ? ' — Goal met! 🎉' : ` (goal: ${dailyGoal}h)`}`;
-
-                    return (
-                      <div
-                        key={idx}
-                        className="rounded-1 d-flex align-items-center justify-content-center hover-scale"
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          backgroundColor: getHeatmapColor(day.dateStr),
-                          cursor: 'default',
-                          position: 'relative',
-                          outline: metGoal ? '1.5px solid #1C9F4E' : 'none',
-                          outlineOffset: '1px',
-                        }}
-                        title={tooltipText}
-                      >
-                        {/* White dot = goal achieved */}
-                        {metGoal && (
-                          <div className="bg-white rounded-circle" style={{ width: '4px', height: '4px' }} />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Heatmap Legend */}
-                <div className="d-flex justify-content-between align-items-center mt-3 pt-2 border-top text-muted" style={{ fontSize: '0.72rem' }}>
-                  <div>Hover a cell for details</div>
-                  <div className="d-flex align-items-center gap-1">
-                    <span>0h</span>
-                    <div className="rounded-1" style={{ width: '12px', height: '12px', backgroundColor: '#F0F2F5' }} />
-                    <div className="rounded-1" style={{ width: '12px', height: '12px', backgroundColor: '#D3F4C2' }} />
-                    <div className="rounded-1" style={{ width: '12px', height: '12px', backgroundColor: '#8CE0A2' }} />
-                    <div className="rounded-1" style={{ width: '12px', height: '12px', backgroundColor: '#43C878' }} />
-                    <div className="rounded-1" style={{ width: '12px', height: '12px', backgroundColor: '#25D366' }} />
-                    <span>{dailyGoal}h+</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Row 3: Streak Protection & Excuses */}
-            <div className="mt-4 pt-3 border-top">
-              <h6 className="text-secondary fw-bold small mb-2 text-uppercase">
-                ❄️ Streak Protection & Grace Days
-              </h6>
-              <div className="bg-light p-3 rounded-4 border d-flex flex-column flex-sm-row justify-content-between align-items-sm-center gap-3">
-                <div className="d-flex align-items-center gap-2">
-                  <div 
-                    className="d-flex align-items-center justify-content-center rounded-circle bg-white border"
-                    style={{ width: '40px', height: '40px', fontSize: '1.25rem', minWidth: '40px', color: '#0dcaf0' }}
-                  >
-                    ❄️
-                  </div>
-                  <div>
-                    <div className="fw-bold text-dark" style={{ fontSize: '0.9rem' }}>
-                      {streakData.streakFreezes ?? 0} Freeze Token{(streakData.streakFreezes ?? 0) !== 1 ? 's' : ''}
-                    </div>
-                    <div className="text-muted" style={{ fontSize: '0.72rem' }}>
-                      1 token protects 1 missed day. Auto-consumed when you return.
-                    </div>
-                  </div>
-                </div>
-
-                <div className="d-flex flex-wrap gap-2">
-                  <button
-                    className="btn btn-sm btn-outline-info fw-bold rounded-pill px-3 py-1.5 hover-scale transition-all"
-                    onClick={onOpenPoints}
-                    title="Buy Streak Freeze token with points in Shop"
-                    style={{ fontSize: '0.8rem' }}
-                  >
-                    <i className="bi bi-cart-plus me-1"></i>Buy Freeze in Shop
-                  </button>
-
-                  {streakData.excusedDays?.includes(selectedDate) ? (
-                    <span 
-                      className="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2 fw-bold d-inline-flex align-items-center gap-1"
-                      style={{ fontSize: '0.8rem' }}
-                    >
-                      <i className="bi bi-shield-fill-check"></i> Excused (Streak Protected)
-                    </span>
-                  ) : (
-                    todayCompletedHours === 0 && (
-                      <button
-                        className="btn btn-sm btn-outline-success fw-bold rounded-pill px-3 py-1.5 hover-scale transition-all"
-                        onClick={() => onExcuseDay(selectedDate)}
-                        title="Excuse this day's lack of logging to prevent streak reset."
-                        style={{ fontSize: '0.8rem' }}
-                      >
-                        <i className="bi bi-calendar-check me-1"></i>Excuse Day
-                      </button>
-                    )
-                  )}
-                </div>
-              </div>
-            </div>
-
-          </div>
-        )}
 
       </div>
     </div>

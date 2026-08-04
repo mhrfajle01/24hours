@@ -608,12 +608,12 @@ export const useFirestore = (selectedDate, uid) => {
 
 // Duplicate daily goal block removed – keep the earlier declaration above
 
-  // ─── Points System ───────────────────────────────────────────────────
-  const [pointsData, setPointsData] = useState({ points: 0, history: [] });
+  // ─── Points System & Feature Unlocks ──────────────────────────────
+  const [pointsData, setPointsData] = useState({ points: 0, history: [], unlockedFeatures: {}, mysteryBoxOpens: {} });
 
   useEffect(() => {
     if (!uid) {
-      setPointsData({ points: 0, history: [] });
+      setPointsData({ points: 0, history: [], unlockedFeatures: {}, mysteryBoxOpens: {} });
       return;
     }
     const ref = doc(db, 'points', uid);
@@ -623,6 +623,8 @@ export const useFirestore = (selectedDate, uid) => {
         setPointsData({
           points: data.points || 0,
           history: data.history || [],
+          unlockedFeatures: data.unlockedFeatures || {},
+          mysteryBoxOpens: data.mysteryBoxOpens || {},
         });
       } else {
         // Initial setup for new/existing user without points doc
@@ -635,10 +637,12 @@ export const useFirestore = (selectedDate, uid) => {
             date: new Date().toISOString(),
             type: 'earn'
           }],
+          unlockedFeatures: {},
+          mysteryBoxOpens: {},
           lastDailyCheckin: getTodayDateString()
         };
         setDoc(ref, { ...initPoints, updatedAt: serverTimestamp() });
-        setPointsData({ points: 20, history: initPoints.history });
+        setPointsData({ points: 20, history: initPoints.history, unlockedFeatures: {}, mysteryBoxOpens: {} });
       }
     });
 
@@ -686,6 +690,12 @@ export const useFirestore = (selectedDate, uid) => {
       await excuseDay(payload.date);
       await updatePoints(-cost, `Excused missed day (${payload.date})`, 'spend');
     } else if (perkType === 'MYSTERY_BOX') {
+      const today = getTodayDateString();
+      const currentOpens = pointsData.mysteryBoxOpens?.[today] || 0;
+      if (currentOpens >= 3) {
+        throw new Error('Daily limit reached! You can open Mystery Box only 3 times per day.');
+      }
+
       // Calculate Mystery Box outcome based on weighted probabilities
       // 50% Common (20-45), 35% Uncommon (50-90), 12% Rare (100-150), 3% Mega Jackpot (200)
       const rand = Math.random() * 100;
@@ -721,8 +731,39 @@ export const useFirestore = (selectedDate, uid) => {
       };
       await updatePoints(wonAmount, `${tierTitleMap[tier]} (+${wonAmount} pts)`, 'earn');
 
+      // Update daily opens count in Firestore
+      if (uid) {
+        const ref = doc(db, 'points', uid);
+        await setDoc(ref, {
+          mysteryBoxOpens: {
+            [today]: currentOpens + 1
+          }
+        }, { merge: true });
+      }
+
       return { wonAmount, tier };
+    } else if (perkType === 'UNLOCK_FEATURE') {
+      const featureKey = payload.featureKey;
+      const featureName = payload.featureName || featureKey;
+      if (!featureKey) throw new Error('Feature key required');
+      
+      // Deduct cost and save feature unlock in firestore
+      await updatePoints(-cost, `Unlocked ${featureName} 🔓`, 'spend');
+      if (uid) {
+        const ref = doc(db, 'points', uid);
+        await setDoc(ref, {
+          unlockedFeatures: {
+            [featureKey]: true
+          }
+        }, { merge: true });
+      }
+      return true;
     }
+  };
+
+  /** Helper to unlock feature by key and cost */
+  const unlockFeature = async (featureKey, cost, featureName) => {
+    return await redeemPerk('UNLOCK_FEATURE', cost, { featureKey, featureName });
   };
 
   // Check Daily Sign-in bonus once a day
@@ -777,5 +818,6 @@ export const useFirestore = (selectedDate, uid) => {
     pointsData,
     updatePoints,
     redeemPerk,
+    unlockFeature,
   };
 };

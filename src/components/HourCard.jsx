@@ -17,7 +17,8 @@ export default function HourCard({
   onDelete,
   onInlineUpdatePlan,
   onInlineUpdateReport,
-  dictionaryData
+  dictionaryData,
+  onOpenPomodoro
 }) {
   const { plan, report: reportText, status, createdAt } = report;
 
@@ -143,7 +144,7 @@ export default function HourCard({
         
         {/* Active block row: Now & Time Left badges */}
         {isCurrentHour && (
-          <div className="d-flex align-items-center gap-1.5 flex-wrap mt-1">
+          <div className="d-flex align-items-center gap-2 flex-wrap mt-1">
             <span className="badge rounded-pill bg-success text-white px-2 py-1 fs-xs badge-now-pulse animate-pulse">
               <i className="bi bi-clock-fill me-1"></i>NOW
             </span>
@@ -160,6 +161,14 @@ export default function HourCard({
                 return `${hh}:${mm}:${ss} left`;
               })()}
             </span>
+            <button 
+              className="badge rounded-pill bg-danger border-0 text-white px-2.5 py-1.5 fs-xs d-flex align-items-center gap-1 hover-scale shadow-sm cursor-pointer"
+              onClick={() => onOpenPomodoro && onOpenPomodoro(report)}
+              style={{ cursor: 'pointer', outline: 'none' }}
+              title="Open Pomodoro Focus Timer"
+            >
+              🍅 Pomodoro Style
+            </button>
           </div>
         )}
       </div>

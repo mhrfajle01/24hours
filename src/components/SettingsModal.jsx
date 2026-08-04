@@ -22,8 +22,15 @@ export default function SettingsModal({
   onTriggerPendingReview,
   theme,
   onThemeChange,
+  pointsData,
+  unlockFeature,
+  onOpenPoints,
 }) {
   const fileInputRef = useRef(null);
+
+  // Unlock modal confirmation state: null | { featureKey, name, cost, onSuccess }
+  const [unlockModal, setUnlockModal] = useState(null);
+  const [isUnlocking, setIsUnlocking] = useState(false);
 
   // Suggestions dictionary CRUD states
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +66,10 @@ export default function SettingsModal({
   // Custom confirm state for clear data
   const [confirmClear, setConfirmClear] = useState(false);
 
+  // Custom confirm state for clear browser data
+  const [confirmClearBrowserData, setConfirmClearBrowserData] = useState(false);
+  const [isClearingBrowserData, setIsClearingBrowserData] = useState(false);
+
   // Custom confirm state for import
   const [pendingImport, setPendingImport] = useState(null); // null | { data, count }
 
@@ -67,6 +78,37 @@ export default function SettingsModal({
   const showAlert = (message, type = 'success') => {
     setAlertBox({ show: true, type, message });
     setTimeout(() => setAlertBox((a) => ({ ...a, show: false })), 4000);
+  };
+
+  const handleConfirmClearBrowserData = async () => {
+    setIsClearingBrowserData(true);
+    try {
+      // 1. Clear LocalStorage and SessionStorage
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // 2. Clear CacheStorage (PWA / Service Worker asset cache)
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+
+      // 3. Clear IndexedDB databases for this origin (Firebase offline cache, etc.)
+      if ('indexedDB' in window && indexedDB.databases) {
+        const dbs = await indexedDB.databases();
+        for (const db of dbs) {
+          if (db.name) indexedDB.deleteDatabase(db.name);
+        }
+      }
+
+      // 4. Force reload page
+      window.location.reload();
+    } catch (err) {
+      console.error('Failed to clear browser data:', err);
+      showAlert('Failed to clear browser storage: ' + err.message, 'danger');
+      setIsClearingBrowserData(false);
+      setConfirmClearBrowserData(false);
+    }
   };
 
   const handleImportClick = () => {
@@ -138,22 +180,55 @@ export default function SettingsModal({
     }
   };
 
-  const handleExportPDFClick = async () => {
-    setIsExportingPDF(true);
-    try {
-      await generatePDF(reports, selectedDate, currentUser, {
-        templateType: pdfTemplateType,
-        englishFont,
-        banglaFont,
-        theme: pdfTheme
+  const isUnlocked = (featureKey) => !!(pointsData?.unlockedFeatures?.[featureKey]);
+
+  const requestFeatureUnlock = (featureKey, name, cost, onUnlockedAction) => {
+    if (isUnlocked(featureKey)) {
+      onUnlockedAction();
+    } else {
+      setUnlockModal({
+        featureKey,
+        name,
+        cost,
+        onSuccess: onUnlockedAction,
       });
-      showAlert('PDF report exported successfully!', 'success');
-    } catch (err) {
-      console.error(err);
-      showAlert('PDF generation failed: ' + err.message, 'danger');
-    } finally {
-      setIsExportingPDF(false);
     }
+  };
+
+  const handleConfirmFeatureUnlock = async () => {
+    if (!unlockModal) return;
+    try {
+      setIsUnlocking(true);
+      await unlockFeature(unlockModal.featureKey, unlockModal.cost, unlockModal.name);
+      showAlert(`Successfully unlocked ${unlockModal.name}! (-${unlockModal.cost} pts)`, 'success');
+      const action = unlockModal.onSuccess;
+      setUnlockModal(null);
+      if (action) action();
+    } catch (err) {
+      showAlert(err.message || 'Failed to unlock feature', 'danger');
+    } finally {
+      setIsUnlocking(false);
+    }
+  };
+
+  const handleExportPDFClick = async () => {
+    requestFeatureUnlock('pdf_export', 'PDF Export', 100, async () => {
+      setIsExportingPDF(true);
+      try {
+        await generatePDF(reports, selectedDate, currentUser, {
+          templateType: pdfTemplateType,
+          englishFont,
+          banglaFont,
+          theme: pdfTheme
+        });
+        showAlert('PDF report exported successfully!', 'success');
+      } catch (err) {
+        console.error(err);
+        showAlert('PDF generation failed: ' + err.message, 'danger');
+      } finally {
+        setIsExportingPDF(false);
+      }
+    });
   };
 
   // Suggestions Dictionary Operations
@@ -363,6 +438,46 @@ export default function SettingsModal({
                 </div>
               )}
 
+              {/* Custom Clear Browser Data Confirm Popup */}
+              {confirmClearBrowserData && (
+                <div className="border border-danger rounded-3 p-3 bg-danger bg-opacity-10 mb-3 animate-fade-in">
+                  <p className="text-danger fw-bold small mb-1">
+                    <i className="bi bi-radioactive me-1" />
+                    Clear ALL Browser Stored Data for this project?
+                  </p>
+                  <p className="text-secondary small mb-2" style={{ fontSize: '0.75rem' }}>
+                    This will delete all local storage, cached files, and offline data stored in your browser for this application, then reload the page.
+                  </p>
+                  <div className="d-flex gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-danger rounded-pill px-3 py-1 fw-bold small shadow-none"
+                      onClick={handleConfirmClearBrowserData}
+                      disabled={isClearingBrowserData}
+                    >
+                      {isClearingBrowserData ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                          Clearing Data...
+                        </>
+                      ) : (
+                        <>
+                          <i className="bi bi-trash3-fill me-1" />Yes, Clear & Reload
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary rounded-pill px-3 py-1 fw-bold small shadow-none"
+                      onClick={() => setConfirmClearBrowserData(false)}
+                      disabled={isClearingBrowserData}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Theme Selector */}
               <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
@@ -405,7 +520,12 @@ export default function SettingsModal({
                   <button
                     type="button"
                     id="theme-islamic"
-                    onClick={() => onThemeChange && onThemeChange('islamic')}
+                    onClick={() => {
+                      if (theme === 'islamic') return;
+                      requestFeatureUnlock('islamic_theme', 'Islamic Vibe Theme', 150, () => {
+                        onThemeChange && onThemeChange('islamic');
+                      });
+                    }}
                     className={`btn d-flex align-items-center gap-2 rounded-3 py-2 px-3 text-start border ${theme === 'islamic' ? 'text-white border-warning' : 'btn-outline-secondary'}`}
                     style={theme === 'islamic'
                       ? { background: 'linear-gradient(135deg, #022c22, #064e3b)', borderColor: '#d97706' }
@@ -414,7 +534,7 @@ export default function SettingsModal({
                     <i className="bi bi-moon-stars-fill" style={{ color: theme === 'islamic' ? '#d97706' : undefined }} />
                     <div>
                       <div className={`fw-semibold small ${theme === 'islamic' ? 'text-warning' : ''}`}>
-                        🌙 Islamic Vibe (Noor)
+                        {!isUnlocked('islamic_theme') ? '🔒 🌙 Islamic Vibe (Noor) — 150 pts' : '🌙 Islamic Vibe (Noor)'}
                       </div>
                       <div style={{ fontSize: '0.7rem', opacity: 0.8 }} className={theme === 'islamic' ? 'text-white-50' : ''}>
                         Emerald &amp; Gold • Prayer Checklist included
@@ -468,11 +588,38 @@ export default function SettingsModal({
                 </div>
               </div>
 
+              {/* Consistency Insights Section */}
+              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
+                  <i className="bi bi-graph-up-arrow text-success fs-5" />
+                  Consistency Insights & Heatmap
+                  {!isUnlocked('consistency_insights') && <span className="badge bg-warning text-dark ms-auto">🔒 40 pts</span>}
+                </h6>
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem', lineHeight: '1.4' }}>
+                  Analyze weekly stats, peak consistency times, and view your logged hours on a 30-day calendar layout.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-success w-100 py-2 rounded-3 fw-bold small shadow-none d-flex align-items-center justify-content-center gap-2 text-white border-0"
+                  style={{ backgroundColor: '#25D366', transition: 'all 0.2s' }}
+                  onClick={() => {
+                    requestFeatureUnlock('consistency_insights', 'Consistency Insights', 40, () => {
+                      showAlert('Consistency Insights successfully unlocked!', 'success');
+                    });
+                  }}
+                  disabled={isUnlocked('consistency_insights')}
+                >
+                  <i className="bi bi-graph-up" />
+                  {!isUnlocked('consistency_insights') ? '🔒 Unlock Insights (40 pts)' : 'Unlocked (আনলক করা আছে)'}
+                </button>
+              </div>
+
               {/* Security Scan Section */}
               <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
                   <i className="bi bi-shield-lock-fill text-danger fs-5" />
                   Security Timing-Block Scan
+                  {!isUnlocked('security_scan') && <span className="badge bg-warning text-dark ms-auto">🔒 50 pts</span>}
                 </h6>
                 <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem', lineHeight: '1.4' }}>
                   Scan the UI structure for any previous timing blocks (Pending / Completed) missing tag closures.
@@ -482,15 +629,17 @@ export default function SettingsModal({
                   className="btn btn-danger w-100 py-2 rounded-3 fw-bold small shadow-none d-flex align-items-center justify-content-center gap-2 text-white border-0"
                   style={{ backgroundColor: '#DC3545', transition: 'all 0.2s' }}
                   onClick={() => {
-                    if (window.triggerManualSecurityScan) {
-                      window.triggerManualSecurityScan();
-                    } else {
-                      showAlert('Scan service starting...', 'success');
-                    }
+                    requestFeatureUnlock('security_scan', 'Security Scan', 50, () => {
+                      if (window.triggerManualSecurityScan) {
+                        window.triggerManualSecurityScan();
+                      } else {
+                        showAlert('Scan service starting...', 'success');
+                      }
+                    });
                   }}
                 >
                   <i className="bi bi-shield-fill-exclamation" />
-                  Scan Now (ম্যানুয়াল স্ক্যান)
+                  {!isUnlocked('security_scan') ? '🔒 Scan Now (50 pts)' : 'Scan Now (ম্যানুয়াল স্ক্যান)'}
                 </button>
               </div>
 
@@ -499,6 +648,7 @@ export default function SettingsModal({
                 <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
                   <i className="bi bi-file-pdf-fill text-danger fs-5" />
                   PDF Export (রিপোর্ট ডাউনলোড)
+                  {!isUnlocked('pdf_export') && <span className="badge bg-warning text-dark ms-auto">🔒 100 pts</span>}
                 </h6>
                 
                 {/* PDF Template Type */}
@@ -585,7 +735,7 @@ export default function SettingsModal({
                   ) : (
                     <>
                       <i className="bi bi-file-earmark-pdf-fill" />
-                      Download PDF (ডাউনলোড করুন)
+                      {!isUnlocked('pdf_export') ? '🔒 Unlock PDF Export (100 pts)' : 'Download PDF (ডাউনলোড করুন)'}
                     </>
                   )}
                 </button>
@@ -1111,10 +1261,15 @@ export default function SettingsModal({
                   <div className="col-6">
                     <button
                       className="btn btn-outline-secondary w-100 py-2 rounded-3 fw-bold small shadow-none"
-                      onClick={handleImportClick}
+                      onClick={() => {
+                        requestFeatureUnlock('import_json', 'Import JSON Data', 80, () => {
+                          handleImportClick();
+                        });
+                      }}
                       title="Upload JSON to restore reports"
                     >
-                      <i className="bi bi-upload me-1" />Import JSON
+                      <i className="bi bi-upload me-1" />
+                      {!isUnlocked('import_json') ? '🔒 Import JSON (80 pts)' : 'Import JSON'}
                     </button>
                     <input
                       type="file"
@@ -1125,6 +1280,26 @@ export default function SettingsModal({
                     />
                   </div>
                 </div>
+              </div>
+
+              {/* Browser Storage Management */}
+              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-1.5 d-flex align-items-center gap-2">
+                  <i className="bi bi-hdd-network-fill text-danger" />
+                  Browser Stored Data (অ্যাপ ক্যাশ ও মেমোরি)
+                </h6>
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.73rem', lineHeight: '1.4' }}>
+                  Deletes all cached files, local storage, session storage, and offline databases stored by the browser for this application only.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-outline-danger w-100 py-2 rounded-3 fw-bold small shadow-none d-flex align-items-center justify-content-center gap-2"
+                  onClick={() => setConfirmClearBrowserData(true)}
+                  disabled={confirmClearBrowserData}
+                >
+                  <i className="bi bi-eraser-fill" />
+                  Clear Browser App Data (ব্রাউজার ডেটা মুছুন)
+                </button>
               </div>
 
               {/* About App */}
@@ -1159,6 +1334,51 @@ export default function SettingsModal({
           </div>
         </div>
       </div>
+
+      {/* Feature Unlock Confirmation Modal */}
+      {unlockModal && (
+        <div 
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center px-3" 
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1150 }}
+        >
+          <div className="card border-0 shadow-lg text-center p-4 max-width-container bg-white rounded-4 overflow-hidden" style={{ maxWidth: '400px', width: '100%' }}>
+            <div className="fs-1 mb-2">🔒</div>
+            <h5 className="fw-bold text-dark mb-2">Unlock {unlockModal.name}?</h5>
+            <p className="text-secondary small mb-3">
+              Unlock <strong>{unlockModal.name}</strong> permanently for <strong className="text-success">{unlockModal.cost} pts</strong>?
+            </p>
+            <div className="p-2.5 bg-light rounded-3 border mb-3 d-flex align-items-center justify-content-between">
+              <span className="text-muted small fw-semibold">Your Balance:</span>
+              <span className="fw-bold text-success d-flex align-items-center gap-1">
+                🪙 {(pointsData?.points || 0).toLocaleString()} pts
+              </span>
+            </div>
+            {(pointsData?.points || 0) < unlockModal.cost && (
+              <div className="alert alert-warning py-1.5 px-2 small mb-3 border-0 rounded-3">
+                ⚠️ Insufficient points! You need {unlockModal.cost - (pointsData?.points || 0)} more points.
+              </div>
+            )}
+            <div className="d-flex gap-2">
+              <button
+                type="button"
+                className="btn btn-outline-secondary w-50 rounded-pill fw-bold py-2"
+                onClick={() => setUnlockModal(null)}
+                disabled={isUnlocking}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-success w-50 rounded-pill fw-bold py-2 shadow-sm"
+                disabled={(pointsData?.points || 0) < unlockModal.cost || isUnlocking}
+                onClick={handleConfirmFeatureUnlock}
+              >
+                {isUnlocking ? 'Unlocking...' : `Confirm (${unlockModal.cost} pts)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -4,7 +4,7 @@ import { formatFriendlyDate, getCurrentTimeString, getCurrentHourAndAMPM, getInt
 /**
  * Sticky Header — profile avatar opens ProfileModal, gear opens SettingsModal.
  */
-export default function Header({ selectedDate, reports = [], onOpenSettings, onOpenProfile, onOpenTrash, trashCount, currentUser, userPoints = 0, onOpenPoints }) {
+export default function Header({ selectedDate, reports = [], onOpenSettings, onOpenProfile, onOpenTrash, trashCount, currentUser, userPoints = 0, onOpenPoints, onOpenInsights }) {
   const [timeStr, setTimeStr] = useState(getCurrentTimeString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -207,6 +207,17 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
               )}
             </button>
   
+            {/* Consistency Insights Button */}
+            <button
+              type="button"
+              className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5"
+              onClick={onOpenInsights}
+              title="Consistency Insights & Calendar"
+              aria-label="Open Consistency Insights"
+            >
+              <i className="bi bi-bar-chart-line-fill fs-5" />
+            </button>
+
             {/* Settings Gear */}
             <button
               className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5"
