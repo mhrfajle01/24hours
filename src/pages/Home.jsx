@@ -178,7 +178,7 @@ export default function Home() {
   const handleResolveSecurityBlocks = async (resolutions) => {
     try {
       const batch = writeBatch(db);
-      Object.keys(resolutions).forEach((id) => {
+      for (const id of Object.keys(resolutions)) {
         const docRef = doc(db, 'reports', id);
         // Tag closing by updating data-timing-closed attribute logic (or report update)
         batch.update(docRef, {
@@ -186,7 +186,18 @@ export default function Home() {
           status: resolutions[id].status, // dynamic status selection (Completed or Missed)
           tag: resolutions[id].tag // marking with the selected tag category
         });
-      });
+
+        const reportObj = reports.find(r => r.id === id);
+        if (reportObj) {
+          await processReportPointsChange(
+            reportObj.status,
+            reportObj.report,
+            resolutions[id].status,
+            resolutions[id].report,
+            { ...reportObj, status: resolutions[id].status, report: resolutions[id].report, tag: resolutions[id].tag }
+          );
+        }
+      }
       await batch.commit();
       showToast('Timing blocks successfully closed and saved.', 'success');
       setSecurityInvalidBlocks([]);
@@ -649,8 +660,8 @@ export default function Home() {
   };
 
   const processReportPointsChange = async (oldStatus, oldReport, newStatus, newReport, reportObj) => {
-    const wasCompleted = oldStatus === 'Completed' || Boolean(oldReport);
-    const isNowCompleted = newStatus === 'Completed' || Boolean(newReport);
+    const wasCompleted = oldStatus ? (oldStatus === 'Completed') : Boolean(oldReport);
+    const isNowCompleted = newStatus ? (newStatus === 'Completed') : Boolean(newReport);
 
     const wasMissed = oldStatus === 'Missed';
     const isNowMissed = newStatus === 'Missed';
@@ -659,9 +670,14 @@ export default function Home() {
     const isNowPending = !isNowCompleted && !isNowMissed;
 
     const pts = calculateBlockPoints(reportObj);
+    const penalty = Math.max(5, Math.round(pts / 2));
 
     // Case 1: Switching TO Completed (Earn block points)
     if (!wasCompleted && isNowCompleted) {
+      if (wasMissed) {
+        // Refund missed penalty first
+        await updatePoints(penalty, `Refunded missed penalty (+${penalty} pts)`, 'earn');
+      }
       await updatePoints(pts, `Completed block (+${pts} pts)`, 'earn');
     }
     // Case 2: Switching FROM Completed TO Pending (Rollback earned points)
@@ -675,12 +691,10 @@ export default function Home() {
         await updatePoints(-pts, `Reverted Completed block (-${pts} pts)`, 'spend');
       }
       // Apply missed penalty (half of block points value, min 5 pts)
-      const penalty = Math.max(5, Math.round(pts / 2));
       await updatePoints(-penalty, `Missed block penalty (-${penalty} pts)`, 'spend');
     }
     // Case 4: Switching FROM Missed to Pending (Refund missed penalty)
     else if (wasMissed && isNowPending) {
-      const penalty = Math.max(5, Math.round(pts / 2));
       await updatePoints(penalty, `Refunded missed penalty (+${penalty} pts)`, 'earn');
     }
   };
@@ -697,7 +711,13 @@ export default function Home() {
       await processReportPointsChange(selectedReport.status, selectedReport.report, reportData.status, reportData.report, fullReportObj);
 
       // Check if all 24 slots completed for 50 pts bonus
-      if (reports.length >= 24 && reports.every(r => r.id === selectedReport.id ? (reportData.report || reportData.status === 'Completed') : (r.report || r.status === 'Completed'))) {
+      const isCompletedBlock = (r) => {
+        if (r.id === selectedReport.id) {
+          return reportData.status ? (reportData.status === 'Completed') : Boolean(reportData.report);
+        }
+        return r.status ? (r.status === 'Completed') : Boolean(r.report);
+      };
+      if (reports.length >= 24 && reports.every(isCompletedBlock)) {
         await updatePoints(50, `24-Hour Master Completion Bonus (${selectedDate})`, 'earn');
       }
 

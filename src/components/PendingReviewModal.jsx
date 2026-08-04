@@ -102,6 +102,39 @@ export default function PendingReviewModal({ isOpen, onClose, pendingReports, on
                   </p>
                 )}
 
+                {/* Batch Actions Selector */}
+                <div className="d-flex justify-content-between align-items-center mb-3 bg-white p-2.5 rounded-3 border">
+                  <span className="small fw-semibold text-secondary">Batch Actions / ব্যাচ অ্যাকশন:</span>
+                  <div className="d-flex gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-success rounded-pill px-3 py-1"
+                      style={{ fontSize: '0.75rem', fontWeight: '600' }}
+                      onClick={() => {
+                        const newStatuses = { ...updatedStatuses };
+                        pendingReports.forEach(r => { newStatuses[r.id] = 'Completed'; });
+                        setUpdatedStatuses(newStatuses);
+                      }}
+                    >
+                      <i className="bi bi-check-circle-fill me-1"></i>
+                      All Completed
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-danger rounded-pill px-3 py-1"
+                      style={{ fontSize: '0.75rem', fontWeight: '600' }}
+                      onClick={() => {
+                        const newStatuses = { ...updatedStatuses };
+                        pendingReports.forEach(r => { newStatuses[r.id] = 'Missed'; });
+                        setUpdatedStatuses(newStatuses);
+                      }}
+                    >
+                      <i className="bi bi-x-circle-fill me-1"></i>
+                      All Missed
+                    </button>
+                  </div>
+                </div>
+
                 <div className="d-flex flex-column gap-3">
                   {pendingReports.map((report) => {
                     const times = getIntervalTimes(report);

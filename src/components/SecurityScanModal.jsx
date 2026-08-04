@@ -102,6 +102,69 @@ export default function SecurityScanModal({ invalidBlocks, onResolve, dictionary
         </p>
 
         <form onSubmit={handleSubmit}>
+          {/* Batch Actions Selector */}
+          <div style={{
+            backgroundColor: '#313244',
+            padding: '10px 14px',
+            borderRadius: '8px',
+            marginBottom: '15px',
+            border: '1px solid #45475a',
+            fontSize: '13px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '8px'
+          }}>
+            <span style={{ color: '#cdd6f4', fontWeight: 'bold' }}>Batch Status:</span>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const newFormData = { ...formData };
+                  invalidBlocks.forEach(b => {
+                    newFormData[b.id] = { ...(newFormData[b.id] || {}), status: 'Completed' };
+                  });
+                  setFormData(newFormData);
+                }}
+                style={{
+                  backgroundColor: '#25D366',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                All Completed
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const newFormData = { ...formData };
+                  invalidBlocks.forEach(b => {
+                    newFormData[b.id] = { ...(newFormData[b.id] || {}), status: 'Missed' };
+                  });
+                  setFormData(newFormData);
+                }}
+                style={{
+                  backgroundColor: '#DC3545',
+                  border: 'none',
+                  color: '#fff',
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                All Missed
+              </button>
+            </div>
+          </div>
+
           <div style={{ maxHeight: '350px', overflowY: 'auto', marginBottom: '20px', paddingRight: '4px' }}>
             {invalidBlocks.map(b => {
               const currentEntry = formData[b.id] || { report: '', tag: '', status: 'Completed' };
