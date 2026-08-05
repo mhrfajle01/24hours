@@ -17,6 +17,7 @@ import PointsModal from '../components/PointsModal';
 import IslamicPage from './IslamicPage';
 import PomodoroModal from '../components/PomodoroModal';
 import InsightsModal from '../components/InsightsModal';
+import { PointsChangeOverlay, usePointsAnimation } from '../components/PointsAnimator';
 import { useFirestore } from '../hooks/useFirestore';
 import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, calculateBlockPoints } from '../utils/helpers';
 import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
@@ -87,6 +88,9 @@ export default function Home() {
     redeemPerk,
     unlockFeature,
   } = useFirestore(selectedDate, currentUser?.uid);
+
+  // ── Points Animation Hook ────────────────────────────────────────────────
+  const { lastDelta, lastMessage, showOverlay, dismissOverlay } = usePointsAnimation(pointsData);
 
   const finalDictionary = userDictionary && userDictionary.length > 0 ? userDictionary : defaultDictionary;
 
@@ -1418,6 +1422,14 @@ export default function Home() {
         onOpenPoints={handleOpenPoints}
         pointsData={pointsData}
         onUnlockFeature={unlockFeature}
+      />
+
+      {/* ── Points Change Overlay Banner ─────────────────────────────── */}
+      <PointsChangeOverlay
+        delta={lastDelta}
+        message={lastMessage}
+        show={showOverlay}
+        onDone={dismissOverlay}
       />
     </div>
   );

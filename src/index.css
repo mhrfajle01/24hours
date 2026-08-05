@@ -369,5 +369,399 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color: #064e3b;
 }
 
+/* ═══════════════════════════════════════════════════════════════════
+   Points Animation System
+   ═══════════════════════════════════════════════════════════════════ */
 
+/* ── Animated Counter Flash ───────────────────────────────────────── */
+.pts-animated-counter {
+  display: inline-block;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.pts-flash-up {
+  animation: ptsCounterFlashUp 1.2s ease-out forwards;
+}
+
+.pts-flash-down {
+  animation: ptsCounterFlashDown 1.2s ease-out forwards;
+}
+
+@keyframes ptsCounterFlashUp {
+  0%   { transform: scale(1); color: inherit; filter: brightness(1); }
+  15%  { transform: scale(1.35); color: #25D366; filter: brightness(1.3); text-shadow: 0 0 12px rgba(37, 211, 102, 0.5); }
+  40%  { transform: scale(1.1); }
+  60%  { transform: scale(1.15); color: #25D366; }
+  100% { transform: scale(1); color: inherit; filter: brightness(1); text-shadow: none; }
+}
+
+@keyframes ptsCounterFlashDown {
+  0%   { transform: scale(1); color: inherit; filter: brightness(1); }
+  15%  { transform: scale(0.85); color: #DC3545; filter: brightness(1.2); text-shadow: 0 0 12px rgba(220, 53, 69, 0.5); }
+  30%  { transform: scale(1.15) rotate(-2deg); }
+  50%  { transform: scale(0.95) rotate(1deg); color: #DC3545; }
+  100% { transform: scale(1) rotate(0); color: inherit; filter: brightness(1); text-shadow: none; }
+}
+
+/* ── Floating Points Badge ────────────────────────────────────────── */
+.pts-floating-badge {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  animation: ptsFloatUp 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.pts-float-positive {
+  color: #25D366;
+  text-shadow: 0 1px 4px rgba(37, 211, 102, 0.4);
+}
+
+.pts-float-negative {
+  color: #DC3545;
+  text-shadow: 0 1px 4px rgba(220, 53, 69, 0.4);
+}
+
+@keyframes ptsFloatUp {
+  0%   { opacity: 1; transform: translateY(0) scale(0.7); }
+  20%  { opacity: 1; transform: translateY(-10px) scale(1.2); }
+  100% { opacity: 0; transform: translateY(-40px) scale(0.9); }
+}
+
+/* ── Points Change Overlay Banner ─────────────────────────────────── */
+.pts-overlay-enter {
+  animation: ptsOverlaySlideIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.pts-overlay-exit {
+  animation: ptsOverlaySlideOut 0.6s ease-in forwards;
+}
+
+.pts-overlay-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 20px;
+  margin: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.pts-banner-earn {
+  background: linear-gradient(135deg, #064e3b 0%, #075E54 40%, #128C7E 100%);
+  box-shadow: 0 4px 24px rgba(37, 211, 102, 0.3), inset 0 -1px 0 rgba(255,255,255,0.1);
+}
+
+.pts-banner-spend {
+  background: linear-gradient(135deg, #7f1d1d 0%, #991b1b 40%, #b91c1c 100%);
+  box-shadow: 0 4px 24px rgba(220, 53, 69, 0.3), inset 0 -1px 0 rgba(255,255,255,0.1);
+}
+
+.pts-overlay-icon {
+  font-size: 1.5rem;
+  animation: ptsBounceIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both;
+}
+
+.pts-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.pts-overlay-delta {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #ffffff;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  animation: ptsTextReveal 0.5s ease-out 0.1s both;
+}
+
+.pts-overlay-message {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 500;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: ptsTextReveal 0.5s ease-out 0.2s both;
+}
+
+@keyframes ptsOverlaySlideIn {
+  0%   { transform: translateY(-100%); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes ptsOverlaySlideOut {
+  0%   { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(-100%); opacity: 0; }
+}
+
+@keyframes ptsBounceIn {
+  0%   { transform: scale(0); opacity: 0; }
+  50%  { transform: scale(1.3); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes ptsTextReveal {
+  0%   { opacity: 0; transform: translateX(-10px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+
+/* ── Sparkle Particles (earn overlay) ─────────────────────────────── */
+.pts-sparkles {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pts-sparkle {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fbbf24;
+  opacity: 0;
+  animation: ptsSparkle 1.4s ease-out calc(var(--sparkle-i) * 0.12s) forwards;
+}
+
+.pts-sparkle:nth-child(1) { top: 50%; left: 10%; }
+.pts-sparkle:nth-child(2) { top: 30%; left: 25%; background: #25D366; }
+.pts-sparkle:nth-child(3) { top: 60%; left: 45%; }
+.pts-sparkle:nth-child(4) { top: 20%; left: 65%; background: #ffffff; }
+.pts-sparkle:nth-child(5) { top: 70%; left: 80%; }
+.pts-sparkle:nth-child(6) { top: 40%; left: 90%; background: #25D366; }
+
+@keyframes ptsSparkle {
+  0%   { opacity: 0; transform: scale(0) translateY(0); }
+  30%  { opacity: 1; transform: scale(1.5) translateY(-8px); }
+  100% { opacity: 0; transform: scale(0.5) translateY(-30px); }
+}
+
+/* ── Points History List Staggered Entrance ───────────────────────── */
+.pts-history-item {
+  animation: ptsHistorySlideIn 0.35s ease-out both;
+}
+
+@keyframes ptsHistorySlideIn {
+  0%   { opacity: 0; transform: translateX(-12px) scale(0.97); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+/* ── Points Balance Pulse Ring (PointsModal) ──────────────────────── */
+.pts-balance-ring {
+  position: relative;
+}
+
+.pts-balance-ring::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(37, 211, 102, 0.3);
+  animation: ptsBalanceRing 3s infinite ease-in-out;
+  pointer-events: none;
+}
+
+@keyframes ptsBalanceRing {
+  0%, 100% { transform: scale(1); opacity: 0.3; }
+  50%      { transform: scale(1.1); opacity: 0.7; }
+}
+
+/* ── Coin Spin (header pill) ──────────────────────────────────────── */
+.pts-coin-spin {
+  display: inline-block;
+  animation: ptsCoinFlip 0.8s ease-in-out;
+}
+
+@keyframes ptsCoinFlip {
+  0%   { transform: rotateY(0deg) scale(1); }
+  25%  { transform: rotateY(180deg) scale(1.2); }
+  50%  { transform: rotateY(360deg) scale(1); }
+  75%  { transform: rotateY(540deg) scale(1.1); }
+  100% { transform: rotateY(720deg) scale(1); }
+}
+
+/* ── Header pill glow pulse on change with up/down translation ────── */
+.pts-pill-glow-up {
+  animation: ptsPillGlowGreen 1.5s ease-out forwards;
+}
+
+.pts-pill-glow-down {
+  animation: ptsPillGlowRed 1.5s ease-out forwards;
+}
+
+@keyframes ptsPillGlowGreen {
+  0%   { box-shadow: 0 0 0 0 rgba(37, 211, 102, 0); transform: translateY(0) scale(1); }
+  15%  { transform: translateY(-7px) scale(1.12); }
+  35%  { box-shadow: 0 0 14px 4px rgba(37, 211, 102, 0.6); transform: translateY(-3px) scale(1.05); }
+  100% { box-shadow: none; transform: translateY(0) scale(1); }
+}
+
+@keyframes ptsPillGlowRed {
+  0%   { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); transform: translateY(0) scale(1); }
+  15%  { transform: translateY(7px) scale(0.88); }
+  35%  { box-shadow: 0 0 14px 4px rgba(220, 53, 69, 0.6); transform: translateY(3px) scale(0.95); }
+  100% { box-shadow: none; transform: translateY(0) scale(1); }
+}
+
+/* ── Header Icon Animations (Hover + Tap) ────────────────────────── */
+
+/* ── Branding Logo Bubble Pulse ── */
+.pts-logo-container:hover .pts-logo-icon {
+  animation: ptsLogoBubbleAnim 1.8s ease-in-out;
+}
+.pts-logo-container:active .pts-logo-icon {
+  animation: ptsTapPulse 0.25s ease-out;
+}
+@keyframes ptsLogoBubbleAnim {
+  0%, 100% { transform: scale(1) translateY(0); }
+  50% { transform: scale(1.06) translateY(-1.5px); }
+}
+
+/* ── Cloud Status Synced Badge ── */
+.pts-status-container:hover .pts-status-icon {
+  animation: ptsCloudPulseAnim 2.0s ease-in-out;
+}
+.pts-status-container:active .pts-status-icon {
+  animation: ptsTapPulse 0.25s ease-out;
+}
+@keyframes ptsCloudPulseAnim {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(37, 211, 102, 0)); transform: scale(1); }
+  50% { filter: drop-shadow(0 0 4px rgba(37, 211, 102, 0.4)); transform: scale(1.04); }
+}
+
+/* ── Points Coin Spin ── */
+.pts-points-btn:hover .pts-points-coin {
+  animation: ptsCoinSpinAnim 1.6s ease-in-out;
+}
+.pts-points-btn:active .pts-points-coin {
+  animation: ptsTapSqueeze 0.2s ease-out;
+}
+@keyframes ptsCoinSpinAnim {
+  0% { transform: rotateY(0deg) scale(1); }
+  100% { transform: rotateY(360deg) scale(1); }
+}
+
+/* ── Points Text Shine ── */
+.pts-points-btn:hover .pts-points-counter {
+  animation: ptsTextShineAnim 2.0s ease-in-out;
+  display: inline-block;
+}
+.pts-points-btn:active .pts-points-counter {
+  animation: ptsTapSqueeze 0.2s ease-out;
+}
+@keyframes ptsTextShineAnim {
+  0%, 100% { transform: scale(1); text-shadow: none; }
+  50% { transform: scale(1.03); text-shadow: 0 0 6px rgba(255, 193, 7, 0.4); }
+}
+
+/* ── Profile Avatar Glow & Tilt ── */
+.pts-avatar-btn:hover .pts-avatar-img-container {
+  animation: ptsAvatarTiltAnim 2.0s ease-in-out;
+}
+.pts-avatar-btn:active .pts-avatar-img-container {
+  animation: ptsTapPulse 0.25s ease-out;
+}
+@keyframes ptsAvatarTiltAnim {
+  0%, 100% { transform: rotate(0deg) scale(1); box-shadow: 0 0 0 rgba(255,255,255,0); }
+  50% { transform: rotate(3.5deg) scale(1.04); box-shadow: 0 0 8px rgba(255,255,255,0.4); }
+}
+
+/* ── Trash Icon Lid Rattle ── */
+.pts-trash-btn:hover .pts-trash-icon {
+  animation: ptsTrashRattleAnim 1.8s ease-in-out;
+}
+.pts-trash-btn:active .pts-trash-icon {
+  animation: ptsTapSqueeze 0.2s ease-out;
+}
+@keyframes ptsTrashRattleAnim {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-3.5deg); }
+  75% { transform: rotate(3.5deg); }
+}
+
+.pts-trash-btn:hover .pts-trash-badge {
+  animation: ptsTrashBadgeAnim 1.8s ease-in-out;
+}
+@keyframes ptsTrashBadgeAnim {
+  0%, 100% { transform: translate(50%, -50%) scale(1); }
+  50% { transform: translate(50%, -50%) translateY(-2px) scale(1.08); }
+}
+
+/* ── Consistency Insights Column Grow ── */
+.pts-insights-btn:hover .pts-insights-icon {
+  animation: ptsInsightsGrowAnim 1.8s ease-in-out;
+}
+.pts-insights-btn:active .pts-insights-icon {
+  animation: ptsTapSqueeze 0.2s ease-out;
+}
+@keyframes ptsInsightsGrowAnim {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.12) scaleX(1.03); }
+}
+
+/* ── Settings Gear Twist & Catch ── */
+.pts-settings-btn:hover .pts-settings-icon {
+  animation: ptsGearTwistAnim 2.0s ease-in-out;
+}
+.pts-settings-btn:active .pts-settings-icon {
+  animation: ptsTapSqueeze 0.2s ease-out;
+}
+@keyframes ptsGearTwistAnim {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(45deg); }
+}
+
+/* ── Shared Tap Micro-Animations ─────────────────────────────────── */
+@keyframes ptsTapPulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.85); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ptsTapSqueeze {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.82); }
+  100% { transform: scale(1); }
+}
+
+/* ── Modal Entrance Animations ───────────────────────────────────── */
+.modal-entrance-backdrop {
+  animation: modalBackdropFadeIn 0.3s ease-out both;
+}
+
+@keyframes modalBackdropFadeIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.modal-entrance-content {
+  animation: modalContentSlideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes modalContentSlideUp {
+  0%   { opacity: 0; transform: translateY(40px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Fullscreen modal variant (slides from bottom) */
+.modal-entrance-fullscreen {
+  animation: modalFullscreenSlideUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes modalFullscreenSlideUp {
+  0%   { opacity: 0; transform: translateY(100%); }
+  100% { opacity: 1; transform: translateY(0); }
+}
 

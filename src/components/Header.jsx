@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { formatFriendlyDate, getCurrentTimeString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, getTodayDateString } from '../utils/helpers';
+import { AnimatedCounter, FloatingPointsBadge } from './PointsAnimator';
 
 /**
  * Sticky Header — profile avatar opens ProfileModal, gear opens SettingsModal.
@@ -8,6 +9,32 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
   const [timeStr, setTimeStr] = useState(getCurrentTimeString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Points animation state
+  const [pillGlowClass, setPillGlowClass] = useState('');
+  const [coinSpin, setCoinSpin] = useState(false);
+  const [floatDelta, setFloatDelta] = useState(0);
+  const [floatKey, setFloatKey] = useState(0);
+  const prevPointsRef = useRef(userPoints);
+
+  useEffect(() => {
+    const prev = prevPointsRef.current;
+    const delta = userPoints - prev;
+    if (delta !== 0 && prev !== 0) {
+      // Trigger glow
+      setPillGlowClass(delta > 0 ? 'pts-pill-glow-up' : 'pts-pill-glow-down');
+      setCoinSpin(true);
+      setFloatDelta(delta);
+      setFloatKey(k => k + 1);
+
+      const timer = setTimeout(() => {
+        setPillGlowClass('');
+        setCoinSpin(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+    prevPointsRef.current = userPoints;
+  }, [userPoints]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -97,8 +124,8 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
           
           {/* Left: Branding + Date */}
           <div className="d-flex align-items-center gap-2 overflow-hidden">
-            <h1 className="h5 m-0 fw-bold d-flex align-items-center gap-1.5 text-nowrap">
-              <i className="bi bi-chat-left-text-fill" style={{ color: '#25D366' }} />
+            <h1 className="h5 m-0 fw-bold d-flex align-items-center gap-1.5 text-nowrap pts-logo-container">
+              <i className="bi bi-chat-left-text-fill pts-logo-icon" style={{ color: '#25D366' }} />
               <span>HourLog</span>
             </h1>
             <div className="d-flex align-items-center gap-1">
@@ -111,11 +138,11 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
                 </span>
               ) : (
                 <span 
-                  className="badge bg-success-subtle text-success border border-success-subtle rounded-pill fs-xs px-2 py-0.5 d-none d-md-inline-flex align-items-center gap-1"
+                  className="badge bg-success-subtle text-success border border-success-subtle rounded-pill fs-xs px-2 py-0.5 d-none d-md-inline-flex align-items-center gap-1 pts-status-container"
                   style={{ opacity: 0.85 }}
                   title="Synced"
                 >
-                  <i className="bi bi-cloud-check-fill"></i> Synced
+                  <i className="bi bi-cloud-check-fill pts-status-icon"></i> Synced
                 </span>
               )}
               <span className="text-white-50 d-none d-sm-inline" style={{ fontSize: '0.78rem' }}>
@@ -136,31 +163,42 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
                 NOW: {displayTimeRange}
               </div>
             </div>
-  
             {/* Points Pill Button */}
             <button
               type="button"
-              className="btn btn-sm rounded-pill px-2 py-0.5 d-flex align-items-center gap-1 border border-warning-subtle shadow-sm hover-scale"
+              className={`btn btn-sm rounded-pill px-2 py-0.5 d-flex align-items-center gap-1 border border-warning-subtle shadow-sm hover-scale position-relative pts-points-btn ${pillGlowClass}`}
               onClick={onOpenPoints}
               title="Points & Rewards"
               style={{ backgroundColor: 'rgba(0,0,0,0.3)', fontSize: '0.8rem', lineHeight: '1.2' }}
             >
-              <span style={{ fontSize: '0.85rem' }}>🪙</span>
-              <span className="fw-bold text-warning">{(userPoints || 0).toLocaleString()}</span>
+              <span 
+                style={{ fontSize: '0.85rem', display: 'inline-block' }} 
+                className={`pts-points-coin ${coinSpin ? 'pts-coin-spin' : ''}`}
+              >
+                🪙
+              </span>
+              <span className="pts-points-counter" style={{ display: 'inline-block' }}>
+                <AnimatedCounter
+                  value={userPoints || 0}
+                  duration={900}
+                  className="fw-bold text-warning"
+                />
+              </span>
+              {floatKey > 0 && <FloatingPointsBadge key={floatKey} delta={floatDelta} />}
             </button>
   
             {/* Profile Avatar */}
             {currentUser && (
               <button
                 type="button"
-                className="btn p-0 border-0 bg-transparent hover-scale"
+                className="btn p-0 border-0 bg-transparent hover-scale pts-avatar-btn"
                 onClick={onOpenProfile}
                 title={`${currentUser.displayName || 'Profile'} — Edit Profile`}
                 aria-label="Open Profile"
                 style={{ outline: 'none', boxShadow: 'none' }}
               >
                 <div
-                  className="rounded-circle overflow-hidden d-flex align-items-center justify-content-center border border-2 border-white"
+                  className="rounded-circle overflow-hidden d-flex align-items-center justify-content-center border border-2 border-white pts-avatar-img-container"
                   style={{ width: '30px', height: '30px', minWidth: '30px', backgroundColor: '#128C7E' }}
                 >
                   {currentUser.photoURL ? (
@@ -184,16 +222,16 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
             {/* Trash Button */}
             <button
               type="button"
-              className="btn p-0 border-0 bg-transparent hover-scale position-relative text-white ms-1"
+              className="btn p-0 border-0 bg-transparent hover-scale position-relative text-white ms-1 pts-trash-btn"
               onClick={onOpenTrash}
               title="Trash"
               aria-label="Open Trash"
               style={{ outline: 'none', boxShadow: 'none' }}
             >
-              <i className="bi bi-trash3" style={{ fontSize: '1.1rem' }} />
+              <i className="bi bi-trash3 pts-trash-icon" style={{ fontSize: '1.1rem' }} />
               {trashCount > 0 && (
                 <span
-                  className="position-absolute top-0 start-100 translate-middle badge rounded-pill"
+                  className="position-absolute top-0 start-100 translate-middle badge rounded-pill pts-trash-badge"
                   style={{
                     backgroundColor: '#ef5350',
                     fontSize: '0.55rem',
@@ -210,22 +248,22 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
             {/* Consistency Insights Button */}
             <button
               type="button"
-              className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5"
+              className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5 pts-insights-btn"
               onClick={onOpenInsights}
               title="Consistency Insights & Calendar"
               aria-label="Open Consistency Insights"
             >
-              <i className="bi bi-bar-chart-line-fill fs-5" />
+              <i className="bi bi-bar-chart-line-fill fs-5 pts-insights-icon" />
             </button>
-
+ 
             {/* Settings Gear */}
             <button
-              className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5"
+              className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5 pts-settings-btn"
               onClick={onOpenSettings}
               title="Settings"
               aria-label="Settings"
             >
-              <i className="bi bi-gear-fill fs-5" />
+              <i className="bi bi-gear-fill fs-5 pts-settings-icon" />
             </button>
           </div>
         </div>

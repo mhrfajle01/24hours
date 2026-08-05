@@ -650,7 +650,7 @@ export const useFirestore = (selectedDate, uid) => {
   }, [uid]);
 
   /** Add or remove points with history record */
-  const updatePoints = async (amount, title, type = 'earn') => {
+  const updatePoints = async (amount, title, type = 'earn', extraFields = {}) => {
     if (!uid) return false;
     const ref = doc(db, 'points', uid);
     const snap = await getDoc(ref);
@@ -671,6 +671,7 @@ export const useFirestore = (selectedDate, uid) => {
       points: newPoints,
       history: newHistory,
       updatedAt: serverTimestamp(),
+      ...extraFields
     }, { merge: true });
 
     return true;
@@ -772,12 +773,11 @@ export const useFirestore = (selectedDate, uid) => {
     const today = getTodayDateString();
     const ref = doc(db, 'points', uid);
 
-    getDoc(ref).then((snap) => {
+    getDoc(ref).then(async (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         if (data.lastDailyCheckin !== today) {
-          updatePoints(20, `Daily Check-in (${today})`, 'earn');
-          setDoc(ref, { lastDailyCheckin: today }, { merge: true });
+          await updatePoints(20, `Daily Check-in (${today})`, 'earn', { lastDailyCheckin: today });
         }
       }
     });

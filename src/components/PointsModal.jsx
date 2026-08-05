@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getTodayDateString } from '../utils/helpers';
 
 export default function PointsModal({ show, onClose, pointsData, redeemPerk, showToast }) {
   const [activeTab, setActiveTab] = useState('shop'); // 'shop' | 'history' | 'rules'
@@ -182,7 +183,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                 {/* Perk 4: Mystery Loot Box */}
                 <div className="col-md-4">
                   {(() => {
-                    const todayStr = new Date().toISOString().slice(0, 10);
+                    const todayStr = getTodayDateString();
                     const opensToday = pointsData?.mysteryBoxOpens?.[todayStr] || 0;
                     const isLimitReached = opensToday >= 3;
 
