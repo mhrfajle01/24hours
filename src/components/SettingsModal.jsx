@@ -1,5 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { generatePDF } from '../utils/pdfGenerator';
+import { getIntervalTimes, formatTime12h } from '../utils/helpers';
+import { useSound, DEFAULT_SOUNDS } from '../contexts/SoundContext';
 import TagDropdown from './TagDropdown';
 
 /**
@@ -27,6 +29,7 @@ export default function SettingsModal({
   onOpenPoints,
 }) {
   const fileInputRef = useRef(null);
+  const { soundSettings, updateSoundSetting, playSound } = useSound();
 
   // Unlock modal confirmation state: null | { featureKey, name, cost, onSuccess }
   const [unlockModal, setUnlockModal] = useState(null);
@@ -73,6 +76,18 @@ export default function SettingsModal({
   // Custom confirm state for import
   const [pendingImport, setPendingImport] = useState(null); // null | { data, count }
 
+  useEffect(() => {
+    if (isOpen && (confirmClear || confirmClearBrowserData || pendingImport || alertBox.show)) {
+      const modalBody = document.getElementById('settingsModalBody');
+      if (modalBody) {
+        const timer = setTimeout(() => {
+          modalBody.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 100);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [isOpen, confirmClear, confirmClearBrowserData, pendingImport, alertBox.show]);
+
   if (!isOpen) return null;
 
   const showAlert = (message, type = 'success') => {
@@ -82,6 +97,10 @@ export default function SettingsModal({
 
   const handleConfirmClearBrowserData = async () => {
     setIsClearingBrowserData(true);
+    const modalBody = document.getElementById('settingsModalBody');
+    if (modalBody) {
+      modalBody.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     try {
       // 1. Clear LocalStorage and SessionStorage
       localStorage.clear();
@@ -169,12 +188,28 @@ export default function SettingsModal({
 
   const handleClearClick = () => {
     setConfirmClear(true);
+    const modalBody = document.getElementById('settingsModalBody');
+    if (modalBody) {
+      modalBody.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleClearBrowserDataClick = () => {
+    setConfirmClearBrowserData(true);
+    const modalBody = document.getElementById('settingsModalBody');
+    if (modalBody) {
+      modalBody.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const handleConfirmClear = async () => {
     setConfirmClear(false);
     try {
       await onClearData();
+      onClose();
+      setTimeout(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 100); // Give modal time to close
     } catch (err) {
       showAlert('Failed to clear data: ' + err.message, 'danger');
     }
@@ -229,6 +264,74 @@ export default function SettingsModal({
         setIsExportingPDF(false);
       }
     });
+  };
+
+  const generateBlueprintText = () => {
+    let totalCompleted = 0;
+    reports.forEach(r => {
+      if (r.status === 'Completed') totalCompleted++;
+    });
+
+    const completionRate = reports.length > 0 ? Math.round((totalCompleted / reports.length) * 100) : 0;
+
+    let text = `📅 *HourLog Blueprint* | ${selectedDate}\n`;
+    text += `🎯 Daily Goal: ${reports.length} hrs | 📈 Achieved: ${totalCompleted} hrs (${completionRate}%)\n\n`;
+
+    const sortedReports = [...reports].sort((a, b) => {
+      const timesA = getIntervalTimes(a);
+      const timesB = getIntervalTimes(b);
+      return timesA.startTime.localeCompare(timesB.startTime);
+    });
+
+    sortedReports.forEach(r => {
+      const isCompleted = r.status === 'Completed';
+      const isMissed = r.status === 'Missed';
+      const icon = isCompleted ? '✅' : (isMissed ? '❌' : '⏳');
+      
+      const times = getIntervalTimes(r);
+      const timeStr = `${formatTime12h(times.startTime)} - ${formatTime12h(times.endTime)}`;
+
+      text += `${icon} *${timeStr}*\n`;
+      text += `Plan: ${r.plan || 'No plan'}\n`;
+      if (r.status === 'Pending') {
+        text += `Status: Pending...\n`;
+      } else if (r.status === 'Missed') {
+        text += `Status: Missed\n`;
+      } else {
+        text += `Report: ${r.report || 'No report'}\n`;
+      }
+      text += `\n`;
+    });
+
+    return text.trim();
+  };
+
+  const handleCopyBlueprint = () => {
+    if (reports.length === 0) {
+      showAlert('No logs to copy for this date.', 'danger');
+      return;
+    }
+    try {
+      const blueprintText = generateBlueprintText();
+      navigator.clipboard.writeText(blueprintText);
+      showAlert('Blueprint copied to clipboard! 📋', 'success');
+    } catch (err) {
+      showAlert('Failed to copy: ' + err.message, 'danger');
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    if (reports.length === 0) {
+      showAlert('No logs to share for this date.', 'danger');
+      return;
+    }
+    try {
+      const blueprintText = generateBlueprintText();
+      const url = `https://wa.me/?text=${encodeURIComponent(blueprintText)}`;
+      window.open(url, '_blank');
+    } catch (err) {
+      showAlert('Failed to share: ' + err.message, 'danger');
+    }
   };
 
   // Suggestions Dictionary Operations
@@ -372,7 +475,7 @@ export default function SettingsModal({
             </div>
 
             {/* Body */}
-            <div className="modal-body p-4 bg-light overflow-y-auto" style={{ maxHeight: '78vh' }}>
+            <div id="settingsModalBody" className="modal-body p-4 bg-light overflow-y-auto" style={{ maxHeight: '78vh' }}>
 
               {/* Custom Alert Banner */}
               {alertBox.show && (
@@ -469,7 +572,10 @@ export default function SettingsModal({
                     <button
                       type="button"
                       className="btn btn-outline-secondary rounded-pill px-3 py-1 fw-bold small shadow-none"
-                      onClick={() => setConfirmClearBrowserData(false)}
+                      onClick={() => {
+                        setConfirmClearBrowserData(false);
+                        document.getElementById('settingsModalBody')?.scrollTo(0, 0);
+                      }}
                       disabled={isClearingBrowserData}
                     >
                       Cancel
@@ -477,6 +583,92 @@ export default function SettingsModal({
                   </div>
                 </div>
               )}
+
+              {/* Audio & Notifications */}
+              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
+                    <i className="bi bi-music-note-list" style={{ color: '#075E54' }} />
+                    Audio & Notifications
+                  </h6>
+                  <div className="form-check form-switch m-0">
+                    <input
+                      className="form-check-input shadow-none"
+                      type="checkbox"
+                      role="switch"
+                      checked={soundSettings.masterEnabled}
+                      onChange={(e) => updateSoundSetting('masterEnabled', e.target.checked)}
+                      id="masterSoundToggle"
+                      style={{ cursor: 'pointer' }}
+                    />
+                  </div>
+                </div>
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem' }}>Customize notification sounds with custom MP3/OGG URLs.</p>
+                
+                <div className="d-grid gap-3" style={{ opacity: soundSettings.masterEnabled ? 1 : 0.5, pointerEvents: soundSettings.masterEnabled ? 'auto' : 'none' }}>
+                  {Object.keys(DEFAULT_SOUNDS).map(key => {
+                    const currentUrl = soundSettings[key] || '';
+                    const isCustom = currentUrl && currentUrl !== DEFAULT_SOUNDS[key];
+                    const isValidCustomUrl = isCustom && (() => {
+                      try { const u = new URL(currentUrl); return u.protocol === 'http:' || u.protocol === 'https:'; } catch { return false; }
+                    })();
+                    return (
+                    <div key={key} className="d-flex flex-column gap-1">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <label className="text-dark small fw-bold text-capitalize m-0" style={{ fontSize: '0.75rem' }}>
+                          {key === 'success' ? '✅ Task Completed' : key === 'missed' ? '❌ Task Missed' : key === 'points' ? '🪙 Points Earned' : key === 'trash' ? '🗑️ Move to Trash' : '⏱️ Timer Alarm'}
+                          {isCustom && (
+                            <span style={{ fontSize: '0.6rem', marginLeft: 6, color: isValidCustomUrl ? '#28a745' : '#dc3545' }}>
+                              {isValidCustomUrl ? '● Custom' : '● Invalid URL'}
+                            </span>
+                          )}
+                        </label>
+                        <div className="d-flex gap-2">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-light border p-1 py-0 shadow-none hover-scale"
+                            title="Play/Test sound"
+                            onClick={() => playSound(key)}
+                          >
+                            ▶️
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-link text-danger p-0 shadow-none text-decoration-none"
+                            style={{ fontSize: '0.7rem' }}
+                            onClick={() => updateSoundSetting(key, DEFAULT_SOUNDS[key])}
+                          >
+                            Reset
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        type="url"
+                        className="form-control form-control-sm rounded-3 shadow-none border"
+                        style={{
+                          fontSize: '0.75rem',
+                          color: '#075E54',
+                          borderColor: isCustom ? (isValidCustomUrl ? '#28a745' : '#dc3545') : undefined,
+                        }}
+                        placeholder="Paste custom sound URL (MP3/OGG/WAV)..."
+                        defaultValue={currentUrl}
+                        onBlur={(e) => {
+                          const val = e.target.value.trim();
+                          if (val !== currentUrl) {
+                            updateSoundSetting(key, val || DEFAULT_SOUNDS[key]);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.target.blur();
+                          }
+                        }}
+                      />
+                    </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               {/* Theme Selector */}
               <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
@@ -744,6 +936,36 @@ export default function SettingsModal({
                     * Add hourly logs first to enable PDF export.
                   </div>
                 )}
+              </div>
+
+              {/* Share & Blueprint Section */}
+              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                  <i className="bi bi-share-fill text-primary fs-5" />
+                  Daily Blueprint & Sharing
+                </h6>
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem', lineHeight: '1.4' }}>
+                  Generate a clean text blueprint of your current day's plan and reports, perfect for sharing or keeping notes.
+                </p>
+                <div className="d-grid gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-outline-primary py-2 rounded-3 fw-bold small shadow-none d-flex align-items-center justify-content-center gap-2"
+                    onClick={handleCopyBlueprint}
+                  >
+                    <i className="bi bi-clipboard" />
+                    Copy Today's Blueprint
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-success py-2 rounded-3 fw-bold small shadow-none d-flex align-items-center justify-content-center gap-2 text-white border-0"
+                    style={{ backgroundColor: '#25D366' }}
+                    onClick={handleShareWhatsApp}
+                  >
+                    <i className="bi bi-whatsapp" />
+                    Share to WhatsApp
+                  </button>
+                </div>
               </div>
 
               {/* Suggestion Dictionary Editor */}
@@ -1294,7 +1516,7 @@ export default function SettingsModal({
                 <button
                   type="button"
                   className="btn btn-outline-danger w-100 py-2 rounded-3 fw-bold small shadow-none d-flex align-items-center justify-content-center gap-2"
-                  onClick={() => setConfirmClearBrowserData(true)}
+                  onClick={handleClearBrowserDataClick}
                   disabled={confirmClearBrowserData}
                 >
                   <i className="bi bi-eraser-fill" />

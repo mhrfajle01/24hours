@@ -19,18 +19,35 @@ export function AnimatedCounter({
   prefix = '',
   suffix = '',
   onDelta,
+  isInitial = false,
 }) {
   const [displayValue, setDisplayValue] = useState(value);
   const [flashClass, setFlashClass] = useState('');
   const prevValueRef = useRef(value);
   const rafRef = useRef(null);
+  const isFirstLoadRef = useRef(true);
 
   useEffect(() => {
+    if (isInitial) {
+      setDisplayValue(value);
+      prevValueRef.current = value;
+      return;
+    }
+
     const from = prevValueRef.current;
     const to = value;
     const delta = to - from;
 
     if (delta === 0) return;
+
+    // Skip the counting animation if it's the initial data load from 0
+    if (isFirstLoadRef.current && from === 0) {
+      setDisplayValue(to);
+      prevValueRef.current = to;
+      isFirstLoadRef.current = false;
+      return;
+    }
+    isFirstLoadRef.current = false;
 
     // Notify parent about the change direction
     if (onDelta) onDelta({ delta, direction: delta > 0 ? 'up' : 'down' });
@@ -188,7 +205,7 @@ export function usePointsAnimation(pointsData) {
   const prevPointsRef = useRef(null);
 
   useEffect(() => {
-    if (!pointsData) return;
+    if (!pointsData || pointsData.isInitial) return;
 
     const currentPoints = pointsData.points || 0;
     const history = pointsData.history || [];

@@ -5,7 +5,19 @@ import { AnimatedCounter, FloatingPointsBadge } from './PointsAnimator';
 /**
  * Sticky Header — profile avatar opens ProfileModal, gear opens SettingsModal.
  */
-export default function Header({ selectedDate, reports = [], onOpenSettings, onOpenProfile, onOpenTrash, trashCount, currentUser, userPoints = 0, onOpenPoints, onOpenInsights }) {
+export default function Header({
+  selectedDate,
+  reports = [],
+  onOpenSettings,
+  onOpenProfile,
+  onOpenTrash,
+  trashCount,
+  currentUser,
+  userPoints = 0,
+  isPointsInitial = false,
+  onOpenPoints,
+  onOpenInsights
+}) {
   const [timeStr, setTimeStr] = useState(getCurrentTimeString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -16,11 +28,23 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
   const [floatDelta, setFloatDelta] = useState(0);
   const [floatKey, setFloatKey] = useState(0);
   const prevPointsRef = useRef(userPoints);
+  const isFirstLoadRef = useRef(true);
 
   useEffect(() => {
+    if (isPointsInitial) {
+      prevPointsRef.current = userPoints;
+      return;
+    }
+
+    if (isFirstLoadRef.current) {
+      prevPointsRef.current = userPoints;
+      isFirstLoadRef.current = false;
+      return;
+    }
+
     const prev = prevPointsRef.current;
     const delta = userPoints - prev;
-    if (delta !== 0 && prev !== 0) {
+    if (delta !== 0) {
       // Trigger glow
       setPillGlowClass(delta > 0 ? 'pts-pill-glow-up' : 'pts-pill-glow-down');
       setCoinSpin(true);
@@ -34,7 +58,7 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
       return () => clearTimeout(timer);
     }
     prevPointsRef.current = userPoints;
-  }, [userPoints]);
+  }, [userPoints, isPointsInitial]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -123,10 +147,10 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
         <div className="d-flex align-items-center justify-content-between flex-nowrap gap-2" style={{ minHeight: '44px' }}>
           
           {/* Left: Branding + Date */}
-          <div className="d-flex align-items-center gap-2 overflow-hidden">
-            <h1 className="h5 m-0 fw-bold d-flex align-items-center gap-1.5 text-nowrap pts-logo-container">
+          <div className="d-flex align-items-center gap-1 py-1">
+            <h1 className="h5 m-0 fw-bold d-flex align-items-center gap-1 text-nowrap pts-logo-container hover-scale pulse-group-1">
               <i className="bi bi-chat-left-text-fill pts-logo-icon" style={{ color: '#25D366' }} />
-              <span>HourLog</span>
+              <span className="d-none d-sm-inline">HourLog</span>
             </h1>
             <div className="d-flex align-items-center gap-1">
               {!isOnline ? (
@@ -134,30 +158,47 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
                   className="badge bg-warning text-dark rounded-pill fs-xs px-2 py-0.5 fw-bold d-inline-flex align-items-center gap-1"
                   title="Working offline."
                 >
-                  <i className="bi bi-cloud-slash-fill"></i> <span className="d-none d-sm-inline">Offline</span>
+                  <i className="bi bi-cloud-slash-fill"></i> <span className="d-none d-md-inline">Offline</span>
                 </span>
               ) : (
                 <span 
-                  className="badge bg-success-subtle text-success border border-success-subtle rounded-pill fs-xs px-2 py-0.5 d-none d-md-inline-flex align-items-center gap-1 pts-status-container"
+                  className="badge bg-success-subtle text-success border border-success-subtle rounded-pill fs-xs px-2 py-0.5 d-none d-lg-inline-flex align-items-center gap-1 pts-status-container"
                   style={{ opacity: 0.85 }}
                   title="Synced"
                 >
                   <i className="bi bi-cloud-check-fill pts-status-icon"></i> Synced
                 </span>
               )}
-              <span className="text-white-50 d-none d-sm-inline" style={{ fontSize: '0.78rem' }}>
+              <span className="text-white-50 d-none d-md-inline" style={{ fontSize: '0.78rem' }}>
                 • {formatFriendlyDate(selectedDate)}
               </span>
             </div>
           </div>
    
           {/* Right: Points + Clock + Actions */}
-          <div className="d-flex align-items-center gap-1.5 flex-shrink-0 ms-auto">
+          <div className="d-flex align-items-center gap-1 flex-shrink-0 ms-auto">
    
             {/* Clock */}
             <div className="text-end me-1 text-nowrap" style={{ lineHeight: '1.2' }}>
-              <div className="fw-semibold" style={{ color: '#25D366', fontSize: '0.85rem' }}>
-                {timeStr}
+              <div className="fw-semibold hover-scale d-flex align-items-center justify-content-end gap-1" style={{ color: '#25D366', fontSize: '0.85rem' }}>
+                <div 
+                  className="header-live-dot" 
+                  style={{ width: '6px', height: '6px', backgroundColor: '#25D366' }}
+                />
+                <div className="char-wave-container d-inline-flex" style={{ minWidth: '70px', justifyContent: 'flex-end' }}>
+                  {timeStr.split('').map((char, index) => (
+                    <span 
+                      key={index}
+                      style={{ 
+                        animationDelay: `${index * 0.05}s`,
+                        width: char === ' ' ? '4px' : char === ':' ? '4px' : '8px', 
+                        textAlign: 'center' 
+                      }}
+                    >
+                      {char}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="d-none d-sm-block text-white-50" style={{ fontSize: '0.68rem' }}>
                 NOW: {displayTimeRange}
@@ -166,22 +207,23 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
             {/* Points Pill Button */}
             <button
               type="button"
-              className={`btn btn-sm rounded-pill px-2 py-0.5 d-flex align-items-center gap-1 border border-warning-subtle shadow-sm hover-scale position-relative pts-points-btn ${pillGlowClass}`}
+              className={`btn btn-sm rounded-pill px-2 py-0.5 d-flex align-items-center gap-1 border border-warning-subtle shadow-sm position-relative pts-points-btn hover-scale ${pillGlowClass}`}
               onClick={onOpenPoints}
               title="Points & Rewards"
               style={{ backgroundColor: 'rgba(0,0,0,0.3)', fontSize: '0.8rem', lineHeight: '1.2' }}
             >
               <span 
                 style={{ fontSize: '0.85rem', display: 'inline-block' }} 
-                className={`pts-points-coin ${coinSpin ? 'pts-coin-spin' : ''}`}
+                className={`pts-points-coin pulse-group-2 ${coinSpin ? 'pts-coin-spin' : ''}`}
               >
                 🪙
               </span>
-              <span className="pts-points-counter" style={{ display: 'inline-block' }}>
+              <span className="pts-points-counter pulse-group-2" style={{ display: 'inline-block' }}>
                 <AnimatedCounter
                   value={userPoints || 0}
                   duration={900}
                   className="fw-bold text-warning"
+                  isInitial={isPointsInitial}
                 />
               </span>
               {floatKey > 0 && <FloatingPointsBadge key={floatKey} delta={floatDelta} />}
@@ -191,7 +233,7 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
             {currentUser && (
               <button
                 type="button"
-                className="btn p-0 border-0 bg-transparent hover-scale pts-avatar-btn"
+                className="btn p-0 border-0 bg-transparent pts-avatar-btn hover-scale pulse-group-3"
                 onClick={onOpenProfile}
                 title={`${currentUser.displayName || 'Profile'} — Edit Profile`}
                 aria-label="Open Profile"
@@ -222,7 +264,7 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
             {/* Trash Button */}
             <button
               type="button"
-              className="btn p-0 border-0 bg-transparent hover-scale position-relative text-white ms-1 pts-trash-btn"
+              className="btn p-0 border-0 bg-transparent position-relative text-white ms-1 pts-trash-btn hover-scale pulse-group-3"
               onClick={onOpenTrash}
               title="Trash"
               aria-label="Open Trash"
@@ -248,17 +290,27 @@ export default function Header({ selectedDate, reports = [], onOpenSettings, onO
             {/* Consistency Insights Button */}
             <button
               type="button"
-              className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5 pts-insights-btn"
+              className="btn btn-link text-white p-1 border-0 shadow-none pts-insights-btn hover-scale pulse-group-4"
               onClick={onOpenInsights}
               title="Consistency Insights & Calendar"
               aria-label="Open Consistency Insights"
             >
               <i className="bi bi-bar-chart-line-fill fs-5 pts-insights-icon" />
             </button>
+            {/* Refresh Button */}
+            <button
+              type="button"
+              className="btn btn-link text-white p-1 border-0 shadow-none pts-refresh-btn hover-scale pulse-group-4"
+              onClick={() => window.location.reload()}
+              title="Refresh Page"
+              aria-label="Refresh Page"
+            >
+              <i className="bi bi-arrow-clockwise fs-5 pts-refresh-icon" />
+            </button>
  
             {/* Settings Gear */}
             <button
-              className="btn btn-link text-white p-0.5 border-0 shadow-none hover-scale ms-0.5 pts-settings-btn"
+              className="btn btn-link text-white p-1 border-0 shadow-none pts-settings-btn hover-scale pulse-group-4"
               onClick={onOpenSettings}
               title="Settings"
               aria-label="Settings"

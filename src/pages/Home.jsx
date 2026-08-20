@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSound } from '../contexts/SoundContext';
 import Header from '../components/Header';
 import Summary from '../components/Summary';
 import ConsistencyWidget from '../components/ConsistencyWidget';
@@ -47,6 +48,7 @@ import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
  *   CLEAR        { trashIds, date, restoredDocIds? }
  */
 export default function Home() {
+  const { playSound } = useSound();
   // ── Auth ────────────────────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -81,6 +83,7 @@ export default function Home() {
     dailyGoal,
     updateDailyGoal,
     heatmapData,
+    recentPlans,
     excuseDay,
     addStreakFreeze,
     pointsData,
@@ -131,6 +134,17 @@ export default function Home() {
 
   // ── Theme State ──────────────────────────────────────────────────────────
   const [theme, setTheme] = useState(localStorage.getItem('app-theme') || 'light');
+
+  // ── Scroll-to-Top State ──────────────────────────────────────────────────
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 300);
+    };
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   useEffect(() => {
     // If islamic theme is set in localStorage but not unlocked, fallback to light theme
@@ -683,6 +697,7 @@ export default function Home() {
         await updatePoints(penalty, `Refunded missed penalty (+${penalty} pts)`, 'earn');
       }
       await updatePoints(pts, `Completed block (+${pts} pts)`, 'earn');
+      playSound('points');
     }
     // Case 2: Switching FROM Completed TO Pending (Rollback earned points)
     else if (wasCompleted && isNowPending) {
@@ -696,6 +711,7 @@ export default function Home() {
       }
       // Apply missed penalty (half of block points value, min 5 pts)
       await updatePoints(-penalty, `Missed block penalty (-${penalty} pts)`, 'spend');
+      playSound('missed');
     }
     // Case 4: Switching FROM Missed to Pending (Refund missed penalty)
     else if (wasMissed && isNowPending) {
@@ -725,6 +741,7 @@ export default function Home() {
         await updatePoints(50, `24-Hour Master Completion Bonus (${selectedDate})`, 'earn');
       }
 
+      playSound('success');
       showToast('Saved Successfully', 'success');
       handleCloseModal();
     } catch (err) {
@@ -793,6 +810,7 @@ export default function Home() {
       if (!selectedReport) return;
       const { trashId, originalData } = await moveToTrash(selectedReport.id);
       pushUndo({ type: 'DELETE', trashId, originalData });
+      playSound('trash');
       showToast('Moved to Trash  •  Undo with Ctrl+Z', 'info');
       handleCloseModal();
     } catch (err) {
@@ -1003,6 +1021,7 @@ export default function Home() {
         onOpenPoints={handleOpenPoints}
         onOpenInsights={() => setIsInsightsOpen(true)}
         userPoints={pointsData?.points || 0}
+        isPointsInitial={pointsData?.isInitial}
         trashCount={trashItems.length}
         currentUser={currentUser}
       />
@@ -1208,6 +1227,7 @@ export default function Home() {
         onSave={handleSavePlan}
         report={selectedReport}
         dictionaryData={finalDictionary}
+        recentPlans={recentPlans}
       />
 
       <ReportModal
@@ -1431,6 +1451,27 @@ export default function Home() {
         show={showOverlay}
         onDone={dismissOverlay}
       />
+
+      {/* ── Scroll to Top Button ──────────────────────────────────────── */}
+      {showScrollTop && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="btn btn-primary rounded-circle shadow-lg position-fixed d-flex align-items-center justify-content-center animate-slide-up hover-scale"
+          style={{
+            bottom: '96px',
+            right: '24px',
+            width: '45px',
+            height: '45px',
+            zIndex: 1050,
+            backgroundColor: '#075E54',
+            borderColor: '#075E54'
+          }}
+          title="Scroll to Top"
+          aria-label="Scroll to Top"
+        >
+          <i className="bi bi-arrow-up text-white fs-5" />
+        </button>
+      )}
     </div>
   );
 }

@@ -21,7 +21,10 @@ import { sortReports, getDayHoursList, get24Hour, getIntervalTimes, timeToMinute
 const getDateNDaysAgo = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 /** Returns weekday name for a YYYY-MM-DD string */
@@ -382,7 +385,10 @@ export const useFirestore = (selectedDate, uid) => {
     let cur = new Date(fromDate + 'T00:00:00');
     while (true) {
       cur.setDate(cur.getDate() + 1);
-      const curStr = cur.toISOString().slice(0, 10);
+      const year = cur.getFullYear();
+      const month = String(cur.getMonth() + 1).padStart(2, '0');
+      const day = String(cur.getDate()).padStart(2, '0');
+      const curStr = `${year}-${month}-${day}`;
       if (curStr >= toDate) break;
       if (!excusedDays.includes(curStr)) missing.push(curStr);
     }
@@ -564,10 +570,12 @@ export const useFirestore = (selectedDate, uid) => {
 
   // ─── Heatmap Data (Last 30 Days) ──────────────────────────────────────
   const [heatmapData, setHeatmapData] = useState({});
+  const [recentPlans, setRecentPlans] = useState([]);
 
   useEffect(() => {
     if (!uid) {
       setHeatmapData({});
+      setRecentPlans([]);
       return;
     }
     const startDate = getDateNDaysAgo(30);
@@ -579,8 +587,14 @@ export const useFirestore = (selectedDate, uid) => {
       q,
       (snap) => {
         const counts = {};
+        const plansSet = new Set();
         snap.docs.forEach((d) => {
           const data = d.data();
+
+          if (data.plan && data.plan.trim()) {
+            plansSet.add(data.plan.trim());
+          }
+
           if (data.status === 'Completed' && data.date >= startDate) {
             const date = data.date;
             const times = getIntervalTimes(data);
@@ -598,6 +612,7 @@ export const useFirestore = (selectedDate, uid) => {
           counts[date] = Number(counts[date].toFixed(1));
         }
         setHeatmapData(counts);
+        setRecentPlans(Array.from(plansSet));
       },
       (err) => {
         console.error('Firestore heatmap data error:', err);
@@ -609,11 +624,11 @@ export const useFirestore = (selectedDate, uid) => {
 // Duplicate daily goal block removed – keep the earlier declaration above
 
   // ─── Points System & Feature Unlocks ──────────────────────────────
-  const [pointsData, setPointsData] = useState({ points: 0, history: [], unlockedFeatures: {}, mysteryBoxOpens: {} });
+  const [pointsData, setPointsData] = useState({ points: 0, history: [], unlockedFeatures: {}, mysteryBoxOpens: {}, isInitial: true });
 
   useEffect(() => {
     if (!uid) {
-      setPointsData({ points: 0, history: [], unlockedFeatures: {}, mysteryBoxOpens: {} });
+      setPointsData({ points: 0, history: [], unlockedFeatures: {}, mysteryBoxOpens: {}, isInitial: true });
       return;
     }
     const ref = doc(db, 'points', uid);
@@ -625,6 +640,7 @@ export const useFirestore = (selectedDate, uid) => {
           history: data.history || [],
           unlockedFeatures: data.unlockedFeatures || {},
           mysteryBoxOpens: data.mysteryBoxOpens || {},
+          isInitial: false,
         });
       } else {
         // Initial setup for new/existing user without points doc
@@ -642,7 +658,7 @@ export const useFirestore = (selectedDate, uid) => {
           lastDailyCheckin: getTodayDateString()
         };
         setDoc(ref, { ...initPoints, updatedAt: serverTimestamp() });
-        setPointsData({ points: 20, history: initPoints.history, unlockedFeatures: {}, mysteryBoxOpens: {} });
+        setPointsData({ points: 20, history: initPoints.history, unlockedFeatures: {}, mysteryBoxOpens: {}, isInitial: false });
       }
     });
 
@@ -812,6 +828,7 @@ export const useFirestore = (selectedDate, uid) => {
     dailyGoal,
     updateDailyGoal,
     heatmapData,
+    recentPlans,
     excuseDay,
     addStreakFreeze,
     // Points System

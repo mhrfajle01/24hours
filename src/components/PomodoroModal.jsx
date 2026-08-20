@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { getIntervalTimes, timeToMinutes } from '../utils/helpers';
+import { useSound } from '../contexts/SoundContext';
 
 /**
  * Sound synthesizer using Web Audio API (completely self-contained, offline-ready).
@@ -53,6 +54,8 @@ export default function PomodoroModal({
   onUnlockFeature
 }) {
   if (!isOpen) return null;
+
+  const { playSound } = useSound();
 
   // Block point purchase logic
   const getBlockDurationMin = () => {
@@ -197,6 +200,7 @@ export default function PomodoroModal({
     setIsActive(false);
     if (soundEnabled) {
       playAudioSound('alarm');
+      playSound('timer');
     }
 
     if (phase === 'focus') {

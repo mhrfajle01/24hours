@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import SuggestionHelper from './SuggestionHelper';
 import { getIntervalTimes, timeToMinutes, normalizeTimeTo24h } from '../utils/helpers';
 
@@ -6,7 +6,7 @@ import { getIntervalTimes, timeToMinutes, normalizeTimeTo24h } from '../utils/he
  * PlanningModal handles creating a new plan hour slot or editing an existing plan.
  * Fields: Start Time, End Time, Planning text.
  */
-export default function PlanningModal({ isOpen, onClose, onSave, report, dictionaryData }) {
+export default function PlanningModal({ isOpen, onClose, onSave, report, dictionaryData, recentPlans = [] }) {
   const [startTime, setStartTime] = useState('08:00');
   const [endTime, setEndTime] = useState('09:00');
   const [plan, setPlan] = useState('');
@@ -54,6 +54,17 @@ export default function PlanningModal({ isOpen, onClose, onSave, report, diction
       textarea.selectionStart = textarea.selectionEnd = newCursorPos;
     }, 50);
   };
+
+  const matchedRecentPlans = useMemo(() => {
+    const queryStr = plan.trim().toLowerCase();
+    if (!queryStr || queryStr.length < 2 || !recentPlans) return [];
+    return recentPlans
+      .filter((prevPlan) => {
+        const cleanedPrev = prevPlan.trim();
+        return cleanedPrev.toLowerCase().includes(queryStr) && cleanedPrev.toLowerCase() !== queryStr;
+      })
+      .slice(0, 3);
+  }, [plan, recentPlans]);
 
   if (!isOpen) return null;
 
@@ -188,6 +199,31 @@ export default function PlanningModal({ isOpen, onClose, onSave, report, diction
                   <div className="form-text text-muted mb-2" style={{ fontSize: '0.75rem' }}>
                     Describe your tasks or objectives for this hour slot.
                   </div>
+
+                  {/* Recent Plans Suggestions */}
+                  {matchedRecentPlans.length > 0 && (
+                    <div className="animate-fade-in mt-2 p-2.5 rounded-3 border bg-warning bg-opacity-10 text-dark" style={{ fontSize: '0.82rem', borderColor: '#ffeeba' }}>
+                      <div className="text-warning-emphasis small fw-bold mb-2 d-flex align-items-center gap-1" style={{ fontSize: '0.8rem', color: '#856404' }}>
+                        <i className="bi bi-clock-history"></i>
+                        Recently Planned / পূর্বে করা একই পরিকল্পনা:
+                      </div>
+                      <div className="d-flex flex-column gap-1.5">
+                        {matchedRecentPlans.map((prevPlan, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            className="btn btn-sm btn-light text-start border shadow-xs py-2 px-2.5 rounded-3 text-secondary text-truncate hover-scale"
+                            style={{ fontSize: '0.8rem', backgroundColor: '#fff', border: '1px solid #e3e6f0' }}
+                            onClick={() => setPlan(prevPlan)}
+                            title="Click to apply this plan"
+                          >
+                            <i className="bi bi-arrow-return-right me-1.5 text-warning" />
+                            {prevPlan}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Suggestion Helper */}
                   <SuggestionHelper 
