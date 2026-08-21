@@ -19,6 +19,7 @@ export default function InsightsModal({
   onOpenPoints,
   pointsData,
   onUnlockFeature,
+  onOpenJournal,
 }) {
   if (!isOpen) return null;
 
@@ -521,6 +522,12 @@ export default function InsightsModal({
                                 ? '2px solid #25D366' 
                                 : '1px solid rgba(0,0,0,0.06)',
                             outline: 'none',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => {
+                            if (onOpenJournal) {
+                              onOpenJournal(day.dateStr);
+                            }
                           }}
                           onMouseEnter={() => setHoveredDay(day.dateStr)}
                           onMouseLeave={() => setHoveredDay(null)}
@@ -667,6 +674,75 @@ export default function InsightsModal({
                         </button>
                       )
                     )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Daily Journaling CTA ─────────────────────── */}
+              <div className="mb-3">
+                <h6 className="text-white fw-bold small mb-2 text-uppercase d-flex align-items-center gap-1" style={{ fontSize: '0.75rem', letterSpacing: '0.8px' }}>
+                  <span>📓</span> Daily Journaling
+                </h6>
+                <div 
+                  className="p-3 rounded-4"
+                  style={{ 
+                    background: 'linear-gradient(135deg, rgba(129, 140, 248, 0.15) 0%, rgba(99, 102, 241, 0.08) 100%)',
+                    border: '1px solid rgba(129, 140, 248, 0.2)',
+                    cursor: 'pointer',
+                    transition: 'all 0.25s ease',
+                  }}
+                  onClick={() => {
+                    if (onOpenJournal) onOpenJournal();
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 4px 20px rgba(129, 140, 248, 0.2)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  <div className="d-flex align-items-center justify-content-between gap-3">
+                    <div className="d-flex align-items-center gap-3">
+                      <div 
+                        className="d-flex align-items-center justify-content-center rounded-circle flex-shrink-0"
+                        style={{ 
+                          width: '48px', height: '48px',
+                          background: 'linear-gradient(135deg, #818cf8, #6366f1)',
+                          boxShadow: '0 3px 12px rgba(99, 102, 241, 0.35)',
+                          fontSize: '1.3rem',
+                        }}
+                      >
+                        📓
+                      </div>
+                      <div>
+                        <div className="fw-bold text-white" style={{ fontSize: '0.95rem' }}>
+                          Professional Journal
+                        </div>
+                        <div className="text-white-50" style={{ fontSize: '0.75rem', lineHeight: 1.4 }}>
+                          Write daily reflections, track moods, use writing prompts, and build a journaling streak with ambient sounds.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <button
+                        className="btn btn-sm fw-bold rounded-pill px-3 py-2 hover-scale transition-all d-flex align-items-center gap-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onOpenJournal) onOpenJournal();
+                        }}
+                        style={{ 
+                          fontSize: '0.8rem',
+                          background: 'linear-gradient(135deg, #818cf8, #6366f1)',
+                          border: 'none',
+                          color: '#fff',
+                          boxShadow: '0 2px 10px rgba(99, 102, 241, 0.3)',
+                        }}
+                      >
+                        <i className="bi bi-pencil-square" /> Open Journal
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

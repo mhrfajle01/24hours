@@ -16,6 +16,7 @@ import SecurityScanModal from '../components/SecurityScanModal';
 import PrayerChecklist from '../components/PrayerChecklist';
 import PointsModal from '../components/PointsModal';
 import IslamicPage from './IslamicPage';
+import JournalPage from './JournalPage';
 import PomodoroModal from '../components/PomodoroModal';
 import InsightsModal from '../components/InsightsModal';
 import { PointsChangeOverlay, usePointsAnimation } from '../components/PointsAnimator';
@@ -108,6 +109,10 @@ export default function Home() {
 
   // ── Insights Modal State ────────────────────────────────────────────────
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
+
+  // ── Journal Page State ──────────────────────────────────────────────────
+  const [isJournalOpen, setIsJournalOpen] = useState(false);
+  const [journalInitialDate, setJournalInitialDate] = useState(null);
 
   // ── Undo / Redo ──────────────────────────────────────────────────────────
   const [undoStack, setUndoStack] = useState([]);
@@ -1006,6 +1011,21 @@ export default function Home() {
     );
   }
 
+  // ── Journal Page: Full separate page ──────────────────────────────────
+  if (isJournalOpen) {
+    return (
+      <JournalPage
+        key={journalInitialDate || 'today'}
+        currentUser={currentUser}
+        initialDate={journalInitialDate}
+        onBack={() => {
+          setIsJournalOpen(false);
+          setJournalInitialDate(null);
+        }}
+      />
+    );
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -1442,6 +1462,11 @@ export default function Home() {
         onOpenPoints={handleOpenPoints}
         pointsData={pointsData}
         onUnlockFeature={unlockFeature}
+        onOpenJournal={(date) => {
+          setJournalInitialDate(date || getTodayDateString());
+          setIsInsightsOpen(false);
+          setIsJournalOpen(true);
+        }}
       />
 
       {/* ── Points Change Overlay Banner ─────────────────────────────── */}
