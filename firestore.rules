@@ -29,8 +29,10 @@ service cloud.firestore {
     }
 
     // Rules for user streaks tracking
-    match /streaks/{userId} {
-      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    match /streaks/{streakId} {
+      allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
     }
 
     // Rules for user daily goals

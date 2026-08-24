@@ -17,6 +17,7 @@ import PrayerChecklist from '../components/PrayerChecklist';
 import PointsModal from '../components/PointsModal';
 import IslamicPage from './IslamicPage';
 import JournalPage from './JournalPage';
+import StreaksPage from './StreaksPage';
 import PomodoroModal from '../components/PomodoroModal';
 import InsightsModal from '../components/InsightsModal';
 import { PointsChangeOverlay, usePointsAnimation } from '../components/PointsAnimator';
@@ -113,6 +114,9 @@ export default function Home() {
   // ── Journal Page State ──────────────────────────────────────────────────
   const [isJournalOpen, setIsJournalOpen] = useState(false);
   const [journalInitialDate, setJournalInitialDate] = useState(null);
+
+  // ── Streaks Page State ─────────────────────────────────────────────────
+  const [isStreaksOpen, setIsStreaksOpen] = useState(false);
 
   // ── Undo / Redo ──────────────────────────────────────────────────────────
   const [undoStack, setUndoStack] = useState([]);
@@ -1026,6 +1030,16 @@ export default function Home() {
     );
   }
 
+  // ── Streaks Page: Full separate page ──────────────────────────────────
+  if (isStreaksOpen) {
+    return (
+      <StreaksPage
+        currentUser={currentUser}
+        onBack={() => setIsStreaksOpen(false)}
+      />
+    );
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -1159,6 +1173,26 @@ export default function Home() {
       </main>
 
       {/* ── Floating Action Buttons ─────────────────────────────────────── */}
+
+      {/* Streaks FAB */}
+      <button
+        className="rounded-circle shadow-lg text-white border-0 hover-scale d-flex align-items-center justify-content-center"
+        style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '24px',
+          width: '50px',
+          height: '50px',
+          background: 'linear-gradient(135deg, #ff6b35, #ff8c42)',
+          zIndex: 1000,
+          fontSize: '1.4rem',
+        }}
+        onClick={() => setIsStreaksOpen(true)}
+        title="Streak Tracker"
+        aria-label="Open Streak Tracker"
+      >
+        🔥
+      </button>
 
       {/* Add Plan FAB */}
       <button
