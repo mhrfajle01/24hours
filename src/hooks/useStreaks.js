@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
-  collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDoc
+  collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDoc, setDoc
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 
@@ -129,6 +129,7 @@ export const useStreaks = (uid) => {
     
     const newBestStreak = Math.max(streak.bestStreak || 0, currentStreakLength);
     const today = new Date().toISOString().split('T')[0];
+    const penalty = 100 + (currentStreakLength * 20);
     
     const newRelapse = {
       date: today,
@@ -151,6 +152,24 @@ export const useStreaks = (uid) => {
       milestones: resetMilestones,
       updatedAt: serverTimestamp(),
     });
+
+    if (currentStreakLength > 0) {
+      const pointsRef = doc(db, 'points', uid);
+      const pointsSnap = await getDoc(pointsRef);
+      const pointsData = pointsSnap.exists() ? pointsSnap.data() : { points: 0, history: [] };
+      const penaltyRecord = {
+        id: `pts_${Date.now()}`,
+        title: `💔 Habit Streak Relapse Penalty (${currentStreakLength} days lost, -${penalty} pts)`,
+        amount: penalty,
+        date: new Date().toISOString(),
+        type: 'spend',
+      };
+      await setDoc(pointsRef, {
+        points: Math.max(0, (pointsData.points || 0) - penalty),
+        history: [penaltyRecord, ...(pointsData.history || [])].slice(0, 50),
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
   };
 
   return {

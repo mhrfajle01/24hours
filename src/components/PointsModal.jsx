@@ -1,17 +1,25 @@
-import React, { useState } from 'react';
-import { getTodayDateString } from '../utils/helpers';
+import React, { useState, useEffect } from 'react';
+import { getTodayDateString, isFeatureActive, getFeatureTimeRemaining } from '../utils/helpers';
 
 export default function PointsModal({ show, onClose, pointsData, redeemPerk, showToast }) {
   const [activeTab, setActiveTab] = useState('shop'); // 'shop' | 'history' | 'rules'
   const [loadingPerk, setLoadingPerk] = useState(null);
+  const [timeNow, setTimeNow] = useState(Date.now());
 
   // Mystery Box Animation States
   const [isOpeningBox, setIsOpeningBox] = useState(false);
   const [boxReward, setBoxReward] = useState(null); // { wonAmount, tier } | null
 
+  useEffect(() => {
+    const interval = setInterval(() => setTimeNow(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   if (!show) return null;
 
   const { points = 0, history = [] } = pointsData || {};
+  const today = getTodayDateString();
+  const dailyPurchases = pointsData?.dailyPurchases?.[today] || {};
 
   const handleRedeem = async (perkType, cost, payload = {}) => {
     try {
@@ -32,13 +40,13 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
       setIsOpeningBox(true);
       setBoxReward(null);
       // Call redeem perk which handles deduction and prize calculation
-      const res = await redeemPerk('MYSTERY_BOX', 50);
+      const res = await redeemPerk('MYSTERY_BOX', 500);
 
-      // Play 1.2s shaking animation before revealing reward
+      // Reveal the reward shortly after the result is available so feedback feels immediate.
       setTimeout(() => {
         setIsOpeningBox(false);
         setBoxReward(res);
-      }, 1200);
+      }, 350);
 
     } catch (err) {
       setIsOpeningBox(false);
@@ -81,7 +89,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                 className={`btn btn-sm ${activeTab === 'history' ? 'btn-success' : 'btn-outline-secondary'}`}
                 onClick={() => setActiveTab('history')}
               >
-                {!(pointsData?.unlockedFeatures?.history) ? '🔒 📜 History (30 pts)' : '📜 History'}
+                {!isFeatureActive(pointsData, 'history') ? '🔒 📜 History (350 pts · 7 days)' : '📜 History'}
               </button>
               <button 
                 className={`btn btn-sm ${activeTab === 'rules' ? 'btn-success' : 'btn-outline-secondary'}`}
@@ -107,13 +115,13 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       </div>
                     </div>
                     <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
-                      <span className="fw-bold text-success">50 pts</span>
+                      <span className="fw-bold text-success">300 pts · Daily</span>
                       <button 
                         className="btn btn-sm btn-outline-success rounded-pill px-3"
-                        disabled={points < 50 || loadingPerk === 'STREAK_FREEZE'}
-                        onClick={() => handleRedeem('STREAK_FREEZE', 50)}
+                        disabled={points < 300 || dailyPurchases.streakFreeze >= 1 || loadingPerk === 'STREAK_FREEZE'}
+                        onClick={() => handleRedeem('STREAK_FREEZE', 300)}
                       >
-                        {loadingPerk === 'STREAK_FREEZE' ? 'Redeeming...' : 'Redeem'}
+                        {loadingPerk === 'STREAK_FREEZE' ? 'Redeeming...' : dailyPurchases.streakFreeze >= 1 ? 'Purchased Today' : 'Redeem'}
                       </button>
                     </div>
                   </div>
@@ -130,18 +138,18 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       </div>
                     </div>
                     <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
-                      <span className="fw-bold text-success">50 pts</span>
+                      <span className="fw-bold text-success">400 pts · Daily</span>
                       <button 
                         className="btn btn-sm btn-outline-success rounded-pill px-3"
-                        disabled={points < 50 || loadingPerk === 'EXCUSE_DAY'}
+                        disabled={points < 400 || dailyPurchases.excuseDay >= 1 || loadingPerk === 'EXCUSE_DAY'}
                         onClick={() => {
                           const d = new Date();
                           d.setDate(d.getDate() - 1);
                           const yesterdayStr = d.toISOString().slice(0, 10);
-                          handleRedeem('EXCUSE_DAY', 50, { date: yesterdayStr });
+                          handleRedeem('EXCUSE_DAY', 400, { date: yesterdayStr });
                         }}
                       >
-                        {loadingPerk === 'EXCUSE_DAY' ? 'Redeeming...' : 'Excuse Day'}
+                        {loadingPerk === 'EXCUSE_DAY' ? 'Redeeming...' : dailyPurchases.excuseDay >= 1 ? 'Purchased Today' : 'Excuse Day'}
                       </button>
                     </div>
                   </div>
@@ -155,18 +163,23 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       <div>
                         <h6 className="fw-bold mb-1">Consistency Insights</h6>
                         <small className="text-muted" style={{ fontSize: '0.78rem' }}>Unlock the 30-day consistency calendar & weekly metrics.</small>
+                        {pointsData?.unlockedFeatures?.consistency_insights && (
+                          <small className="text-primary fw-semibold d-block mt-1">
+                            {getFeatureTimeRemaining(pointsData, 'consistency_insights', timeNow)}
+                          </small>
+                        )}
                       </div>
                     </div>
                     <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
-                      <span className="fw-bold text-success">40 pts</span>
+                      <span className="fw-bold text-success">500 pts · 7 days</span>
                       <button 
                         className="btn btn-sm btn-outline-success rounded-pill px-3"
-                        disabled={points < 40 || loadingPerk === 'UNLOCK_FEATURE' || !!pointsData?.unlockedFeatures?.consistency_insights}
+                        disabled={points < 500 || loadingPerk === 'UNLOCK_FEATURE' || isFeatureActive(pointsData, 'consistency_insights')}
                         onClick={async () => {
                           try {
                             setLoadingPerk('UNLOCK_FEATURE');
-                            await redeemPerk('UNLOCK_FEATURE', 40, { featureKey: 'consistency_insights', featureName: 'Consistency Insights' });
-                            showToast('Successfully unlocked Consistency Insights! (-40 pts)', 'success');
+                            await redeemPerk('UNLOCK_FEATURE', 500, { featureKey: 'consistency_insights', featureName: 'Consistency Insights' });
+                            showToast('Consistency Insights unlocked for 7 days! (-500 pts)', 'success');
                           } catch (err) {
                             showToast(err.message || 'Failed to unlock', 'danger');
                           } finally {
@@ -174,7 +187,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                           }
                         }}
                       >
-                        {!!pointsData?.unlockedFeatures?.consistency_insights ? 'Unlocked' : 'Unlock'}
+                        {isFeatureActive(pointsData, 'consistency_insights') ? 'Active' : 'Unlock 7 Days'}
                       </button>
                     </div>
                   </div>
@@ -196,19 +209,19 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                           <span className="fs-1 animate-pulse">🎁</span>
                           <div>
                             <h6 className="fw-bold mb-1 text-dark">Mystery Box</h6>
-                            <small className="text-dark-50" style={{ fontSize: '0.78rem' }}>Win <strong>20 to 200 Points</strong> instantly!</small>
+                            <small className="text-dark-50" style={{ fontSize: '0.78rem' }}>Win <strong>250 to 1,200 Points</strong> instantly!</small>
                           </div>
                         </div>
                         <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top border-warning-subtle">
                           <div>
-                            <span className="fw-bold text-warning-emphasis d-block">50 pts</span>
+                            <span className="fw-bold text-warning-emphasis d-block">500 pts / use</span>
                             <small className="text-muted" style={{ fontSize: '0.65rem' }}>
                               {isLimitReached ? 'Daily limit (3/3) reached' : `Opened ${opensToday}/3 times`}
                             </small>
                           </div>
                           <button 
                             className="btn btn-sm btn-warning text-dark fw-bold rounded-pill px-3 shadow-sm hover-scale"
-                            disabled={points < 50 || isOpeningBox || loadingPerk === 'MYSTERY_BOX' || isLimitReached}
+                            disabled={points < 500 || isOpeningBox || loadingPerk === 'MYSTERY_BOX' || isLimitReached}
                             onClick={handleOpenMysteryBox}
                           >
                             {isOpeningBox ? 'Opening...' : isLimitReached ? 'Limit Reached' : 'Open Box'}
@@ -223,19 +236,24 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
 
             {activeTab === 'history' && (
               <div>
-                {!(pointsData?.unlockedFeatures?.history) ? (
+                {!isFeatureActive(pointsData, 'history') ? (
                   <div className="text-center py-4 bg-light rounded-3 border p-4">
                     <div className="fs-1 mb-2">🔒</div>
                     <h5 className="fw-bold text-dark mb-1">History Locked</h5>
+                    {pointsData?.unlockedFeatures?.history && (
+                      <p className="text-danger small fw-semibold mb-3">
+                        {getFeatureTimeRemaining(pointsData, 'history', timeNow)}
+                      </p>
+                    )}
                     <p className="text-muted small mb-3">Pay to view full points transaction history.</p>
                     <button
                       className="btn btn-warning text-dark fw-bold rounded-pill px-4"
-                      disabled={points < 30 || loadingPerk === 'UNLOCK_FEATURE'}
+                      disabled={points < 350 || loadingPerk === 'UNLOCK_FEATURE'}
                       onClick={async () => {
                         try {
                           setLoadingPerk('UNLOCK_FEATURE');
-                          await redeemPerk('UNLOCK_FEATURE', 30, { featureKey: 'history', featureName: 'History Tab' });
-                          showToast('Successfully unlocked History Tab! (-30 pts)', 'success');
+                          await redeemPerk('UNLOCK_FEATURE', 350, { featureKey: 'history', featureName: 'History Tab' });
+                          showToast('History Tab unlocked for 7 days! (-350 pts)', 'success');
                         } catch (err) {
                           showToast(err.message || 'Failed to unlock History Tab', 'danger');
                         } finally {
@@ -243,7 +261,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                         }
                       }}
                     >
-                      {loadingPerk === 'UNLOCK_FEATURE' ? 'Unlocking...' : '🔒 Unlock History (30 pts)'}
+                      {loadingPerk === 'UNLOCK_FEATURE' ? 'Unlocking...' : '🔒 Unlock History (350 pts · 7 days)'}
                     </button>
                   </div>
                 ) : history.length === 0 ? (
@@ -327,10 +345,10 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       <div>
                         <strong className="text-dark">🔥 Streak Multiplier Bonus (Daily)</strong>
                         <p className="small text-secondary mb-1">
-                          Keep your daily streak active! Completing at least 1 block each day awards:
+                          Keep your daily streak active! Complete all three daily requirements:
                         </p>
                         <div className="p-2 bg-warning-subtle rounded border border-warning-subtle small fw-medium text-dark">
-                          <strong>Formula:</strong> Streak Day Count × 20 Points
+                          <strong>Requirements:</strong> 3 minutes app usage + 1 journal + 3 planning blocks
                           <div className="mt-1 d-flex flex-wrap gap-2 text-muted">
                             <span className="badge bg-white text-dark border">Day 1 = +20 pts</span>
                             <span className="badge bg-white text-dark border">Day 2 = +40 pts</span>
@@ -365,11 +383,11 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       <div>
                         <strong className="text-dark">💔 Streak Break Penalty</strong>
                         <p className="small text-secondary mb-0">
-                          If you miss a day without a active Streak Freeze, your streak resets to 0 and all earned streak bonus points from that active streak are deducted as a penalty:
+                          If you miss a day without an active Streak Freeze, your streak resets to 0 and a fixed penalty is deducted:
                         </p>
                         <div className="p-2 bg-danger-subtle rounded border border-danger-subtle small fw-medium text-danger-emphasis mt-1">
-                          <strong>Deduction:</strong> Lost Streak Count × 20 Points<br/>
-                          <em>e.g., losing a 3-Day streak deducts 60 points from your balance.</em>
+                          <strong>Deduction:</strong> 100 base points + (Lost Streak Count × 20)<br/>
+                          <em>e.g., losing a 3-Day streak deducts 160 points from your balance.</em>
                         </div>
                       </div>
                     </div>
@@ -411,38 +429,38 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                     <div className="row g-2">
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">📄 PDF Export (100 pts)</strong>
+                          <strong className="d-block text-dark">📄 PDF Export (1000 pts · 7 days)</strong>
                           <span className="small text-muted">Download PDF reports & plans.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">🔍 Security Scan (50 pts)</strong>
+                          <strong className="d-block text-dark">🔍 Security Scan (500 pts · 7 days)</strong>
                           <span className="small text-muted">Manual timing-block scan.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">🌙 Islamic Vibe Theme (150 pts)</strong>
+                          <strong className="d-block text-dark">🌙 Islamic Vibe Theme (750 pts · 7 days)</strong>
                           <span className="small text-muted">Unlock Noor theme & Prayer Checklist.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">📜 History Tab (30 pts)</strong>
+                          <strong className="d-block text-dark">📜 History Tab (350 pts · 7 days)</strong>
                           <span className="small text-muted">View points transaction history.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">📥 Import JSON (80 pts)</strong>
+                          <strong className="d-block text-dark">📥 Import JSON (600 pts · 7 days)</strong>
                           <span className="small text-muted">Import backup JSON data.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">🎁 Mystery Box (50 pts)</strong>
-                          <span className="small text-muted">Win 20 to 200 pts reward.</span>
+                          <strong className="d-block text-dark">🎁 Mystery Box (500 pts / use)</strong>
+                          <span className="small text-muted">Win 250 to 1,200 pts reward; average value stays below the 500-point cost.</span>
                         </div>
                       </div>
                     </div>

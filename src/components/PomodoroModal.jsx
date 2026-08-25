@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { getIntervalTimes, timeToMinutes } from '../utils/helpers';
+import { getIntervalTimes, timeToMinutes, isFeatureActive } from '../utils/helpers';
 import { useSound } from '../contexts/SoundContext';
 
 /**
@@ -76,7 +76,7 @@ export default function PomodoroModal({
   const durationMin = getBlockDurationMin();
   const unlockCost = Math.max(5, Math.round((durationMin / 60) * 10));
   const featureKey = activeReport ? `pomodoro_block_${activeReport.id}` : '';
-  const isUnlocked = !!(pointsData?.unlockedFeatures?.[featureKey]);
+  const isUnlocked = isFeatureActive(pointsData, featureKey);
 
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState('');

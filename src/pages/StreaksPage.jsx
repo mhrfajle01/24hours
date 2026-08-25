@@ -76,6 +76,7 @@ export default function StreaksPage({ currentUser, onBack }) {
   const [relapseTrigger, setRelapseTrigger] = useState('');
   const [relapseNote, setRelapseNote] = useState('');
   const [relapseMessage, setRelapseMessage] = useState('');
+  const [timeUntilReset, setTimeUntilReset] = useState('');
 
   // Random Quote
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
@@ -91,6 +92,25 @@ export default function StreaksPage({ currentUser, onBack }) {
     }
     return () => clearInterval(interval);
   }, [timerActive, sosTimeLeft]);
+
+  useEffect(() => {
+    const updateTimeUntilReset = () => {
+      const now = new Date();
+      const midnight = new Date(now);
+      midnight.setHours(24, 0, 0, 0);
+      const seconds = Math.max(0, Math.floor((midnight - now) / 1000));
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const remainingSeconds = seconds % 60;
+      setTimeUntilReset(
+        `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`
+      );
+    };
+
+    updateTimeUntilReset();
+    const interval = setInterval(updateTimeUntilReset, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Utility to format time
   const formatTime = (seconds) => {
@@ -140,6 +160,16 @@ export default function StreaksPage({ currentUser, onBack }) {
     return null; // Past 365 days
   };
 
+  const getHabitCopy = (streak) => {
+    const isBreaking = streak.category === 'Breaking';
+    return {
+      unit: isBreaking ? 'Days Free' : 'Days Strong',
+      progressLabel: isBreaking ? 'days free' : 'days completed',
+      encouragement: isBreaking ? 'Keep protecting your progress' : 'Keep building your habit',
+      checkIn: isBreaking ? 'Stayed clean today' : 'Kept the promise today',
+    };
+  };
+
   const handleAddStreak = async (e) => {
     e.preventDefault();
     if (!newName.trim()) return;
@@ -178,6 +208,10 @@ export default function StreaksPage({ currentUser, onBack }) {
       setRelapseStreak(null);
     }, 2500);
   };
+
+  const relapsePenalty = relapseStreak
+    ? 100 + (getDays(relapseStreak) * 20)
+    : 100;
 
   const handleDelete = async () => {
     if (selectedStreak && window.confirm('Are you sure you want to delete this streak?')) {
@@ -355,11 +389,10 @@ export default function StreaksPage({ currentUser, onBack }) {
                     const days = getDays(streak);
                     const currentMile = getCurrentMilestone(days);
                     const nextMile = getNextMilestone(days);
-                    let progress = 100;
-                    if (nextMile) {
-                      const prevDays = currentMile ? currentMile.days : 0;
-                      progress = Math.max(0, Math.min(100, ((days - prevDays) / (nextMile.days - prevDays)) * 100));
-                    }
+                    const progress = nextMile
+                      ? Math.max(0, Math.min(100, (days / nextMile.days) * 100))
+                      : 100;
+                    const habitCopy = getHabitCopy(streak);
 
                     return (
                       <div 
@@ -381,7 +414,7 @@ export default function StreaksPage({ currentUser, onBack }) {
                               {days}
                             </div>
                             <div className="text-uppercase fw-bold text-white-50" style={{ letterSpacing: '2px', fontSize: '0.8rem' }}>
-                              Days Strong
+                              {habitCopy.unit}
                             </div>
                           </div>
 
@@ -389,7 +422,7 @@ export default function StreaksPage({ currentUser, onBack }) {
                           {nextMile && (
                             <div className="mb-3 px-4">
                               <div className="d-flex justify-content-between text-white-50 mb-1" style={{ fontSize: '0.75rem' }}>
-                                <span>{currentMile ? currentMile.emoji : '🚀'} {currentMile ? currentMile.days : 0}d</span>
+                                <span>{days}d {habitCopy.progressLabel}</span>
                                 <span>{nextMile.emoji} {nextMile.days}d</span>
                               </div>
                               <div className="progress" style={{ height: '6px', background: 'rgba(255,255,255,0.1)' }}>
@@ -398,6 +431,9 @@ export default function StreaksPage({ currentUser, onBack }) {
                                   role="progressbar" 
                                   style={{ width: `${progress}%`, background: nextMile.color, boxShadow: `0 0 10px ${nextMile.color}` }}
                                 ></div>
+                              </div>
+                              <div className="text-white-50 mt-1" style={{ fontSize: '0.7rem' }}>
+                                {nextMile.days - days} {nextMile.days - days === 1 ? 'day' : 'days'} until {nextMile.days}d
                               </div>
                             </div>
                           )}
@@ -408,7 +444,7 @@ export default function StreaksPage({ currentUser, onBack }) {
                               style={{ background: 'rgba(37, 211, 102, 0.2)', color: '#25D366', border: '1px solid #25D366' }}
                               onClick={handleCheckIn}
                             >
-                              ✓ Check In
+                              ✓ {habitCopy.checkIn}
                             </button>
                             <button 
                               className="btn btn-sm rounded-pill fw-bold px-4"
@@ -445,7 +481,15 @@ export default function StreaksPage({ currentUser, onBack }) {
                 <div className="text-center mb-4">
                   <div className="fs-1">{selectedStreak.emoji}</div>
                   <h3 className="fw-extrabold glowing-text">{selectedStreak.name}</h3>
-                  <div className="fs-5 text-white-50">{days} Days Current</div>
+                  <div className="fs-5 text-white-50">{days} {getHabitCopy(selectedStreak).unit}</div>
+                </div>
+
+                <div className="glass-card rounded-4 p-3 mb-4 text-center">
+                  <div className="text-white-50 small text-uppercase mb-1">Today’s streak window</div>
+                  <div className="fs-2 fw-extrabold text-info">{timeUntilReset}</div>
+                  <div className="text-white-50 small">
+                    {getHabitCopy(selectedStreak).encouragement} before midnight
+                  </div>
                 </div>
 
                 <div className="row g-3 mb-4">
@@ -469,14 +513,25 @@ export default function StreaksPage({ currentUser, onBack }) {
                   <div className="d-flex flex-column gap-2">
                     {MILESTONES.map(m => {
                       const achieved = days >= m.days;
+                      const milestoneProgress = Math.min(100, (days / m.days) * 100);
+                      const nextMilestone = !achieved && !MILESTONES.some(other => other.days < m.days && other.days > days);
                       return (
-                        <div key={m.days} className="d-flex align-items-center gap-3 p-2 rounded-3" style={{ background: achieved ? 'rgba(255,255,255,0.05)' : 'transparent', opacity: achieved ? 1 : 0.4 }}>
+                        <div key={m.days} className="p-2 rounded-3" style={{ background: achieved || nextMilestone ? 'rgba(255,255,255,0.05)' : 'transparent', opacity: achieved || nextMilestone ? 1 : 0.55 }}>
+                          <div className="d-flex align-items-center gap-3">
                           <div className="fs-3">{m.emoji}</div>
                           <div className="flex-grow-1">
                             <div className="fw-bold">{m.days} Days</div>
-                            <div className="small text-white-50">{m.label}</div>
+                            <div className="small text-white-50">
+                              {achieved ? 'Milestone achieved' : `${days}/${m.days} ${getHabitCopy(selectedStreak).progressLabel}`}
+                            </div>
                           </div>
                           {achieved && <i className="bi bi-check-circle-fill fs-5 text-success"></i>}
+                          </div>
+                          {!achieved && (
+                            <div className="progress mt-2" style={{ height: '5px', background: 'rgba(255,255,255,0.1)' }}>
+                              <div className="progress-bar" style={{ width: `${milestoneProgress}%`, background: m.color, boxShadow: nextMilestone ? `0 0 8px ${m.color}` : 'none' }} />
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -623,7 +678,11 @@ export default function StreaksPage({ currentUser, onBack }) {
             ) : (
               <>
                 <h4 className="fw-bold text-danger text-center mb-1">Relapse</h4>
-                <p className="text-center text-white-50 small mb-4">Are you sure? Your streak will reset to 0.</p>
+                <p className="text-center text-white-50 small mb-2">Are you sure? Your streak will reset to 0?</p>
+                <div className="alert alert-danger bg-danger bg-opacity-10 border-danger text-danger-emphasis small text-center mb-4">
+                  This will deduct <strong>{relapsePenalty} points</strong> from your balance.
+                  <div className="text-danger-emphasis opacity-75">100 base + 20 per streak day</div>
+                </div>
                 
                 <label className="form-label text-white-50 small fw-bold">WHAT TRIGGERED THIS?</label>
                 <div className="d-flex flex-wrap gap-2 mb-4">

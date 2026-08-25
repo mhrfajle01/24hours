@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { calculateStats } from '../utils/helpers';
+import { calculateStats, isFeatureActive } from '../utils/helpers';
 
 /**
  * InsightsModal — Beautiful fullscreen modal for Consistency Insights,
@@ -20,6 +20,7 @@ export default function InsightsModal({
   pointsData,
   onUnlockFeature,
   onOpenJournal,
+  onOpenStreaks,
 }) {
   if (!isOpen) return null;
 
@@ -27,14 +28,14 @@ export default function InsightsModal({
   const [unlockError, setUnlockError] = useState('');
   const [hoveredDay, setHoveredDay] = useState(null);
 
-  const isConsistencyUnlocked = !!(pointsData?.unlockedFeatures?.consistency_insights);
+  const isConsistencyUnlocked = isFeatureActive(pointsData, 'consistency_insights');
 
   const handleUnlockConsistency = async () => {
     if (!onUnlockFeature) return;
     setIsUnlocking(true);
     setUnlockError('');
     try {
-      await onUnlockFeature('consistency_insights', 40, 'Consistency Insights');
+      await onUnlockFeature('consistency_insights', 500, 'Consistency Insights');
     } catch (e) {
       setUnlockError(e.message || 'Failed to unlock.');
     } finally {
@@ -157,19 +158,40 @@ export default function InsightsModal({
             </div>
           </div>
         </div>
-        <button 
-          type="button" 
-          className="btn btn-link text-white p-1 border-0 shadow-none hover-scale d-flex align-items-center justify-content-center rounded-circle"
-          onClick={onClose}
-          aria-label="Close Insights"
-          style={{ 
-            width: '34px', height: '34px',
-            background: 'rgba(255,255,255,0.1)',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          <i className="bi bi-x-lg" style={{ fontSize: '0.95rem' }} />
-        </button>
+        <div className="d-flex align-items-center gap-2">
+          {onOpenStreaks && (
+            <button
+              type="button"
+              className="btn btn-link text-white p-1 border-0 shadow-none hover-scale d-flex align-items-center justify-content-center rounded-circle"
+              onClick={() => {
+                onClose();
+                onOpenStreaks();
+              }}
+              aria-label="Open Streak Tracker"
+              title="Open Streak Tracker"
+              style={{
+                width: '34px', height: '34px',
+                background: 'rgba(255, 140, 66, 0.3)',
+                backdropFilter: 'blur(4px)',
+              }}
+            >
+              <i className="bi bi-fire" style={{ fontSize: '0.95rem' }} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-link text-white p-1 border-0 shadow-none hover-scale d-flex align-items-center justify-content-center rounded-circle"
+            onClick={onClose}
+            aria-label="Close Insights"
+            style={{
+              width: '34px', height: '34px',
+              background: 'rgba(255,255,255,0.1)',
+              backdropFilter: 'blur(4px)',
+            }}
+          >
+            <i className="bi bi-x-lg" style={{ fontSize: '0.95rem' }} />
+          </button>
+        </div>
       </div>
 
       {/* ─── Scrollable Content ──────────────────────────────────────── */}
@@ -209,7 +231,7 @@ export default function InsightsModal({
               >
                 <div className="d-flex justify-content-between align-items-center mb-2">
                   <span className="text-white-50 small">Unlock Cost:</span>
-                  <strong className="text-warning">40 Points</strong>
+                  <strong className="text-warning">500 Points · 7 Days</strong>
                 </div>
                 <hr className="my-2 border-secondary" style={{ opacity: 0.3 }} />
                 <div className="d-flex justify-content-between align-items-center">
@@ -227,7 +249,7 @@ export default function InsightsModal({
               <div className="d-flex flex-column gap-2 align-items-center">
                 <button 
                   className="btn text-white rounded-pill py-2 px-5 fw-bold shadow hover-scale"
-                  disabled={isUnlocking || (pointsData?.points || 0) < 40}
+                  disabled={isUnlocking || (pointsData?.points || 0) < 500}
                   onClick={handleUnlockConsistency}
                   style={{ 
                     background: 'linear-gradient(135deg, #25D366, #128C7E)',
@@ -238,7 +260,7 @@ export default function InsightsModal({
                   {isUnlocking ? (
                     <><span className="spinner-border spinner-border-sm me-2" />Unlocking...</>
                   ) : (
-                    <>🔓 Unlock for 40 Points</>
+                    <>🔓 Unlock for 500 Points · 7 Days</>
                   )}
                 </button>
                 <button 

@@ -35,6 +35,17 @@ export const formatTime12h = (timeStr) => {
 };
 
 /**
+ * Formats a duration using only hours and whole minutes.
+ */
+export const formatDurationMinutes = (totalSeconds = 0) => {
+  const safeSeconds = Math.max(0, Number(totalSeconds) || 0);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+  return `${minutes}m`;
+};
+
+/**
  * Reconstructs or extracts startTime and endTime from a report object.
  * Falls back to computing them from hour and ampm if the new fields do not exist.
  */
@@ -149,6 +160,27 @@ export const getTodayDateString = () => {
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+/** Returns whether a points feature is currently available. */
+export const isFeatureActive = (pointsData, featureKey) => {
+  if (!pointsData?.unlockedFeatures?.[featureKey]) return false;
+  const expiresAt = pointsData.featureExpirations?.[featureKey];
+  return !expiresAt || new Date(expiresAt).getTime() > Date.now();
+};
+
+export const getFeatureTimeRemaining = (pointsData, featureKey, now = Date.now()) => {
+  const expiresAt = pointsData?.featureExpirations?.[featureKey];
+  if (!expiresAt) return null;
+  const remainingMs = new Date(expiresAt).getTime() - now;
+  if (remainingMs <= 0) return 'Expired - repurchase available';
+  const totalMinutes = Math.ceil(remainingMs / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `Expires in ${days}d ${hours}h`;
+  if (hours > 0) return `Expires in ${hours}h ${minutes}m`;
+  return `Expires in ${minutes}m`;
 };
 
 /**

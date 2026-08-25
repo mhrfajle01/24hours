@@ -40,6 +40,11 @@ service cloud.firestore {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Daily active app usage, separate from reports and task completion.
+    match /appUsage/{userId}/days/{dateId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+    }
+
     // Rules for user points system & rewards
     match /points/{userId} {
       allow read, write: if isAuthenticated() && request.auth.uid == userId;

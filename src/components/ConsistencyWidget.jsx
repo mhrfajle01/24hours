@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { calculateStats } from '../utils/helpers';
+import { calculateStats, isFeatureActive, formatDurationMinutes } from '../utils/helpers';
 
 /**
  * Renders a live countdown timer showing remaining time until 12:00 AM midnight reset.
@@ -50,6 +50,8 @@ function StreakCountdown() {
 export default function ConsistencyWidget({
   reports = [],
   streakData = { currentStreak: 0, longestStreak: 0, lastActiveDate: null, streakFreezes: 1, excusedDays: [] },
+  appUsage = { activeSeconds: 0, isActive: false },
+  streakRequirements = { appUsageSeconds: 0, appUsageMet: false, journalMet: false, planningCount: 0, planningMet: false, qualified: false },
   weeklyStats = null,
   dailyGoal = 6,
   onUpdateDailyGoal,
@@ -64,14 +66,14 @@ export default function ConsistencyWidget({
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState('');
 
-  const isConsistencyUnlocked = !!(pointsData?.unlockedFeatures?.consistency_insights);
+  const isConsistencyUnlocked = isFeatureActive(pointsData, 'consistency_insights');
 
   const handleUnlockConsistency = async () => {
     if (!onUnlockFeature) return;
     setIsUnlocking(true);
     setUnlockError('');
     try {
-      await onUnlockFeature('consistency_insights', 40, 'Consistency Insights');
+      await onUnlockFeature('consistency_insights', 500, 'Consistency Insights');
     } catch (e) {
       setUnlockError(e.message || 'Failed to unlock.');
     } finally {
@@ -98,6 +100,18 @@ export default function ConsistencyWidget({
   const strokeWidth = 4.5;
   const circum = 2 * Math.PI * radius;
   const strokeDashoffset = circum - (goalPercent / 100) * circum;
+
+  const minuteProgress = (appUsage.activeSeconds % 60) / 60;
+  const usageRingRadius = 18;
+  const usageRingCircumference = 2 * Math.PI * usageRingRadius;
+  const usageRingOffset = usageRingCircumference * (1 - minuteProgress);
+  const formatUsageTime = (totalSeconds) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours === 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+    return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+  };
 
   // Generate last 30 days for heatmap
   const getPast30Days = () => {
@@ -291,6 +305,84 @@ export default function ConsistencyWidget({
             </div>
           </div>
 
+        </div>
+
+        {/* Separate active app usage metric */}
+        <div className="mt-3 pt-3 border-top">
+          <div className="d-flex align-items-center justify-content-between gap-3">
+            <div className="d-flex align-items-center gap-2">
+              <div className={appUsage.isActive ? 'app-usage-icon app-usage-icon-active' : 'app-usage-icon'}>
+                <svg width="42" height="42" viewBox="0 0 42 42" aria-label={`${Math.floor(minuteProgress * 60)} seconds into the current minute`}>
+                  <circle cx="21" cy="21" r={usageRingRadius} fill="#EEF2FF" />
+                  <circle
+                    cx="21"
+                    cy="21"
+                    r={usageRingRadius}
+                    fill="transparent"
+                    stroke="#6366F1"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray={usageRingCircumference}
+                    strokeDashoffset={usageRingOffset}
+                    style={{
+                      transform: 'rotate(-90deg)',
+                      transformOrigin: 'center',
+                      transition: 'stroke-dashoffset 0.8s linear',
+                    }}
+                  />
+                  <text x="21" y="23" textAnchor="middle" fontSize="9" fontWeight="700" fill="#4338CA">
+                    {String(appUsage.activeSeconds % 60).padStart(2, '0')}
+                  </text>
+                </svg>
+              </div>
+              <div>
+                <div className="fw-bold text-dark">Time in App Today</div>
+                <div className="text-muted small">Active usage · minute progress</div>
+              </div>
+            </div>
+            <div className="text-end">
+              <div className="fw-extrabold fs-5 text-primary">{formatUsageTime(appUsage.activeSeconds)}</div>
+              <span className={`badge rounded-pill ${appUsage.isActive ? 'bg-success-subtle text-success' : 'bg-light text-secondary'}`} style={{ fontSize: '0.65rem' }}>
+                <i className={`bi ${appUsage.isActive ? 'bi-circle-fill' : 'bi-pause-fill'} me-1`}></i>
+                {appUsage.isActive ? 'Active now' : 'Paused'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 p-3 rounded-3" style={{ background: streakRequirements.qualified ? '#ECFDF3' : '#FFF8E1' }}>
+          <div className="d-flex align-items-center justify-content-between mb-2">
+            <span className="fw-bold text-dark"><i className="bi bi-list-check me-1 text-primary"></i>Daily Streak Requirements</span>
+            <span className={`badge rounded-pill ${streakRequirements.qualified ? 'bg-success' : 'bg-warning text-dark'}`}>
+              {streakRequirements.qualified ? 'Ready' : 'In progress'}
+            </span>
+          </div>
+          <div className="row g-2 small">
+            <div className="col-12 col-sm-4">
+              <div className="d-flex align-items-center gap-1">
+                <i className={`bi ${streakRequirements.appUsageMet ? 'bi-check-circle-fill text-success' : 'bi-circle text-secondary'}`}></i>
+                App use: {formatDurationMinutes(streakRequirements.appUsageSeconds)} / 3m
+              </div>
+            </div>
+            <div className="col-12 col-sm-4">
+              <div className="d-flex align-items-center gap-1">
+                <i className={`bi ${streakRequirements.journalMet ? 'bi-check-circle-fill text-success' : 'bi-circle text-secondary'}`}></i>
+                Today’s journal
+              </div>
+            </div>
+            <div className="col-12 col-sm-4">
+              <div className="d-flex align-items-center gap-1">
+                <i className={`bi ${streakRequirements.planningMet ? 'bi-check-circle-fill text-success' : 'bi-circle text-secondary'}`}></i>
+                Plans: {streakRequirements.planningCount}/3
+              </div>
+            </div>
+          </div>
+          {streakData.currentStreak > 0 && !streakRequirements.qualified && (
+            <div className="text-danger small fw-semibold mt-2">
+              <i className="bi bi-exclamation-triangle-fill me-1"></i>
+              Complete the missing requirements today or you may lose this streak.
+            </div>
+          )}
         </div>
 
       </div>

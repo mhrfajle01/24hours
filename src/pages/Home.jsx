@@ -22,7 +22,8 @@ import PomodoroModal from '../components/PomodoroModal';
 import InsightsModal from '../components/InsightsModal';
 import { PointsChangeOverlay, usePointsAnimation } from '../components/PointsAnimator';
 import { useFirestore } from '../hooks/useFirestore';
-import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, calculateBlockPoints } from '../utils/helpers';
+import { useAppUsage } from '../hooks/useAppUsage';
+import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, calculateBlockPoints, isFeatureActive } from '../utils/helpers';
 import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
 import defaultDictionary from '../constants/dictionary.json';
 import { db, auth } from '../firebase/firebase';
@@ -81,6 +82,7 @@ export default function Home() {
     dictionaryLoading,
     updateDictionary,
     streakData,
+    streakRequirements,
     weeklyStats,
     dailyGoal,
     updateDailyGoal,
@@ -98,6 +100,15 @@ export default function Home() {
   const { lastDelta, lastMessage, showOverlay, dismissOverlay } = usePointsAnimation(pointsData);
 
   const finalDictionary = userDictionary && userDictionary.length > 0 ? userDictionary : defaultDictionary;
+  const appUsage = useAppUsage(currentUser?.uid);
+  const dashboardStreakRequirements = {
+    ...streakRequirements,
+    appUsageSeconds: appUsage.activeSeconds,
+    appUsageMet: appUsage.activeSeconds >= 180,
+    qualified: appUsage.activeSeconds >= 180
+      && streakRequirements.journalMet
+      && streakRequirements.planningMet,
+  };
 
   // ── Modal state ──────────────────────────────────────────────────────────
   // 'planning' | 'report' | 'delete' | 'settings' | 'profile' | 'trash' | 'points' | null
@@ -157,7 +168,7 @@ export default function Home() {
 
   useEffect(() => {
     // If islamic theme is set in localStorage but not unlocked, fallback to light theme
-    if (theme === 'islamic' && pointsData && !pointsData.unlockedFeatures?.islamic_theme) {
+    if (theme === 'islamic' && pointsData && !isFeatureActive(pointsData, 'islamic_theme')) {
       setTheme('light');
       localStorage.setItem('app-theme', 'light');
       document.documentElement.setAttribute('data-theme', 'light');
@@ -1094,6 +1105,8 @@ export default function Home() {
           <>
             <ConsistencyWidget
               reports={reports}
+              appUsage={appUsage}
+              streakRequirements={dashboardStreakRequirements}
               streakData={streakData}
               weeklyStats={weeklyStats}
               dailyGoal={dailyGoal}
@@ -1173,26 +1186,6 @@ export default function Home() {
       </main>
 
       {/* ── Floating Action Buttons ─────────────────────────────────────── */}
-
-      {/* Streaks FAB */}
-      <button
-        className="rounded-circle shadow-lg text-white border-0 hover-scale d-flex align-items-center justify-content-center"
-        style={{
-          position: 'fixed',
-          bottom: '24px',
-          left: '24px',
-          width: '50px',
-          height: '50px',
-          background: 'linear-gradient(135deg, #ff6b35, #ff8c42)',
-          zIndex: 1000,
-          fontSize: '1.4rem',
-        }}
-        onClick={() => setIsStreaksOpen(true)}
-        title="Streak Tracker"
-        aria-label="Open Streak Tracker"
-      >
-        🔥
-      </button>
 
       {/* Add Plan FAB */}
       <button
@@ -1486,6 +1479,7 @@ export default function Home() {
       <InsightsModal
         isOpen={isInsightsOpen}
         onClose={() => setIsInsightsOpen(false)}
+        onOpenStreaks={() => setIsStreaksOpen(true)}
         reports={reports}
         streakData={streakData}
         weeklyStats={weeklyStats}
