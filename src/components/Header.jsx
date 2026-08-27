@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { formatFriendlyDate, getCurrentTimeString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, getTodayDateString } from '../utils/helpers';
-import { AnimatedCounter, FloatingPointsBadge } from './PointsAnimator';
+import { AnimatedCounter } from './PointsAnimator';
 
 /**
  * Sticky Header — profile avatar opens ProfileModal, gear opens SettingsModal.
@@ -22,11 +22,6 @@ export default function Header({
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Points animation state
-  const [pillGlowClass, setPillGlowClass] = useState('');
-  const [coinSpin, setCoinSpin] = useState(false);
-  const [floatDelta, setFloatDelta] = useState(0);
-  const [floatKey, setFloatKey] = useState(0);
   const prevPointsRef = useRef(userPoints);
   const isFirstLoadRef = useRef(true);
 
@@ -45,17 +40,7 @@ export default function Header({
     const prev = prevPointsRef.current;
     const delta = userPoints - prev;
     if (delta !== 0) {
-      // Trigger glow
-      setPillGlowClass(delta > 0 ? 'pts-pill-glow-up' : 'pts-pill-glow-down');
-      setCoinSpin(true);
-      setFloatDelta(delta);
-      setFloatKey(k => k + 1);
-
-      const timer = setTimeout(() => {
-        setPillGlowClass('');
-        setCoinSpin(false);
-      }, 1500);
-      return () => clearTimeout(timer);
+      prevPointsRef.current = userPoints;
     }
     prevPointsRef.current = userPoints;
   }, [userPoints, isPointsInitial]);
@@ -207,14 +192,14 @@ export default function Header({
             {/* Points Pill Button */}
             <button
               type="button"
-              className={`btn btn-sm rounded-pill px-2 py-0.5 d-flex align-items-center gap-1 border border-warning-subtle shadow-sm position-relative pts-points-btn hover-scale ${pillGlowClass}`}
+              className="btn btn-sm rounded-pill px-2 py-0.5 d-flex align-items-center gap-1 border border-warning-subtle shadow-sm position-relative pts-points-btn hover-scale"
               onClick={onOpenPoints}
               title="Points & Rewards"
               style={{ backgroundColor: 'rgba(0,0,0,0.3)', fontSize: '0.8rem', lineHeight: '1.2' }}
             >
               <span 
                 style={{ fontSize: '0.85rem', display: 'inline-block' }} 
-                className={`pts-points-coin pulse-group-2 ${coinSpin ? 'pts-coin-spin' : ''}`}
+                className="pts-points-coin pulse-group-2"
               >
                 🪙
               </span>
@@ -226,7 +211,6 @@ export default function Header({
                   isInitial={isPointsInitial}
                 />
               </span>
-              {floatKey > 0 && <FloatingPointsBadge key={floatKey} delta={floatDelta} />}
             </button>
   
             {/* Profile Avatar */}

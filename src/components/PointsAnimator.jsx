@@ -113,6 +113,51 @@ export function FloatingPointsBadge({ delta }) {
   );
 }
 
+export function PointsCollectionAnimation({ delta, sourceId, animationKey }) {
+  const [flight, setFlight] = useState(null);
+
+  useEffect(() => {
+    if (!delta || !sourceId) return undefined;
+    const source = document.querySelector(`[data-timing-id="${sourceId}"]`);
+    const target = document.querySelector('.pts-points-btn');
+    if (!source || !target) return undefined;
+    const sourceRect = source.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    setFlight({
+      startX: sourceRect.left + sourceRect.width / 2,
+      startY: sourceRect.top + sourceRect.height / 2,
+      deltaX: targetRect.left + targetRect.width / 2 - (sourceRect.left + sourceRect.width / 2),
+      deltaY: targetRect.top + targetRect.height / 2 - (sourceRect.top + sourceRect.height / 2),
+    });
+  }, [delta, sourceId, animationKey]);
+
+  if (!flight || !delta) return null;
+  const isPositive = delta > 0;
+  return (
+    <span
+      className={`pts-collection-animation ${isPositive ? 'pts-collection-earn' : 'pts-collection-spend'}`}
+      style={{ left: flight.startX, top: flight.startY }}
+      aria-hidden="true"
+    >
+      {Array.from({ length: isPositive ? 7 : 4 }).map((_, index) => (
+        <span
+          key={index}
+          className="pts-collection-coin"
+          style={{ '--coin-index': index, '--fly-x': `${flight.deltaX}px`, '--fly-y': `${flight.deltaY}px` }}
+        >
+          {isPositive ? '🪙' : '✦'}
+        </span>
+      ))}
+      <span
+        className="pts-collection-total"
+        style={{ '--fly-x': `${flight.deltaX}px`, '--fly-y': `${flight.deltaY}px` }}
+      >
+        {isPositive ? '+' : ''}{delta}
+      </span>
+    </span>
+  );
+}
+
 /**
  * PointsChangeOverlay — A brief full-width toast/banner that slides in
  * from the top when points change, then auto-dismisses.
@@ -202,6 +247,7 @@ export function usePointsAnimation(pointsData) {
   const [lastMessage, setLastMessage] = useState('');
   const [showOverlay, setShowOverlay] = useState(false);
   const [floatKey, setFloatKey] = useState(0);
+  const [lastSourceId, setLastSourceId] = useState(null);
   const prevPointsRef = useRef(null);
 
   useEffect(() => {
@@ -223,6 +269,7 @@ export function usePointsAnimation(pointsData) {
       // Get the latest history message
       const latestEntry = history[0];
       setLastMessage(latestEntry?.title || '');
+      setLastSourceId(latestEntry?.sourceId || null);
       setShowOverlay(true);
       setFloatKey((k) => k + 1);
     }
@@ -234,12 +281,13 @@ export function usePointsAnimation(pointsData) {
     setShowOverlay(false);
   }, []);
 
-  return { lastDelta, lastMessage, showOverlay, dismissOverlay, floatKey };
+  return { lastDelta, lastMessage, showOverlay, dismissOverlay, floatKey, lastSourceId };
 }
 
 export default {
   AnimatedCounter,
   FloatingPointsBadge,
+  PointsCollectionAnimation,
   PointsChangeOverlay,
   usePointsAnimation,
 };

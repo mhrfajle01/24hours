@@ -16,7 +16,7 @@ import {
   runTransaction,
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
-import { sortReports, getDayHoursList, get24Hour, getIntervalTimes, timeToMinutes, getTodayDateString } from '../utils/helpers';
+import { sortReports, getDayHoursList, get24Hour, getIntervalTimes, timeToMinutes, getTodayDateString, calculateBlockPoints } from '../utils/helpers';
 
 /** Returns YYYY-MM-DD for N days ago */
 const getDateNDaysAgo = (n) => {
@@ -431,7 +431,7 @@ export const useFirestore = (selectedDate, uid) => {
     planningMet: false,
     qualified: false,
   });
-  const streakBonusInFlightRef = useRef(false);
+  const streakRefreshInFlightRef = useRef(false);
 
   const getYesterdayDate = (dateStr) => {
     const date = new Date(`${dateStr}T00:00:00`);
@@ -439,7 +439,34 @@ export const useFirestore = (selectedDate, uid) => {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   };
 
-  const refreshStreak = async () => {
+  const reconcileDailyStreakBonus = async (today, desiredAmount) => {
+    if (!uid) return;
+    const ref = doc(db, 'points', uid);
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      const current = snap.exists() ? snap.data() : { points: 0, history: [] };
+      const bonuses = current.streakBonusByDate || {};
+      const previous = bonuses[today] || 0;
+      const delta = desiredAmount - previous;
+      if (!delta) return;
+      const record = {
+        id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title: `🔥 Day ${Math.max(0, desiredAmount / 20)} Streak Bonus Adjustment (${delta > 0 ? '+' : ''}${delta} pts)`,
+        amount: delta,
+        date: new Date().toISOString(),
+        type: delta >= 0 ? 'earn' : 'spend',
+      };
+      bonuses[today] = desiredAmount;
+      transaction.set(ref, {
+        points: Math.max(0, (current.points || 0) + delta),
+        history: [record, ...(current.history || [])].slice(0, 50),
+        streakBonusByDate: bonuses,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    });
+  };
+
+  const refreshStreakInternal = async () => {
     if (!uid) return;
     const today = getTodayDateString();
     const ref = doc(db, 'streaks', uid);
@@ -492,16 +519,6 @@ export const useFirestore = (selectedDate, uid) => {
         }
         lastActiveDate = today;
 
-        // Award streak bonus points only after all daily requirements are met.
-        const streakBonus = currentStreak * 20;
-        if (existing.lastBonusStreakDate !== today && !streakBonusInFlightRef.current) {
-          streakBonusInFlightRef.current = true;
-          try {
-            await updatePoints(streakBonus, `🔥 Day ${currentStreak} Streak Bonus (+${streakBonus} pts)`, 'earn');
-          } finally {
-            streakBonusInFlightRef.current = false;
-          }
-        }
         await setDoc(ref, {
           currentStreak,
           longestStreak,
@@ -516,17 +533,6 @@ export const useFirestore = (selectedDate, uid) => {
           updatedAt: serverTimestamp()
         }, { merge: true });
       } else {
-        // Backfill: If active today, and lastBonusStreakDay hasn't awarded for this streak count yet
-        if (existing.lastBonusStreakDate !== today && currentStreak > 0 && !streakBonusInFlightRef.current) {
-          const streakBonus = currentStreak * 20;
-          streakBonusInFlightRef.current = true;
-          try {
-            await updatePoints(streakBonus, `🔥 Day ${currentStreak} Streak Bonus Adjustment (+${streakBonus} pts)`, 'earn');
-            await setDoc(ref, { lastBonusStreakDay: currentStreak, lastBonusStreakDate: today, updatedAt: serverTimestamp() }, { merge: true });
-          } finally {
-            streakBonusInFlightRef.current = false;
-          }
-        }
       }
     } else {
       // Undo today's qualification while the day is still open. This is reversible
@@ -550,23 +556,24 @@ export const useFirestore = (selectedDate, uid) => {
       } else if (neededFreezes > streakFreezes && currentStreak > 0) {
         // Calculate penalty based on lost streak count (20 pts per streak day lost)
         const penalty = 100 + (currentStreak * 20);
-        updatePoints(-penalty, `💔 Streak Broken Penalty (${currentStreak} day streak lost, -${penalty} pts)`, 'spend');
+        updatePoints(-penalty, `💔 Streak Broken Penalty (${currentStreak} day streak lost, -${penalty} pts)`, 'spend', {}, `streak-break:${today}:${currentStreak}`);
 
         currentStreak = 0;
         await setDoc(ref, { currentStreak, lastBonusStreakDay: 0, updatedAt: serverTimestamp() }, { merge: true });
-      } else if (existing.lastBonusStreakDate !== today && currentStreak > 0 && !streakBonusInFlightRef.current) {
-        // Backfill for active current streak if not yet awarded
-        const streakBonus = currentStreak * 20;
-        streakBonusInFlightRef.current = true;
-        try {
-          await updatePoints(streakBonus, `🔥 Day ${currentStreak} Streak Bonus Adjustment (+${streakBonus} pts)`, 'earn');
-          await setDoc(ref, { lastBonusStreakDay: currentStreak, lastBonusStreakDate: today, updatedAt: serverTimestamp() }, { merge: true });
-        } finally {
-          streakBonusInFlightRef.current = false;
-        }
       }
     }
+    await reconcileDailyStreakBonus(today, todayQualifies ? currentStreak * 20 : 0);
     setStreakData({ currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays });
+  };
+
+  const refreshStreak = async () => {
+    if (!uid || streakRefreshInFlightRef.current) return;
+    streakRefreshInFlightRef.current = true;
+    try {
+      await refreshStreakInternal();
+    } finally {
+      streakRefreshInFlightRef.current = false;
+    }
   };
 
   const excuseDay = async (dateStr) => {
@@ -803,28 +810,99 @@ export const useFirestore = (selectedDate, uid) => {
     return () => unsub();
   }, [uid]);
 
-  /** Add or remove points with history record */
-  const updatePoints = async (amount, title, type = 'earn', extraFields = {}) => {
+  /** Add or remove points with history record. eventKey makes repeated calls safe. */
+  const updatePoints = async (amount, title, type = 'earn', extraFields = {}, eventKey = null) => {
     if (!uid) return false;
     const ref = doc(db, 'points', uid);
     await runTransaction(db, async (transaction) => {
       const snap = await transaction.get(ref);
       const current = snap.exists() ? snap.data() : { points: 0, history: [] };
+      const processedEvents = current.processedPointEvents || {};
+      if (eventKey && processedEvents[eventKey]) return;
       const newRecord = {
-        id: 'pts_' + Date.now(),
+        id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         title,
         amount,
         date: new Date().toISOString(),
         type,
       };
+      if (eventKey) processedEvents[eventKey] = true;
       transaction.set(ref, {
         points: Math.max(0, (current.points || 0) + amount),
         history: [newRecord, ...(current.history || [])].slice(0, 50),
+        ...(eventKey ? { processedPointEvents: processedEvents } : {}),
         updatedAt: serverTimestamp(),
         ...extraFields
       }, { merge: true });
     });
 
+    return true;
+  };
+
+  // Reconcile a block's contribution instead of blindly adding on every save.
+  const reconcileBlockPoints = async (report, status) => {
+    if (!uid || !report?.id) return false;
+    const ref = doc(db, 'points', uid);
+    const pts = calculateBlockPoints(report);
+    const desired = status === 'Completed' ? pts : status === 'Missed' ? -Math.max(5, Math.round(pts / 2)) : 0;
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      const current = snap.exists() ? snap.data() : { points: 0, history: [] };
+      const states = current.blockPointStates || {};
+      const previous = states[report.id]?.amount || 0;
+      const delta = desired - previous;
+      if (!delta) return;
+      const label = status === 'Completed'
+        ? `Completed block (+${pts} pts)`
+        : status === 'Missed'
+          ? `Missed block penalty (-${Math.abs(desired)} pts)`
+          : `Reconciled block status (${delta > 0 ? '+' : ''}${delta} pts)`;
+      const record = {
+        id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title: label,
+        amount: delta,
+        date: new Date().toISOString(),
+        type: delta >= 0 ? 'earn' : 'spend',
+        sourceId: report.id,
+      };
+      states[report.id] = { status, amount: desired };
+      transaction.set(ref, {
+        points: Math.max(0, (current.points || 0) + delta),
+        history: [record, ...(current.history || [])].slice(0, 50),
+        blockPointStates: states,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    });
+    return true;
+  };
+
+  const claimDailyCheckIn = async () => {
+    if (!uid) return false;
+    const today = getTodayDateString();
+    const ref = doc(db, 'points', uid);
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      const current = snap.exists() ? snap.data() : { points: 0, history: [] };
+      if (current.lastDailyCheckin === today) return;
+      const processedEvents = current.processedPointEvents || {};
+      const eventKey = `daily-checkin:${today}`;
+      if (processedEvents[eventKey]) return;
+      processedEvents[eventKey] = true;
+      const record = {
+        id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title: `Daily Check-in (${today})`,
+        amount: 20,
+        date: new Date().toISOString(),
+        type: 'earn',
+      };
+      transaction.set(ref, {
+        points: (current.points || 0) + 20,
+        history: [record, ...(current.history || [])].slice(0, 50),
+        lastDailyCheckin: today,
+        processedPointEvents: processedEvents,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    });
     return true;
   };
 
@@ -949,9 +1027,7 @@ export const useFirestore = (selectedDate, uid) => {
     getDoc(ref).then(async (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data.lastDailyCheckin !== today) {
-          await updatePoints(20, `Daily Check-in (${today})`, 'earn', { lastDailyCheckin: today });
-        }
+        if (data.lastDailyCheckin !== today) await claimDailyCheckIn();
       }
     });
   }, [uid]);
@@ -992,6 +1068,8 @@ export const useFirestore = (selectedDate, uid) => {
     // Points System
     pointsData,
     updatePoints,
+    reconcileBlockPoints,
+    claimDailyCheckIn,
     redeemPerk,
     unlockFeature,
   };

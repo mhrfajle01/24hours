@@ -24,9 +24,8 @@ export const getStreakDays = (streak) => {
   start.setHours(0, 0, 0, 0);
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const diffTime = Math.abs(now - start);
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays;
+  const diffTime = now - start;
+  return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 };
 
 /**

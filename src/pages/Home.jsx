@@ -20,10 +20,10 @@ import JournalPage from './JournalPage';
 import StreaksPage from './StreaksPage';
 import PomodoroModal from '../components/PomodoroModal';
 import InsightsModal from '../components/InsightsModal';
-import { PointsChangeOverlay, usePointsAnimation } from '../components/PointsAnimator';
+import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAppUsage } from '../hooks/useAppUsage';
-import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, calculateBlockPoints, isFeatureActive } from '../utils/helpers';
+import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, isFeatureActive } from '../utils/helpers';
 import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
 import defaultDictionary from '../constants/dictionary.json';
 import { db, auth } from '../firebase/firebase';
@@ -92,12 +92,13 @@ export default function Home() {
     addStreakFreeze,
     pointsData,
     updatePoints,
+    reconcileBlockPoints,
+    claimDailyCheckIn,
     redeemPerk,
     unlockFeature,
   } = useFirestore(selectedDate, currentUser?.uid);
 
-  // ── Points Animation Hook ────────────────────────────────────────────────
-  const { lastDelta, lastMessage, showOverlay, dismissOverlay } = usePointsAnimation(pointsData);
+  const { lastDelta, floatKey, lastSourceId } = usePointsAnimation(pointsData);
 
   const finalDictionary = userDictionary && userDictionary.length > 0 ? userDictionary : defaultDictionary;
   const appUsage = useAppUsage(currentUser?.uid);
@@ -136,6 +137,7 @@ export default function Home() {
   // Refs so keyboard handler always sees latest handlers without re-registering
   const undoFnRef = useRef(null);
   const redoFnRef = useRef(null);
+  const historyActionInFlightRef = useRef(false);
 
   // ── Toast ────────────────────────────────────────────────────────────────
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
@@ -232,11 +234,13 @@ export default function Home() {
             reportObj.report,
             resolutions[id].status,
             resolutions[id].report,
-            { ...reportObj, status: resolutions[id].status, report: resolutions[id].report, tag: resolutions[id].tag }
+            { ...reportObj, status: resolutions[id].status, report: resolutions[id].report, tag: resolutions[id].tag },
+            false
           );
         }
       }
       await batch.commit();
+      playSound('points');
       showToast('Timing blocks successfully closed and saved.', 'success');
       setSecurityInvalidBlocks([]);
     } catch (err) {
@@ -405,7 +409,8 @@ export default function Home() {
   // ── Undo ─────────────────────────────────────────────────────────────────
 
   const handleUndo = async () => {
-    if (!undoStack.length) return;
+    if (!undoStack.length || historyActionInFlightRef.current) return;
+    historyActionInFlightRef.current = true;
     const action = undoStack[undoStack.length - 1];
     setUndoStack((prev) => prev.slice(0, -1));
 
@@ -421,11 +426,21 @@ export default function Home() {
         case 'UPDATE_PLAN':
         case 'UPDATE_REPORT': {
           await updateReport(action.docId, action.previousData);
+          if (action.type === 'UPDATE_REPORT' && action.previousData.status) {
+            const reportObj = reports.find((report) => report.id === action.docId);
+            if (reportObj) await reconcileBlockPoints({ ...reportObj, ...action.previousData }, action.previousData.status);
+          } else if (action.type === 'UPDATE_PLAN') {
+            const reportObj = reports.find((report) => report.id === action.docId);
+            if (reportObj?.status) await reconcileBlockPoints({ ...reportObj, ...action.previousData }, reportObj.status);
+          }
           break;
         }
         case 'DELETE': {
           // Undo delete → restore from trash; keep new docId for redo
           const newDocId = await restoreFromTrash(action.trashId);
+          if (action.originalData?.status) {
+            await reconcileBlockPoints(action.originalData, action.originalData.status);
+          }
           redoAction = { ...action, currentDocId: newDocId };
           break;
         }
@@ -441,6 +456,9 @@ export default function Home() {
         case 'CLEAR': {
           // Undo clear → restore all from trash; keep new docIds for redo
           const newDocIds = await restoreAllFromTrash(action.trashIds);
+          for (const pointState of action.pointStates || []) {
+            if (pointState.status) await reconcileBlockPoints(pointState, pointState.status);
+          }
           redoAction = { ...action, restoredDocIds: newDocIds };
           break;
         }
@@ -453,13 +471,16 @@ export default function Home() {
     } catch (err) {
       console.error('Undo failed:', err);
       showToast('Could not undo. Item may no longer exist.', 'danger');
+    } finally {
+      historyActionInFlightRef.current = false;
     }
   };
 
   // ── Redo ─────────────────────────────────────────────────────────────────
 
   const handleRedo = async () => {
-    if (!redoStack.length) return;
+    if (!redoStack.length || historyActionInFlightRef.current) return;
+    historyActionInFlightRef.current = true;
     const action = redoStack[redoStack.length - 1];
     setRedoStack((prev) => prev.slice(0, -1));
 
@@ -476,12 +497,22 @@ export default function Home() {
         case 'UPDATE_PLAN':
         case 'UPDATE_REPORT': {
           await updateReport(action.docId, action.newData);
+          if (action.type === 'UPDATE_REPORT' && action.newData.status) {
+            const reportObj = reports.find((report) => report.id === action.docId);
+            if (reportObj) await reconcileBlockPoints({ ...reportObj, ...action.newData }, action.newData.status);
+          } else if (action.type === 'UPDATE_PLAN') {
+            const reportObj = reports.find((report) => report.id === action.docId);
+            if (reportObj?.status) await reconcileBlockPoints({ ...reportObj, ...action.newData }, reportObj.status);
+          }
           break;
         }
         case 'DELETE': {
           // Redo delete → move restored doc back to trash
           const targetId = action.currentDocId || action.originalData.id;
           const result = await moveToTrash(targetId);
+          if (action.originalData?.status) {
+            await reconcileBlockPoints(action.originalData, 'Pending');
+          }
           undoAction = { ...action, trashId: result.trashId };
           break;
         }
@@ -512,6 +543,9 @@ export default function Home() {
             }
 
             await batch.commit();
+            for (const pointState of action.pointStates || []) {
+              if (pointState.status) await reconcileBlockPoints(pointState, 'Pending');
+            }
             undoAction = { ...action, trashIds: newTrashIds };
           }
           break;
@@ -525,6 +559,8 @@ export default function Home() {
     } catch (err) {
       console.error('Redo failed:', err);
       showToast('Could not redo. State may have changed.', 'danger');
+    } finally {
+      historyActionInFlightRef.current = false;
     }
   };
 
@@ -672,6 +708,9 @@ export default function Home() {
           ampm: ampm
         };
         await updateReport(selectedReport.id, newData);
+        if (selectedReport.status) {
+          await reconcileBlockPoints({ ...selectedReport, ...newData }, selectedReport.status);
+        }
         pushUndo({ type: 'UPDATE_PLAN', docId: selectedReport.id, previousData, newData });
         showToast('Updated Successfully', 'success');
       } else {
@@ -697,45 +736,11 @@ export default function Home() {
     }
   };
 
-  const processReportPointsChange = async (oldStatus, oldReport, newStatus, newReport, reportObj) => {
-    const wasCompleted = oldStatus ? (oldStatus === 'Completed') : Boolean(oldReport);
-    const isNowCompleted = newStatus ? (newStatus === 'Completed') : Boolean(newReport);
-
-    const wasMissed = oldStatus === 'Missed';
-    const isNowMissed = newStatus === 'Missed';
-
-    const wasPending = !wasCompleted && !wasMissed;
-    const isNowPending = !isNowCompleted && !isNowMissed;
-
-    const pts = calculateBlockPoints(reportObj);
-    const penalty = Math.max(5, Math.round(pts / 2));
-
-    // Case 1: Switching TO Completed (Earn block points)
-    if (!wasCompleted && isNowCompleted) {
-      if (wasMissed) {
-        // Refund missed penalty first
-        await updatePoints(penalty, `Refunded missed penalty (+${penalty} pts)`, 'earn');
-      }
-      await updatePoints(pts, `Completed block (+${pts} pts)`, 'earn');
-      playSound('points');
-    }
-    // Case 2: Switching FROM Completed TO Pending (Rollback earned points)
-    else if (wasCompleted && isNowPending) {
-      await updatePoints(-pts, `Reverted block to Pending (-${pts} pts)`, 'spend');
-    }
-    // Case 3: Switching TO Missed (Deduct penalty points)
-    else if (!wasMissed && isNowMissed) {
-      // If it was completed before, revoke earned points first
-      if (wasCompleted) {
-        await updatePoints(-pts, `Reverted Completed block (-${pts} pts)`, 'spend');
-      }
-      // Apply missed penalty (half of block points value, min 5 pts)
-      await updatePoints(-penalty, `Missed block penalty (-${penalty} pts)`, 'spend');
-      playSound('missed');
-    }
-    // Case 4: Switching FROM Missed to Pending (Refund missed penalty)
-    else if (wasMissed && isNowPending) {
-      await updatePoints(penalty, `Refunded missed penalty (+${penalty} pts)`, 'earn');
+  const processReportPointsChange = async (oldStatus, oldReport, newStatus, newReport, reportObj, playFeedback = true) => {
+    if (oldStatus !== newStatus) {
+      await reconcileBlockPoints(reportObj, newStatus);
+      if (playFeedback && newStatus === 'Completed') playSound('points');
+      if (playFeedback && newStatus === 'Missed') playSound('missed');
     }
   };
 
@@ -758,7 +763,7 @@ export default function Home() {
         return r.status ? (r.status === 'Completed') : Boolean(r.report);
       };
       if (reports.length >= 24 && reports.every(isCompletedBlock)) {
-        await updatePoints(50, `24-Hour Master Completion Bonus (${selectedDate})`, 'earn');
+        await updatePoints(50, `24-Hour Master Completion Bonus (${selectedDate})`, 'earn', {}, `master-completion:${selectedDate}`);
       }
 
       playSound('success');
@@ -780,11 +785,12 @@ export default function Home() {
 
         const reportObj = reports.find(r => r.id === id);
         if (reportObj) {
-          await processReportPointsChange(reportObj.status, reportObj.report, status, reportObj.report, { ...reportObj, status });
+          await processReportPointsChange(reportObj.status, reportObj.report, status, reportObj.report, { ...reportObj, status }, false);
         }
       }
       await batch.commit();
 
+      playSound('points');
       showToast('All blocks updated successfully', 'success');
       setPastPendingReports([]);
     } catch (err) {
@@ -799,6 +805,9 @@ export default function Home() {
       const previousData = { plan: reportItem.plan };
       const newData = { plan: newPlan };
       await updateReport(reportItem.id, newData);
+      if (reportItem.status) {
+        await reconcileBlockPoints({ ...reportItem, ...newData }, reportItem.status);
+      }
       pushUndo({ type: 'UPDATE_PLAN', docId: reportItem.id, previousData, newData });
       showToast('Plan updated', 'success');
     } catch (err) {
@@ -829,6 +838,9 @@ export default function Home() {
     try {
       if (!selectedReport) return;
       const { trashId, originalData } = await moveToTrash(selectedReport.id);
+      if (originalData.status) {
+        await reconcileBlockPoints(originalData, 'Pending');
+      }
       pushUndo({ type: 'DELETE', trashId, originalData });
       playSound('trash');
       showToast('Moved to Trash  •  Undo with Ctrl+Z', 'info');
@@ -860,7 +872,17 @@ export default function Home() {
     try {
       const trashIds = await clearDayReports(selectedDate);
       if (trashIds.length > 0) {
-        pushUndo({ type: 'CLEAR', trashIds, date: selectedDate });
+        for (const report of reports) {
+          if (report.status) await reconcileBlockPoints(report, 'Pending');
+        }
+        pushUndo({
+          type: 'CLEAR',
+          trashIds,
+          date: selectedDate,
+          pointStates: reports.map(({ id, status, startTime, endTime, hour, ampm, date }) => ({
+            id, status, startTime, endTime, hour, ampm, date,
+          })),
+        });
         showToast(`${trashIds.length} items moved to Trash  •  Undo with Ctrl+Z`, 'info');
       } else {
         showToast('No data to clear.', 'info');
@@ -1046,6 +1068,7 @@ export default function Home() {
     return (
       <StreaksPage
         currentUser={currentUser}
+        onDailyCheckIn={claimDailyCheckIn}
         onBack={() => setIsStreaksOpen(false)}
       />
     );
@@ -1347,6 +1370,13 @@ export default function Home() {
         showToast={showToast}
       />
 
+      <PointsCollectionAnimation
+        key={floatKey}
+        animationKey={floatKey}
+        delta={lastDelta}
+        sourceId={lastSourceId}
+      />
+
       <PendingReviewModal
         isOpen={isReviewModalOpen}
         onClose={() => setIsReviewModalOpen(false)}
@@ -1495,14 +1525,6 @@ export default function Home() {
           setIsInsightsOpen(false);
           setIsJournalOpen(true);
         }}
-      />
-
-      {/* ── Points Change Overlay Banner ─────────────────────────────── */}
-      <PointsChangeOverlay
-        delta={lastDelta}
-        message={lastMessage}
-        show={showOverlay}
-        onDone={dismissOverlay}
       />
 
       {/* ── Scroll to Top Button ──────────────────────────────────────── */}

@@ -45,7 +45,7 @@ const MILESTONES = [
 
 const EMOJIS = ['🚭','💪','🏃','📚','🧘','🥗','💧','🌅','🎯','📵','💤','🏋️','🎨','🧠','🙏','🚫'];
 
-export default function StreaksPage({ currentUser, onBack }) {
+export default function StreaksPage({ currentUser, onBack, onDailyCheckIn }) {
   // We assume useStreaks returns an object with these properties. 
   // If hooks are slightly different, this might need adjustment, but matches standard patterns.
   const { 
@@ -221,13 +221,18 @@ export default function StreaksPage({ currentUser, onBack }) {
     }
   };
 
-  const handleCheckIn = () => {
-    // Just a motivational toast
+  const handleCheckIn = async () => {
+    try {
+      if (onDailyCheckIn) await onDailyCheckIn();
+    } catch (error) {
+      console.error('Daily check-in failed:', error);
+      return;
+    }
     const toast = document.createElement('div');
     toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-4 p-3 rounded-4 shadow-lg text-white fw-bold animate-slide-down-toast-container';
     toast.style.background = 'linear-gradient(135deg, #25D366, #128C7E)';
     toast.style.zIndex = 9999;
-    toast.innerHTML = '✨ Kept the promise! Great job today!';
+    toast.innerHTML = '✨ Daily check-in recorded! +20 points';
     document.body.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
