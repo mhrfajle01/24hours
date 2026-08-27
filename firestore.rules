@@ -8,6 +8,33 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return isAuthenticated()
+        && request.auth.token.email_verified == true
+        && (
+          request.auth.token.email == 'mhrfazle@gmail.com'
+          || request.auth.token.admin == true
+          || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
+            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        );
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && request.auth.uid == userId
+        && request.resource.data.role == resource.data.role
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /adminAudit/{auditId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     // Rules for the active reports collection
     match /reports/{reportId} {
       allow read: if isAuthenticated() && resource.data.uid == request.auth.uid;

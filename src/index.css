@@ -78,8 +78,121 @@ body {
   animation: slideDownToast 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+.toast-notification .toast-progress {
+  height: 3px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.75);
+  transform-origin: left center;
+  animation: toastProgress 3s linear forwards;
+}
+
+.toast-notification:hover .toast-progress {
+  animation-play-state: paused;
+}
+
 .animate-pulse {
   animation: pulseOpacity 2s infinite ease-in-out;
+}
+
+.global-search {
+  z-index: 2200;
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.security-choice-backdrop {
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(3px);
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.global-search-backdrop {
+  background: rgba(7, 94, 84, 0.3);
+  backdrop-filter: blur(3px);
+}
+
+.global-search-panel {
+  width: min(100%, 760px);
+  min-height: 100%;
+  animation: searchPanelIn 0.25s ease-out forwards;
+}
+
+.global-search-result {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.global-search-result:hover,
+.global-search-result:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 0.35rem 1rem rgba(7, 94, 84, 0.14) !important;
+  outline: 2px solid rgba(18, 140, 126, 0.25);
+}
+
+.global-search-icon {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 12px;
+  background: #f3f7f6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.streak-requirement-action {
+  width: 100%;
+  border: 0;
+  padding: 0.35rem 0;
+  background: transparent;
+  color: #495057;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.streak-requirement-action:hover,
+.streak-requirement-action:focus-visible {
+  color: #075e54;
+  transform: translateX(2px);
+  outline: none;
+}
+
+.mobile-more-button {
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.mobile-more-button-open {
+  background: rgba(255, 255, 255, 0.18);
+  transform: rotate(90deg);
+}
+
+.mobile-more-menu {
+  top: 100%;
+  right: 0;
+  width: 210px;
+  background: #ffffff;
+  z-index: 1100;
+  transform-origin: top right;
+  animation: mobileMoreMenuIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.mobile-more-item {
+  color: #075e54 !important;
+  padding: 0.65rem 0.75rem;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.mobile-more-item:hover,
+.mobile-more-item:focus-visible {
+  background: #e8f5f2;
+  transform: translateX(2px);
+  outline: none;
+}
+
+@keyframes mobileMoreMenuIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .app-usage-icon {
@@ -117,6 +230,22 @@ body {
   from {
     opacity: 0;
     transform: translate(-50%, -25px);
+  }
+
+  @keyframes toastProgress {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+  }
+
+  @keyframes searchPanelIn {
+    from { opacity: 0; transform: translateY(-18px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .toast-notification .toast-progress {
+      animation: none;
+    }
   }
   to {
     opacity: 1;

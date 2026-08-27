@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 
 const SoundContext = createContext();
 
@@ -62,6 +62,18 @@ export const SoundProvider = ({ children }) => {
   // This prevents stale closure issues when playSound is called from other components
   const settingsRef = useRef(soundSettings);
   settingsRef.current = soundSettings;
+  const audioCacheRef = useRef(new Map());
+
+  useEffect(() => {
+    Object.values(DEFAULT_SOUNDS).forEach((url) => {
+      if (!audioCacheRef.current.has(url)) {
+        const audio = new Audio(url);
+        audio.preload = 'auto';
+        audioCacheRef.current.set(url, audio);
+        audio.load();
+      }
+    });
+  }, []);
 
   const updateSoundSetting = (key, value) => {
     setSoundSettings(prev => {
@@ -83,7 +95,13 @@ export const SoundProvider = ({ children }) => {
     if (!url) return;
 
     try {
-      const audio = new Audio(url);
+      let audio = audioCacheRef.current.get(url);
+      if (!audio) {
+        audio = new Audio(url);
+        audio.preload = 'auto';
+        audioCacheRef.current.set(url, audio);
+      }
+      audio.currentTime = 0;
       audio.volume = 1.0;
 
       const playPromise = audio.play();

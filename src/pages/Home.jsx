@@ -13,11 +13,16 @@ import TrashModal from '../components/TrashModal';
 import AuthPage from '../components/AuthPage';
 import PendingReviewModal from '../components/PendingReviewModal';
 import SecurityScanModal from '../components/SecurityScanModal';
+import SecurityScanChoiceModal from '../components/SecurityScanChoiceModal';
 import PrayerChecklist from '../components/PrayerChecklist';
 import PointsModal from '../components/PointsModal';
 import IslamicPage from './IslamicPage';
 import JournalPage from './JournalPage';
 import StreaksPage from './StreaksPage';
+import FeatureHubPage from './FeatureHubPage';
+import AdminPage from './AdminPage';
+import NewUserTutorial from '../components/NewUserTutorial';
+import GlobalSearch from '../components/GlobalSearch';
 import PomodoroModal from '../components/PomodoroModal';
 import InsightsModal from '../components/InsightsModal';
 import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
@@ -29,6 +34,8 @@ import defaultDictionary from '../constants/dictionary.json';
 import { db, auth } from '../firebase/firebase';
 import {
   writeBatch,
+  updateDoc,
+  addDoc,
   doc,
   collection,
   serverTimestamp,
@@ -36,8 +43,11 @@ import {
   where,
   getDocs,
   getDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
+
+const PRIMARY_ADMIN_EMAIL = 'mhrfazle@gmail.com';
 
 /**
  * Home — main dashboard. Coordinates auth, modals, CRUD, undo/redo, and trash.
@@ -55,6 +65,35 @@ export default function Home() {
   // ── Auth ────────────────────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadAdminRole = async () => {
+      if (!auth.currentUser) {
+        setIsAdmin(false);
+        return;
+      }
+      if (auth.currentUser.email?.toLowerCase() === PRIMARY_ADMIN_EMAIL) {
+        setIsAdmin(true);
+        return;
+      }
+      const configuredAdmin = import.meta.env.VITE_ADMIN_UID;
+      if (configuredAdmin && auth.currentUser.uid === configuredAdmin) {
+        setIsAdmin(true);
+        return;
+      }
+      try {
+        const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        if (!cancelled) setIsAdmin(userSnap.exists() && userSnap.data().role === 'admin');
+      } catch (error) {
+        console.error('Unable to verify administrator role:', error);
+        if (!cancelled) setIsAdmin(false);
+      }
+    };
+    loadAdminRole();
+    return () => { cancelled = true; };
+  }, [currentUser?.uid]);
 
   // ── Date / time ─────────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(getTodayDateString());
@@ -114,6 +153,7 @@ export default function Home() {
   // ── Modal state ──────────────────────────────────────────────────────────
   // 'planning' | 'report' | 'delete' | 'settings' | 'profile' | 'trash' | 'points' | null
   const [activeModal, setActiveModal] = useState(null);
+  const [settingsSection, setSettingsSection] = useState('general');
   const [selectedReport, setSelectedReport] = useState(null);
 
   // ── Pomodoro Timer State ────────────────────────────────────────────────
@@ -122,6 +162,7 @@ export default function Home() {
 
   // ── Insights Modal State ────────────────────────────────────────────────
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // ── Journal Page State ──────────────────────────────────────────────────
   const [isJournalOpen, setIsJournalOpen] = useState(false);
@@ -129,6 +170,40 @@ export default function Home() {
 
   // ── Streaks Page State ─────────────────────────────────────────────────
   const [isStreaksOpen, setIsStreaksOpen] = useState(false);
+  const [openHabitScannerOnStreaks, setOpenHabitScannerOnStreaks] = useState(false);
+  const [isFeatureHubOpen, setIsFeatureHubOpen] = useState(false);
+  const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [tutorialStep, setTutorialStep] = useState(() => {
+    try {
+      return localStorage.getItem('24hours-tutorial-complete') ? -1 : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const tutorialBaselineRef = useRef(null);
+
+  const navigateTo = (path) => {
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  };
+
+  useEffect(() => {
+    const syncRoute = () => {
+      const path = window.location.pathname.replace(/\/+$/, '') || '/';
+      setIsJournalOpen(path === '/journal');
+      setIsStreaksOpen(path === '/streaks');
+      setIsFeatureHubOpen(path === '/productivity-hub');
+      setIsAdminOpen(path === '/admin');
+      if (path === '/islamic') setTheme('islamic');
+      if (path === '/settings') setActiveModal('settings');
+      else if (activeModal === 'settings') setActiveModal(null);
+    };
+    syncRoute();
+    window.addEventListener('popstate', syncRoute);
+    return () => window.removeEventListener('popstate', syncRoute);
+  }, [activeModal]);
 
   // ── Undo / Redo ──────────────────────────────────────────────────────────
   const [undoStack, setUndoStack] = useState([]);
@@ -140,7 +215,11 @@ export default function Home() {
   const historyActionInFlightRef = useRef(false);
 
   // ── Toast ────────────────────────────────────────────────────────────────
-  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success', id: 0 });
+  const toastTimerRef = useRef(null);
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
 
   // ── Pending Review States ────────────────────────────────────────────────
   const [pastPendingReports, setPastPendingReports] = useState([]);
@@ -150,6 +229,7 @@ export default function Home() {
 
   // ── Security Scan States ────────────────────────────────────────────────
   const [securityInvalidBlocks, setSecurityInvalidBlocks] = useState([]);
+  const [securityScanChoiceOpen, setSecurityScanChoiceOpen] = useState(false);
 
   // ── Tag Filter State ─────────────────────────────────────────────────────
   const [selectedTag, setSelectedTag] = useState(null);
@@ -200,13 +280,7 @@ export default function Home() {
 
     // Setup manual trigger callable globally / from settings modal
     window.triggerManualSecurityScan = () => {
-      const report = runFullUIScan();
-      handleScanResult(report);
-      if (report.invalidCount === 0) {
-        showToast('Security scan complete: No issues found!', 'success');
-      } else {
-        showToast(`Security scan complete: ${report.invalidCount} issue(s) found!`, 'danger');
-      }
+      setSecurityScanChoiceOpen(true);
     };
 
     return () => {
@@ -214,6 +288,30 @@ export default function Home() {
       delete window.triggerManualSecurityScan;
     };
   }, []);
+
+  const runHourlySecurityScan = () => {
+    const report = runFullUIScan();
+    if (report && report.invalidCount > 0) {
+      setSecurityInvalidBlocks(report.invalid);
+    } else {
+      setSecurityInvalidBlocks([]);
+      showToast('Hourly block scan complete: No issues found!', 'success');
+    }
+    setSecurityScanChoiceOpen(false);
+  };
+
+  const runBothSecurityScans = () => {
+    runHourlySecurityScan();
+    setOpenHabitScannerOnStreaks(true);
+    setIsStreaksOpen(true);
+    navigateTo('/streaks');
+  };
+
+  const openStreaksPage = (scan = false) => {
+    setOpenHabitScannerOnStreaks(scan || localStorage.getItem('auto-streak-security-scan') === 'true');
+    setIsStreaksOpen(true);
+    navigateTo('/streaks');
+  };
 
   const handleResolveSecurityBlocks = async (resolutions) => {
     try {
@@ -251,6 +349,16 @@ export default function Home() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || '',
+          lastSeenAt: serverTimestamp(),
+        }, { merge: true }).catch((error) => {
+          console.error('Failed to sync user profile:', error);
+        });
+      }
       setCurrentUser(
         user
           ? { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL }
@@ -397,8 +505,13 @@ export default function Home() {
   // ── Helpers ──────────────────────────────────────────────────────────────
 
   const showToast = (message, type = 'success') => {
-    setToast({ show: true, message, type });
-    setTimeout(() => setToast((p) => ({ ...p, show: false })), 3000);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    const id = Date.now();
+    setToast({ show: true, message, type, id });
+    toastTimerRef.current = setTimeout(() => {
+      setToast((previous) => previous.id === id ? { ...previous, show: false } : previous);
+      toastTimerRef.current = null;
+    }, 3000);
   };
 
   const pushUndo = (action) => {
@@ -605,18 +718,172 @@ export default function Home() {
 
   // ── Modal handlers ────────────────────────────────────────────────────────
 
-  const handleOpenAddPlan    = () => { if (!checkWorkflowValidation(null)) return; setSelectedReport(null); setActiveModal('planning'); };
+  const handleOpenAddPlan    = () => {
+    if (!checkWorkflowValidation(null)) return;
+    setSelectedReport(null);
+    setActiveModal('planning');
+  };
   const handleOpenEditPlan   = (r) => { if (!checkWorkflowValidation(r)) return; setSelectedReport(r);   setActiveModal('planning'); };
   const handleOpenEditReport = (r) => { if (!checkWorkflowValidation(r)) return; setSelectedReport(r);   setActiveModal('report');   };
   const handleOpenDelete     = (r) => { if (!checkWorkflowValidation(r)) return; setSelectedReport(r);   setActiveModal('delete');   };
-  const handleOpenSettings   = () => setActiveModal('settings');
+  const handleOpenSettings   = (section = 'general') => {
+    if (tutorialStep === 8) setTutorialStep(9);
+    setSettingsSection(section);
+    navigateTo('/settings');
+    setActiveModal('settings');
+  };
   const handleOpenProfile    = () => setActiveModal('profile');
   const handleOpenTrash      = () => setActiveModal('trash');
-  const handleOpenPoints     = () => setActiveModal('points');
+  const handleOpenPoints     = () => {
+    if (tutorialStep === 3) setTutorialStep(4);
+    setActiveModal('points');
+  };
+  const handleOpenFeatureHub = () => {
+    if (tutorialStep === 4) setTutorialStep(5);
+    navigateTo('/productivity-hub');
+    setIsFeatureHubOpen(true);
+  };
+  const handleOpenAdmin = () => {
+    if (!isAdmin) return;
+    navigateTo('/admin');
+    setIsAdminOpen(true);
+  };
+  const handleUpdateAdminUserRole = async (user, role) => {
+    if (!isAdmin || !user?.id) return;
+    try {
+      await updateDoc(doc(db, 'users', user.id), {
+        role,
+        roleUpdatedAt: serverTimestamp(),
+        roleUpdatedBy: currentUser.uid,
+      });
+      await addDoc(collection(db, 'adminAudit'), {
+        action: 'role_changed',
+        targetUserId: user.id,
+        targetEmail: user.email || '',
+        role,
+        adminUid: currentUser.uid,
+        createdAt: serverTimestamp(),
+      });
+      showToast(`Role updated to ${role}.`, 'success');
+    } catch (error) {
+      console.error('Admin role update failed:', error);
+      showToast('Role update failed. Check Firebase admin rules.', 'danger');
+    }
+  };
+  const handleThemeChange = (nextTheme) => {
+    setTheme(nextTheme);
+    if (nextTheme === 'islamic') navigateTo('/islamic');
+    else if (window.location.pathname === '/islamic') navigateTo('/');
+  };
+  const handleSearchSelect = (result) => {
+    setIsSearchOpen(false);
+    if (result.type === 'report') {
+      setSelectedReport(result.report);
+      setActiveModal('report');
+    } else if (result.type === 'journal') {
+      setJournalInitialDate(null);
+      setIsJournalOpen(true);
+      navigateTo('/journal');
+    } else if (result.type === 'streaks') {
+      openStreaksPage();
+    } else if (result.type === 'rewards') {
+      setActiveModal('points');
+    } else if (result.type === 'settings') {
+      handleOpenSettings();
+    } else if (result.type === 'settings-admin') {
+      handleOpenAdmin();
+    } else if (result.type.startsWith('settings-')) {
+      handleOpenSettings(result.type.replace('settings-', ''));
+    } else if (result.type === 'security-scan') {
+      window.triggerManualSecurityScan?.();
+    } else if (result.type === 'pending-review') {
+      setIsReviewModalOpen(true);
+    } else if (result.type === 'insights') {
+      setIsInsightsOpen(true);
+    } else if (result.type === 'pomodoro') {
+      showToast('Open an hourly block to start the Pomodoro timer.', 'info');
+    } else if (result.type === 'islamic') {
+      handleThemeChange('islamic');
+    }
+  };
+  const handleReplayTutorial = () => {
+    localStorage.removeItem('24hours-tutorial-complete');
+    setTutorialStep(0);
+    handleCloseModal();
+  };
+
+  const startTutorial = () => {
+    tutorialBaselineRef.current = {
+      reportCount: reports.length,
+      completedCount: reports.filter((report) => report.status === 'Completed').length,
+      points: pointsData?.points || 0,
+    };
+    setTutorialStep(1);
+  };
+
+  const exitTutorial = () => {
+    localStorage.setItem('24hours-tutorial-complete', 'skipped');
+    setTutorialStep(-1);
+  };
+
+  const skipTutorialStep = (stepIndex) => {
+    try {
+      const skipped = JSON.parse(localStorage.getItem('24hours-tutorial-skipped-steps') || '[]');
+      if (!skipped.includes(stepIndex)) {
+        localStorage.setItem('24hours-tutorial-skipped-steps', JSON.stringify([...skipped, stepIndex]));
+      }
+    } catch {
+      // Continue even if browser storage is unavailable.
+    }
+    setTutorialStep((currentStep) => Math.min(currentStep + 1, 9));
+  };
+
+  const finishTutorial = () => {
+    localStorage.setItem('24hours-tutorial-complete', 'completed');
+    setTutorialStep(-1);
+  };
+
+  const handleTutorialAction = (action) => {
+    if (action === 'plan') {
+      handleOpenAddPlan();
+    } else if (action === 'points') {
+      setActiveModal('points');
+      setTutorialStep(4);
+    } else if (action === 'hub') {
+      setIsFeatureHubOpen(true);
+      setTutorialStep(5);
+    } else if (action === 'journal') {
+      setTutorialStep(6);
+      setIsFeatureHubOpen(true);
+      setIsJournalOpen(true);
+      navigateTo('/journal');
+    } else if (action === 'streaks') {
+      setTutorialStep(7);
+      setIsFeatureHubOpen(true);
+      openStreaksPage();
+    } else if (action === 'rewards') {
+      setActiveModal('points');
+      setTutorialStep(8);
+    } else if (action === 'settings') {
+      setActiveModal('settings');
+      setTutorialStep(9);
+    }
+  };
+
+  useEffect(() => {
+    if (tutorialStep < 1 || !tutorialBaselineRef.current) return;
+    const baseline = tutorialBaselineRef.current;
+    if (tutorialStep === 1 && reports.length > baseline.reportCount) setTutorialStep(2);
+    if (tutorialStep === 2 && reports.filter((report) => report.status === 'Completed').length > baseline.completedCount) {
+      setTutorialStep(3);
+    }
+    if (tutorialStep === 3 && (pointsData?.points || 0) > baseline.points) setTutorialStep(4);
+  }, [reports, pointsData?.points, tutorialStep]);
 
   const handleCloseModal = () => {
     setActiveModal(null);
     setSelectedReport(null);
+    if (window.location.pathname === '/settings') navigateTo('/');
   };
 
   // ── Auth operations ───────────────────────────────────────────────────────
@@ -738,9 +1005,9 @@ export default function Home() {
 
   const processReportPointsChange = async (oldStatus, oldReport, newStatus, newReport, reportObj, playFeedback = true) => {
     if (oldStatus !== newStatus) {
-      await reconcileBlockPoints(reportObj, newStatus);
       if (playFeedback && newStatus === 'Completed') playSound('points');
       if (playFeedback && newStatus === 'Missed') playSound('missed');
+      await reconcileBlockPoints(reportObj, newStatus);
     }
   };
 
@@ -751,6 +1018,9 @@ export default function Home() {
       const newData = { report: reportData.report, status: reportData.status, tag: reportData.tag || '' };
       await updateReport(selectedReport.id, newData);
       pushUndo({ type: 'UPDATE_REPORT', docId: selectedReport.id, previousData, newData });
+      playSound('success');
+      showToast(newData.status === 'Completed' ? 'Block completed · points updating' : 'Report saved', 'success');
+      handleCloseModal();
       
       const fullReportObj = { ...selectedReport, ...newData };
       await processReportPointsChange(selectedReport.status, selectedReport.report, reportData.status, reportData.report, fullReportObj);
@@ -766,9 +1036,6 @@ export default function Home() {
         await updatePoints(50, `24-Hour Master Completion Bonus (${selectedDate})`, 'earn', {}, `master-completion:${selectedDate}`);
       }
 
-      playSound('success');
-      showToast('Saved Successfully', 'success');
-      handleCloseModal();
     } catch (err) {
       console.error(err);
       showToast('Something went wrong.', 'danger');
@@ -1014,6 +1281,26 @@ export default function Home() {
   const canUndo = undoStack.length > 0;
   const canRedo = redoStack.length > 0;
 
+  if (isAdminOpen && isAdmin) {
+    return (
+      <AdminPage
+        currentUser={currentUser}
+        reports={reports}
+        pointsData={pointsData}
+        streakData={streakData}
+        onRunSecurityScan={() => window.triggerManualSecurityScan?.()}
+        onOpenStreaks={() => openStreaksPage(true)}
+        onOpenRewards={handleOpenPoints}
+        onUpdateUserRole={handleUpdateAdminUserRole}
+        onBack={() => {
+          setIsAdminOpen(false);
+          navigateTo('/');
+        }}
+        onExportData={handleExportData}
+      />
+    );
+  }
+
   // ── Islamic Theme: Full separate page ────────────────────────────────────
   if (theme === 'islamic') {
     return (
@@ -1032,17 +1319,20 @@ export default function Home() {
           dictionaryData={finalDictionary}
           onUpdateDictionary={updateDictionary}
           theme={theme}
-          onThemeChange={setTheme}
+          onThemeChange={handleThemeChange}
           pointsData={pointsData}
           unlockFeature={unlockFeature}
           onOpenPoints={() => setActiveModal('points')}
+          onReplayTutorial={handleReplayTutorial}
+          fullPage={window.location.pathname === '/settings'}
+          initialSection={settingsSection}
           onTriggerPendingReview={() => {}}
         />
         <IslamicPage
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
           onOpenSettings={handleOpenSettings}
-          onBack={() => setTheme('light')}
+          onBack={() => handleThemeChange('light')}
         />
       </>
     );
@@ -1058,6 +1348,7 @@ export default function Home() {
         onBack={() => {
           setIsJournalOpen(false);
           setJournalInitialDate(null);
+          navigateTo('/');
         }}
       />
     );
@@ -1069,7 +1360,12 @@ export default function Home() {
       <StreaksPage
         currentUser={currentUser}
         onDailyCheckIn={claimDailyCheckIn}
-        onBack={() => setIsStreaksOpen(false)}
+        openHabitScanner={openHabitScannerOnStreaks}
+        onBack={() => {
+          setIsStreaksOpen(false);
+          setOpenHabitScannerOnStreaks(false);
+          navigateTo('/');
+        }}
       />
     );
   }
@@ -1088,11 +1384,64 @@ export default function Home() {
         onOpenTrash={handleOpenTrash}
         onOpenPoints={handleOpenPoints}
         onOpenInsights={() => setIsInsightsOpen(true)}
+        onOpenFeatureHub={handleOpenFeatureHub}
+        onOpenSearch={() => setIsSearchOpen(true)}
+        onOpenAdmin={handleOpenAdmin}
+        isAdmin={isAdmin}
         userPoints={pointsData?.points || 0}
         isPointsInitial={pointsData?.isInitial}
         trashCount={trashItems.length}
         currentUser={currentUser}
       />
+
+      {isFeatureHubOpen && (
+        <FeatureHubPage
+          points={pointsData?.points || 0}
+          streakDays={streakData?.currentStreak || 0}
+          onClose={() => {
+            setIsFeatureHubOpen(false);
+            navigateTo('/');
+          }}
+          onOpenJournal={() => {
+            if (tutorialStep === 5) setTutorialStep(6);
+            setIsFeatureHubOpen(true);
+            setIsJournalOpen(true);
+            navigateTo('/journal');
+            navigateTo('/journal');
+          }}
+          onOpenStreaks={() => {
+            if (tutorialStep === 6) setTutorialStep(7);
+            setIsFeatureHubOpen(true);
+            openStreaksPage();
+          }}
+          onOpenRewards={() => {
+            if (tutorialStep === 7) setTutorialStep(8);
+            setActiveModal('points');
+          }}
+          onOpenInsights={() => setIsInsightsOpen(true)}
+          fullPage={window.location.pathname === '/productivity-hub'}
+        />
+      )}
+
+      {isSearchOpen && (
+        <GlobalSearch
+          reports={reports}
+          isAdmin={isAdmin}
+          onClose={() => setIsSearchOpen(false)}
+          onSelect={handleSearchSelect}
+        />
+      )}
+
+      {tutorialStep >= 0 && currentUser && !authLoading && !activeModal && (
+        <NewUserTutorial
+          stepIndex={tutorialStep}
+          onStart={startTutorial}
+          onSkipStep={skipTutorialStep}
+          onExit={exitTutorial}
+          onFinish={finishTutorial}
+          onAction={handleTutorialAction}
+        />
+      )}
 
       {/* Main timeline */}
       <main className="flex-grow-1 pb-5">
@@ -1138,6 +1487,14 @@ export default function Home() {
               onExcuseDay={excuseDay}
               onAddStreakFreeze={addStreakFreeze}
               onOpenPoints={handleOpenPoints}
+              onOpenPlan={handleOpenAddPlan}
+              onOpenSettings={handleOpenSettings}
+              onOpenJournal={() => {
+                setJournalInitialDate(getTodayDateString());
+                setIsJournalOpen(true);
+                navigateTo('/journal');
+              }}
+              onOpenStreaks={() => openStreaksPage()}
               selectedDate={selectedDate}
               pointsData={pointsData}
               onUnlockFeature={unlockFeature}
@@ -1212,6 +1569,7 @@ export default function Home() {
 
       {/* Add Plan FAB */}
       <button
+        data-tutorial="add-plan"
         className="btn-floating-add rounded-circle shadow-lg text-white border-0 hover-scale d-flex align-items-center justify-content-center"
         style={{
           position: 'fixed',
@@ -1329,10 +1687,13 @@ export default function Home() {
         dictionaryData={finalDictionary}
         onUpdateDictionary={updateDictionary}
         theme={theme}
-        onThemeChange={setTheme}
+        onThemeChange={handleThemeChange}
         pointsData={pointsData}
         unlockFeature={unlockFeature}
         onOpenPoints={() => setActiveModal('points')}
+        onReplayTutorial={handleReplayTutorial}
+        fullPage={window.location.pathname === '/settings'}
+        initialSection={settingsSection}
         onTriggerPendingReview={() => {
           if (pastPendingReports.length === 0) {
             showToast('No pending blocks to review from earlier today! / আজ আর কোনো পেন্ডিং স্লট নেই!', 'info');
@@ -1391,14 +1752,26 @@ export default function Home() {
         dictionaryData={finalDictionary}
       />
 
+      {securityScanChoiceOpen && (
+        <SecurityScanChoiceModal
+          onHourly={runHourlySecurityScan}
+          onStreaks={() => openStreaksPage(true)}
+          onBoth={runBothSecurityScans}
+          onClose={() => setSecurityScanChoiceOpen(false)}
+        />
+      )}
+
+
       {/* ── Toast notification ───────────────────────────────────────────── */}
       {toast.show && (
         <div
-          className="position-fixed top-0 start-50 translate-middle-x mt-4 shadow-lg animate-slide-down-toast-container"
-          style={{ zIndex: 1100 }}
+          className="position-fixed top-0 start-50 translate-middle-x mt-3 shadow-lg animate-slide-down-toast-container toast-notification"
+          style={{ zIndex: 1100, width: 'min(92vw, 480px)' }}
+          role="status"
+          aria-live="polite"
         >
           <div
-            className={`toast show align-items-center border-0 rounded-pill text-white px-4 py-2 ${
+            className={`toast show align-items-center border-0 rounded-4 text-white px-3 py-2 ${
               toast.type === 'danger' ? 'bg-danger' : toast.type === 'info' ? '' : ''
             }`}
             style={{
@@ -1419,10 +1792,19 @@ export default function Home() {
                     : toast.type === 'danger'
                     ? 'bi-exclamation-triangle-fill'
                     : 'bi-info-circle-fill'
-                }`}
+                } fs-5`}
               />
-              <span className="fw-bold small">{toast.message}</span>
+              <span className="fw-bold small flex-grow-1">{toast.message}</span>
+              <button
+                type="button"
+                className="btn btn-sm text-white opacity-75 p-0 border-0 shadow-none"
+                onClick={() => setToast((previous) => ({ ...previous, show: false }))}
+                aria-label="Dismiss notification"
+              >
+                <i className="bi bi-x-lg" />
+              </button>
             </div>
+            <div className="toast-progress mt-2" key={toast.id} />
           </div>
         </div>
       )}
@@ -1509,7 +1891,7 @@ export default function Home() {
       <InsightsModal
         isOpen={isInsightsOpen}
         onClose={() => setIsInsightsOpen(false)}
-        onOpenStreaks={() => setIsStreaksOpen(true)}
+        onOpenStreaks={() => openStreaksPage()}
         reports={reports}
         streakData={streakData}
         weeklyStats={weeklyStats}
@@ -1524,6 +1906,7 @@ export default function Home() {
           setJournalInitialDate(date || getTodayDateString());
           setIsInsightsOpen(false);
           setIsJournalOpen(true);
+          navigateTo('/journal');
         }}
       />
 

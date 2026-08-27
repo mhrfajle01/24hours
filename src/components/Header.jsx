@@ -16,11 +16,17 @@ export default function Header({
   userPoints = 0,
   isPointsInitial = false,
   onOpenPoints,
-  onOpenInsights
+  onOpenInsights,
+  onOpenFeatureHub,
+  onOpenSearch,
+  onOpenAdmin,
+  isAdmin = false
 }) {
   const [timeStr, setTimeStr] = useState(getCurrentTimeString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const moreMenuRef = useRef(null);
 
   const prevPointsRef = useRef(userPoints);
   const isFirstLoadRef = useRef(true);
@@ -52,6 +58,16 @@ export default function Header({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (isMoreOpen && moreMenuRef.current && !moreMenuRef.current.contains(event.target)) {
+        setIsMoreOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [isMoreOpen]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -128,7 +144,7 @@ export default function Header({
 
   return (
     <header className="sticky-top shadow-sm text-white" style={{ backgroundColor: '#075E54', zIndex: 1020 }}>
-      <div className="container-fluid max-width-container px-3 py-2">
+      <div className="container-fluid max-width-container px-3 py-2 position-relative">
         <div className="d-flex align-items-center justify-content-between flex-nowrap gap-2" style={{ minHeight: '44px' }}>
           
           {/* Left: Branding + Date */}
@@ -212,12 +228,31 @@ export default function Header({
                 />
               </span>
             </button>
+            <button
+              type="button"
+              className="btn btn-sm rounded-circle border border-light-subtle text-white hover-scale d-none d-sm-inline-flex"
+              onClick={onOpenSearch}
+              title="Search"
+              aria-label="Search"
+            >
+              <i className="bi bi-search" />
+            </button>
+            <button
+              data-tutorial="productivity-hub"
+              type="button"
+              className="btn btn-sm rounded-circle border border-light-subtle text-white hover-scale d-none d-sm-inline-flex"
+              onClick={onOpenFeatureHub}
+              title="Open Productivity Hub"
+              aria-label="Open Productivity Hub"
+            >
+              <i className="bi bi-grid-1x2-fill" />
+            </button>
   
             {/* Profile Avatar */}
             {currentUser && (
               <button
                 type="button"
-                className="btn p-0 border-0 bg-transparent pts-avatar-btn hover-scale pulse-group-3"
+                className="btn p-0 border-0 bg-transparent pts-avatar-btn hover-scale pulse-group-3 d-none d-sm-block"
                 onClick={onOpenProfile}
                 title={`${currentUser.displayName || 'Profile'} — Edit Profile`}
                 aria-label="Open Profile"
@@ -248,7 +283,7 @@ export default function Header({
             {/* Trash Button */}
             <button
               type="button"
-              className="btn p-0 border-0 bg-transparent position-relative text-white ms-1 pts-trash-btn hover-scale pulse-group-3"
+              className="btn p-0 border-0 bg-transparent position-relative text-white ms-1 pts-trash-btn hover-scale pulse-group-3 d-none d-sm-inline-flex"
               onClick={onOpenTrash}
               title="Trash"
               aria-label="Open Trash"
@@ -274,7 +309,7 @@ export default function Header({
             {/* Consistency Insights Button */}
             <button
               type="button"
-              className="btn btn-link text-white p-1 border-0 shadow-none pts-insights-btn hover-scale pulse-group-4"
+              className="btn btn-link text-white p-1 border-0 shadow-none pts-insights-btn hover-scale pulse-group-4 d-none d-sm-inline-flex"
               onClick={onOpenInsights}
               title="Consistency Insights & Calendar"
               aria-label="Open Consistency Insights"
@@ -284,7 +319,7 @@ export default function Header({
             {/* Refresh Button */}
             <button
               type="button"
-              className="btn btn-link text-white p-1 border-0 shadow-none pts-refresh-btn hover-scale pulse-group-4"
+              className="btn btn-link text-white p-1 border-0 shadow-none pts-refresh-btn hover-scale pulse-group-4 d-inline-flex"
               onClick={() => window.location.reload()}
               title="Refresh Page"
               aria-label="Refresh Page"
@@ -294,13 +329,51 @@ export default function Header({
  
             {/* Settings Gear */}
             <button
-              className="btn btn-link text-white p-1 border-0 shadow-none pts-settings-btn hover-scale pulse-group-4"
+              className="btn btn-link text-white p-1 border-0 shadow-none pts-settings-btn hover-scale pulse-group-4 d-none d-sm-inline-flex"
               onClick={onOpenSettings}
               title="Settings"
               aria-label="Settings"
             >
               <i className="bi bi-gear-fill fs-5 pts-settings-icon" />
             </button>
+
+            <div ref={moreMenuRef} className="d-sm-none position-relative">
+              <button
+                type="button"
+                className={`btn btn-sm rounded-circle border border-light-subtle text-white mobile-more-button ${isMoreOpen ? 'mobile-more-button-open' : ''}`}
+                onClick={() => setIsMoreOpen((open) => !open)}
+                aria-label="Open more options"
+                aria-expanded={isMoreOpen}
+              >
+                <i className={`bi ${isMoreOpen ? 'bi-x-lg' : 'bi-three-dots-vertical'}`} />
+              </button>
+              {isMoreOpen && (
+                <div className="mobile-more-menu position-absolute end-0 mt-2 p-2 rounded-4 shadow-lg">
+                  {[
+                    ['Search', 'bi-search', onOpenSearch],
+                    ['Productivity Hub', 'bi-grid-1x2-fill', onOpenFeatureHub],
+                    ['Insights', 'bi-bar-chart-line-fill', onOpenInsights],
+                    ['Trash', 'bi-trash3', onOpenTrash],
+                    ['Settings', 'bi-gear-fill', onOpenSettings],
+                    ['Profile', 'bi-person-circle', onOpenProfile],
+                    ...(isAdmin ? [['Admin Console', 'bi-shield-lock-fill', onOpenAdmin]] : []),
+                  ].map(([label, icon, action]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className="mobile-more-item btn btn-sm w-100 text-start d-flex align-items-center gap-2 rounded-3"
+                      onClick={() => {
+                        setIsMoreOpen(false);
+                        action?.();
+                      }}
+                    >
+                      <i className={`bi ${icon}`} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

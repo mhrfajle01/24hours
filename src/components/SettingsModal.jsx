@@ -27,6 +27,9 @@ export default function SettingsModal({
   pointsData,
   unlockFeature,
   onOpenPoints,
+  onReplayTutorial,
+  fullPage = false,
+  initialSection = 'general',
 }) {
   const fileInputRef = useRef(null);
   const { soundSettings, updateSoundSetting, playSound } = useSound();
@@ -77,6 +80,14 @@ export default function SettingsModal({
   // Custom confirm state for clear browser data
   const [confirmClearBrowserData, setConfirmClearBrowserData] = useState(false);
   const [isClearingBrowserData, setIsClearingBrowserData] = useState(false);
+  const [activeSettingsSection, setActiveSettingsSection] = useState(initialSection);
+  useEffect(() => {
+    if (isOpen) setActiveSettingsSection(initialSection);
+  }, [isOpen, initialSection]);
+  const [autoStreakScan, setAutoStreakScan] = useState(() => localStorage.getItem('auto-streak-security-scan') === 'true');
+  const settingStyle = (section) => ({
+    display: (Array.isArray(section) ? section : [section]).includes(activeSettingsSection) ? 'block' : 'none',
+  });
 
   // Custom confirm state for import
   const [pendingImport, setPendingImport] = useState(null); // null | { data, count }
@@ -448,22 +459,24 @@ export default function SettingsModal({
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="modal-backdrop fade show animate-fade-in"
-        style={{ zIndex: 1050 }}
-        onClick={onClose}
-      />
+      {!fullPage && (
+        <div
+          className="modal-backdrop fade show animate-fade-in"
+          style={{ zIndex: 1050 }}
+          onClick={onClose}
+        />
+      )}
 
       {/* Modal Dialog */}
       <div
-        className="modal fade show d-block animate-slide-up"
-        style={{ zIndex: 1060 }}
+        className={`modal fade show d-block ${fullPage ? '' : 'animate-slide-up'}`}
+        style={{ zIndex: 1060, ...(fullPage ? { position: 'fixed', inset: 0, overflow: 'auto' } : {}) }}
         tabIndex="-1"
         role="dialog"
         aria-modal="true"
       >
-        <div className="modal-dialog modal-dialog-centered" role="document">
-          <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+        <div className={`modal-dialog modal-xl ${fullPage ? 'm-0 mw-100' : 'modal-dialog-centered'}`} role="document">
+          <div className={`modal-content border-0 ${fullPage ? 'rounded-0 min-vh-100' : 'rounded-4 shadow-lg'} overflow-hidden`}>
 
             {/* Header */}
             <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
@@ -480,7 +493,11 @@ export default function SettingsModal({
             </div>
 
             {/* Body */}
-            <div id="settingsModalBody" className="modal-body p-4 bg-light overflow-y-auto" style={{ maxHeight: '78vh' }}>
+            <div
+              id="settingsModalBody"
+              className={`modal-body p-3 bg-light ${fullPage ? 'overflow-auto' : 'overflow-hidden'}`}
+              style={{ height: fullPage ? 'auto' : '72vh', flex: fullPage ? '1 1 auto' : undefined }}
+            >
 
               {/* Custom Alert Banner */}
               {alertBox.show && (
@@ -589,12 +606,34 @@ export default function SettingsModal({
                 </div>
               )}
 
+              <div className="d-flex gap-2 overflow-auto pb-2 mb-3 border-bottom">
+                {[
+                  ['general', 'General', 'bi-sliders'],
+                  ['appearance', 'Appearance', 'bi-palette'],
+                  ['sounds', 'Sounds', 'bi-volume-up'],
+                  ['notifications', 'Notifications', 'bi-bell'],
+                  ['goals', 'Goals', 'bi-bullseye'],
+                  ['tools', 'Tools', 'bi-tools'],
+                  ['data', 'Data', 'bi-database'],
+                  ['account', 'Account', 'bi-person'],
+                ].map(([id, label, icon]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className={`btn btn-sm rounded-pill text-nowrap fw-bold ${activeSettingsSection === id ? 'btn-success' : 'btn-light border'}`}
+                    onClick={() => setActiveSettingsSection(id)}
+                  >
+                    <i className={`bi ${icon} me-1`} />{label}
+                  </button>
+                ))}
+              </div>
+
               {/* Audio & Notifications */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('sounds')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <div className="d-flex justify-content-between align-items-center mb-2">
                   <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
                     <i className="bi bi-music-note-list" style={{ color: '#075E54' }} />
-                    Audio & Notifications
+                    Audio & Sound Effects
                   </h6>
                   <div className="form-check form-switch m-0">
                     <input
@@ -608,7 +647,7 @@ export default function SettingsModal({
                     />
                   </div>
                 </div>
-                <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem' }}>Customize notification sounds with custom MP3/OGG URLs.</p>
+                <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem' }}>Customize the sounds used for completed, missed, points, trash, and timer events.</p>
                 
                 <div className="d-grid gap-3" style={{ opacity: soundSettings.masterEnabled ? 1 : 0.5, pointerEvents: soundSettings.masterEnabled ? 'auto' : 'none' }}>
                   {Object.keys(DEFAULT_SOUNDS).map(key => {
@@ -646,6 +685,16 @@ export default function SettingsModal({
                             Reset
                           </button>
                         </div>
+
+                        <div style={settingStyle('notifications')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                          <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                            <i className="bi bi-bell-fill" style={{ color: '#075E54' }} />
+                            In-app Notifications
+                          </h6>
+                          <p className="text-secondary small mb-0">
+                            Success messages, points updates, reminders, and review alerts appear automatically while you use the app. Sound effects can be customized separately in the Sounds tab.
+                          </p>
+                        </div>
                       </div>
                       <input
                         type="url"
@@ -676,7 +725,7 @@ export default function SettingsModal({
               </div>
 
               {/* Theme Selector */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('appearance')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
                   <i className="bi bi-palette-fill" style={{ color: '#075E54' }} />
                   Theme Mode
@@ -748,7 +797,7 @@ export default function SettingsModal({
               </div>
 
               {/* Actions on Current Date */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('general')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
                   <i className="bi bi-calendar-event-fill" style={{ color: '#075E54' }} />
                   Actions for {selectedDate}
@@ -788,10 +837,27 @@ export default function SettingsModal({
                     <i className="bi bi-chevron-right text-muted small" />
                   </button>
                 </div>
+
+                <div style={settingStyle('general')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                  <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                    <i className="bi bi-controller" style={{ color: '#075E54' }} />
+                    Interactive Tutorial
+                  </h6>
+                  <p className="text-secondary small mb-3">
+                    Replay the guided walkthrough and try each feature with real app actions.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-outline-success w-100 rounded-3 fw-bold shadow-none"
+                    onClick={onReplayTutorial}
+                  >
+                    <i className="bi bi-play-circle me-2" />Replay Tutorial
+                  </button>
+                </div>
               </div>
 
               {/* Consistency Insights Section */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('goals')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
                   <i className="bi bi-graph-up-arrow text-success fs-5" />
                   Consistency Insights & Heatmap
@@ -818,7 +884,7 @@ export default function SettingsModal({
               </div>
 
               {/* Security Scan Section */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('tools')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
                   <i className="bi bi-shield-lock-fill text-danger fs-5" />
                   Security Timing-Block Scan
@@ -847,8 +913,30 @@ export default function SettingsModal({
                 </button>
               </div>
 
+              <div style={settingStyle('tools')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <div className="d-flex align-items-center justify-content-between gap-3">
+                  <div>
+                    <h6 className="fw-bold text-dark mb-1"><i className="bi bi-fire text-warning me-2" />Automatic Streak Scan</h6>
+                    <p className="text-secondary small mb-0">Check streak requirements when the app opens and highlight unfinished activity.</p>
+                  </div>
+                  <div className="form-check form-switch">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      checked={autoStreakScan}
+                      onChange={(event) => {
+                        const enabled = event.target.checked;
+                        setAutoStreakScan(enabled);
+                        localStorage.setItem('auto-streak-security-scan', String(enabled));
+                      }}
+                      aria-label="Enable automatic streak scan"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* PDF Export Section */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('tools')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
                   <i className="bi bi-file-pdf-fill text-danger fs-5" />
                   PDF Export (রিপোর্ট ডাউনলোড)
@@ -952,7 +1040,7 @@ export default function SettingsModal({
               </div>
 
               {/* Share & Blueprint Section */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('general')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
                   <i className="bi bi-share-fill text-primary fs-5" />
                   Daily Blueprint & Sharing
@@ -982,7 +1070,7 @@ export default function SettingsModal({
               </div>
 
               {/* Suggestion Dictionary Editor */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('general')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <div className="d-flex justify-content-between align-items-center mb-2">
                   <h6 className="fw-bold text-dark m-0 d-flex align-items-center gap-2">
                     <i className="bi bi-tags-fill" style={{ color: '#075E54' }} />
@@ -1353,7 +1441,7 @@ export default function SettingsModal({
               </div>
 
               {/* Tag Analysis Dashboard */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border text-start">
+              <div style={settingStyle('goals')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border text-start">
                 <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
                   <i className="bi bi-bar-chart-line-fill" style={{ color: '#075E54' }} />
                   Tag Analysis Dashboard (ট্যাগ বিশ্লেষণ)
@@ -1477,7 +1565,7 @@ export default function SettingsModal({
               </div>
 
               {/* Backup / Export / Import */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('data')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
                   <i className="bi bi-cloud-arrow-up-fill" style={{ color: '#075E54' }} />
                   Backup &amp; Restore
@@ -1493,6 +1581,7 @@ export default function SettingsModal({
                       <i className="bi bi-download me-1" />Export JSON
                     </button>
                   </div>
+
                   <div className="col-6">
                     <button
                       className="btn btn-outline-secondary w-100 py-2 rounded-3 fw-bold small shadow-none"
@@ -1522,8 +1611,20 @@ export default function SettingsModal({
                 </div>
               </div>
 
+              {activeSettingsSection === 'account' && (
+                <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                  <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                    <i className="bi bi-person-circle text-success" /> Account
+                  </h6>
+                  <p className="text-secondary small mb-0">
+                    Profile and sign-out controls remain available from the profile avatar in the original header.
+                  </p>
+                </div>
+              )}
+
+
               {/* Browser Storage Management */}
-              <div className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+              <div style={settingStyle('data')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-1.5 d-flex align-items-center gap-2">
                   <i className="bi bi-hdd-network-fill text-danger" />
                   Browser Stored Data (অ্যাপ ক্যাশ ও মেমোরি)

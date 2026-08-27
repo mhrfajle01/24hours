@@ -60,6 +60,10 @@ export default function ConsistencyWidget({
   onExcuseDay,
   onAddStreakFreeze,
   onOpenPoints,
+  onOpenJournal,
+  onOpenPlan,
+  onOpenSettings,
+  onOpenStreaks,
   pointsData,
   onUnlockFeature,
 }) {
@@ -359,23 +363,31 @@ export default function ConsistencyWidget({
           </div>
           <div className="row g-2 small">
             <div className="col-12 col-sm-4">
-              <div className="d-flex align-items-center gap-1">
+              <button type="button" className="streak-requirement-action d-flex align-items-center gap-1" onClick={onOpenSettings} title="Open settings">
                 <i className={`bi ${streakRequirements.appUsageMet ? 'bi-check-circle-fill text-success' : 'bi-circle text-secondary'}`}></i>
                 App use: {formatDurationMinutes(streakRequirements.appUsageSeconds)} / 3m
-              </div>
+              </button>
             </div>
             <div className="col-12 col-sm-4">
-              <div className="d-flex align-items-center gap-1">
+              <button type="button" className="streak-requirement-action d-flex align-items-center gap-1" onClick={onOpenJournal} title="Open today's journal">
                 <i className={`bi ${streakRequirements.journalMet ? 'bi-check-circle-fill text-success' : 'bi-circle text-secondary'}`}></i>
-                Today’s journal
-              </div>
+                Today&apos;s journal
+              </button>
             </div>
             <div className="col-12 col-sm-4">
-              <div className="d-flex align-items-center gap-1">
+              <button type="button" className="streak-requirement-action d-flex align-items-center gap-1" onClick={onOpenPlan} title="Open planning">
                 <i className={`bi ${streakRequirements.planningMet ? 'bi-check-circle-fill text-success' : 'bi-circle text-secondary'}`}></i>
                 Plans: {streakRequirements.planningCount}/3
-              </div>
+              </button>
             </div>
+          </div>
+          <div className="progress mt-3" style={{ height: 6 }}>
+            <div
+              className="progress-bar bg-success"
+              role="progressbar"
+              style={{ width: `${[streakRequirements.appUsageMet, streakRequirements.journalMet, streakRequirements.planningMet].filter(Boolean).length * 33.333}%` }}
+              aria-label="Daily streak requirements progress"
+            />
           </div>
           {streakData.currentStreak > 0 && !streakRequirements.qualified && (
             <div className="text-danger small fw-semibold mt-2">

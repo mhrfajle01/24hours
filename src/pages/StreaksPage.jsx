@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStreaks, getStreakDays } from '../hooks/useStreaks';
+import HabitScannerModal from '../components/HabitScannerModal';
 
 const QUOTES = [
   "Every fall is a chance to rise. You got this! 💪",
@@ -45,7 +46,7 @@ const MILESTONES = [
 
 const EMOJIS = ['🚭','💪','🏃','📚','🧘','🥗','💧','🌅','🎯','📵','💤','🏋️','🎨','🧠','🙏','🚫'];
 
-export default function StreaksPage({ currentUser, onBack, onDailyCheckIn }) {
+export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, openHabitScanner = false }) {
   // We assume useStreaks returns an object with these properties. 
   // If hooks are slightly different, this might need adjustment, but matches standard patterns.
   const { 
@@ -77,6 +78,7 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn }) {
   const [relapseNote, setRelapseNote] = useState('');
   const [relapseMessage, setRelapseMessage] = useState('');
   const [timeUntilReset, setTimeUntilReset] = useState('');
+  const [showHabitScanner, setShowHabitScanner] = useState(openHabitScanner);
 
   // Random Quote
   const [quote] = useState(QUOTES[Math.floor(Math.random() * QUOTES.length)]);
@@ -111,6 +113,10 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn }) {
     const interval = setInterval(updateTimeUntilReset, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (openHabitScanner) setShowHabitScanner(true);
+  }, [openHabitScanner]);
 
   // Utility to format time
   const formatTime = (seconds) => {
@@ -663,6 +669,15 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn }) {
 
         </div>
       </main>
+
+      {showHabitScanner && (
+        <HabitScannerModal
+          streaks={streaks}
+          updateStreak={updateStreak}
+          recordRelapse={recordRelapse}
+          onClose={() => setShowHabitScanner(false)}
+        />
+      )}
 
       {/* SOS Button */}
       <div className="sos-btn text-white" onClick={startSOS} title="Urge Surfing">
