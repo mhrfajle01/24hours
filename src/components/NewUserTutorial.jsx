@@ -8,6 +8,7 @@ const STEPS = [
   { id: 'hub', title: 'Discover the Productivity Hub', text: 'This is the single place to find the newest features.', action: 'Open Hub' },
   { id: 'journal', title: 'Try Journal', text: 'Open Journal to write reflections, moods, prompts, and history.', action: 'Open Journal' },
   { id: 'streaks', title: 'Try Streaks', text: 'Open Streaks to check in, view milestones, and protect progress.', action: 'Open Streaks' },
+  { id: 'streaks-relapse', title: 'Habit Mechanics & Relapses', text: 'Important: If you break a habit (relapse), your streak fully resets to 0. You will also lose a base of 100 points, plus 20 points per day you had on the streak. Stay consistent!', action: 'I understand', optional: true },
   { id: 'rewards', title: 'Explore Rewards Store', text: 'Browse daily items, streak protection, mystery rewards, and unlocks. No purchase is required.', action: 'Open Rewards' },
   { id: 'settings', title: 'Explore Settings', text: 'All configuration is organized in one place, including Tools.', action: 'Open Settings' },
   { id: 'done', title: 'Tutorial complete!', text: 'You have seen the main features. You can replay this tutorial from the app help area later.', action: 'Finish', optional: true },

@@ -20,11 +20,12 @@ const defaultMilestones = [
  */
 export const getStreakDays = (streak) => {
   if (!streak || !streak.startDate) return 0;
-  const start = new Date(streak.startDate);
+  const [year, month, day] = streak.startDate.split('-');
+  const start = new Date(year, month - 1, day);
   start.setHours(0, 0, 0, 0);
   const now = new Date();
   now.setHours(0, 0, 0, 0);
-  const diffTime = now - start;
+  const diffTime = now.getTime() - start.getTime();
   return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 };
 
@@ -127,7 +128,8 @@ export const useStreaks = (uid) => {
     const currentStreakLength = getStreakDays(streak);
     
     const newBestStreak = Math.max(streak.bestStreak || 0, currentStreakLength);
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const penalty = 100 + (currentStreakLength * 20);
     
     const newRelapse = {

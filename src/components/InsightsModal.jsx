@@ -22,11 +22,11 @@ export default function InsightsModal({
   onOpenJournal,
   onOpenStreaks,
 }) {
-  if (!isOpen) return null;
-
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState('');
   const [hoveredDay, setHoveredDay] = useState(null);
+
+  if (!isOpen) return null;
 
   const isConsistencyUnlocked = isFeatureActive(pointsData, 'consistency_insights');
 

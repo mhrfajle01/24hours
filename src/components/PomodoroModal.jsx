@@ -53,31 +53,7 @@ export default function PomodoroModal({
   pointsData,
   onUnlockFeature
 }) {
-  if (!isOpen) return null;
-
   const { playSound } = useSound();
-
-  // Block point purchase logic
-  const getBlockDurationMin = () => {
-    if (!activeReport) return 60;
-    try {
-      const times = getIntervalTimes(activeReport);
-      const startMin = timeToMinutes(times.startTime);
-      let endMin = timeToMinutes(times.endTime);
-      if (endMin < startMin) {
-        endMin += 24 * 60;
-      }
-      return endMin - startMin;
-    } catch (e) {
-      return 60;
-    }
-  };
-
-  const durationMin = getBlockDurationMin();
-  const unlockCost = Math.max(5, Math.round((durationMin / 60) * 10));
-  const featureKey = activeReport ? `pomodoro_block_${activeReport.id}` : '';
-  const isUnlocked = isFeatureActive(pointsData, featureKey);
-
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState('');
 
@@ -101,6 +77,27 @@ export default function PomodoroModal({
 
   // Save base document title
   const originalTitleRef = useRef(document.title);
+
+  // Block point purchase logic
+  const getBlockDurationMin = () => {
+    if (!activeReport) return 60;
+    try {
+      const times = getIntervalTimes(activeReport);
+      const startMin = timeToMinutes(times.startTime);
+      let endMin = timeToMinutes(times.endTime);
+      if (endMin < startMin) {
+        endMin += 24 * 60;
+      }
+      return endMin - startMin;
+    } catch (e) {
+      return 60;
+    }
+  };
+
+  const durationMin = getBlockDurationMin();
+  const unlockCost = Math.max(5, Math.round((durationMin / 60) * 10));
+  const featureKey = activeReport ? `pomodoro_block_${activeReport.id}` : '';
+  const isUnlocked = isFeatureActive(pointsData, featureKey);
 
   // Helper to compute seconds left in active block
   const getSecondsLeftInActiveBlock = () => {
@@ -179,6 +176,8 @@ export default function PomodoroModal({
       document.title = originalTitleRef.current;
     };
   }, [timeLeft, isActive, phase, isUnlocked]);
+
+  if (!isOpen) return null;
 
   const resetTimer = (targetPhase = phase) => {
     setIsActive(false);

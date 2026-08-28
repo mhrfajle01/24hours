@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStreaks, getStreakDays } from '../hooks/useStreaks';
 import HabitScannerModal from '../components/HabitScannerModal';
 
@@ -46,7 +46,7 @@ const MILESTONES = [
 
 const EMOJIS = ['🚭','💪','🏃','📚','🧘','🥗','💧','🌅','🎯','📵','💤','🏋️','🎨','🧠','🙏','🚫'];
 
-export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, openHabitScanner = false }) {
+export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, streakRequirements = {}, openHabitScanner = false }) {
   // We assume useStreaks returns an object with these properties. 
   // If hooks are slightly different, this might need adjustment, but matches standard patterns.
   const { 
@@ -56,7 +56,7 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, openH
     updateStreak = async () => {}, 
     deleteStreak = async () => {}, 
     recordRelapse = async () => {} 
-  } = (typeof useStreaks === 'function' ? useStreaks(currentUser?.uid) : {});
+  } = useStreaks(currentUser?.uid);
 
   const [activeView, setActiveView] = useState('list'); // 'list', 'detail', 'add'
   const [selectedStreak, setSelectedStreak] = useState(null);
@@ -227,9 +227,45 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, openH
     }
   };
 
+  const checkinRequirementsMet = !!(streakRequirements.appUsageMet && streakRequirements.journalMet && streakRequirements.planningMet);
+
   const handleCheckIn = async () => {
+    if (!checkinRequirementsMet) {
+      // Show requirements not met toast
+      const toast = document.createElement('div');
+      toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-4 p-3 rounded-4 shadow-lg text-white fw-bold animate-slide-down-toast-container';
+      toast.style.background = 'linear-gradient(135deg, #ff6b6b, #ee5a24)';
+      toast.style.zIndex = 9999;
+      const missing = [];
+      if (!streakRequirements.planningMet) missing.push(`${streakRequirements.planningCount || 0}/3 plans`);
+      if (!streakRequirements.journalMet) missing.push('no journal');
+      if (!streakRequirements.appUsageMet) missing.push('< 3 min usage');
+      toast.innerHTML = `⚠️ Requirements not met: ${missing.join(', ')}`;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.5s';
+        setTimeout(() => toast.remove(), 500);
+      }, 3000);
+      return;
+    }
     try {
-      if (onDailyCheckIn) await onDailyCheckIn();
+      const result = onDailyCheckIn ? await onDailyCheckIn() : false;
+      if (result === false) {
+        // Server-side validation also failed
+        const toast = document.createElement('div');
+        toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-4 p-3 rounded-4 shadow-lg text-white fw-bold animate-slide-down-toast-container';
+        toast.style.background = 'linear-gradient(135deg, #ff9800, #f57c00)';
+        toast.style.zIndex = 9999;
+        toast.innerHTML = '⚠️ Check-in requirements not yet fulfilled';
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transition = 'opacity 0.5s';
+          setTimeout(() => toast.remove(), 500);
+        }, 2500);
+        return;
+      }
     } catch (error) {
       console.error('Daily check-in failed:', error);
       return;
@@ -452,8 +488,15 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, openH
                           <div className="d-flex justify-content-center gap-2 mt-4" onClick={e => e.stopPropagation()}>
                             <button 
                               className="btn btn-sm rounded-pill fw-bold px-4"
-                              style={{ background: 'rgba(37, 211, 102, 0.2)', color: '#25D366', border: '1px solid #25D366' }}
+                              style={{ 
+                                background: checkinRequirementsMet ? 'rgba(37, 211, 102, 0.2)' : 'rgba(255,255,255,0.05)', 
+                                color: checkinRequirementsMet ? '#25D366' : 'rgba(255,255,255,0.3)', 
+                                border: `1px solid ${checkinRequirementsMet ? '#25D366' : 'rgba(255,255,255,0.15)'}`,
+                                cursor: checkinRequirementsMet ? 'pointer' : 'not-allowed',
+                                opacity: checkinRequirementsMet ? 1 : 0.6,
+                              }}
                               onClick={handleCheckIn}
+                              title={checkinRequirementsMet ? 'Claim daily check-in bonus' : `Requirements: 3+ plans (${streakRequirements.planningCount || 0}/3), journal entry, 3 min app usage`}
                             >
                               ✓ {habitCopy.checkIn}
                             </button>

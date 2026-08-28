@@ -43,6 +43,7 @@ import {
   where,
   getDocs,
   getDoc,
+  onSnapshot,
   setDoc,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
@@ -93,6 +94,23 @@ export default function Home() {
     };
     loadAdminRole();
     return () => { cancelled = true; };
+  }, [currentUser?.uid]);
+
+  useEffect(() => {
+    if (!currentUser?.uid) return undefined;
+    const userRef = doc(db, 'users', currentUser.uid);
+    const unsubscribe = onSnapshot(userRef, async (snapshot) => {
+      if (snapshot.exists() && snapshot.data().accountStatus === 'suspended') {
+        try {
+          await signOut(auth);
+        } catch (signOutError) {
+          console.error('Unable to sign out suspended account:', signOutError);
+        }
+      }
+    }, (error) => {
+      console.error('Unable to monitor account status:', error);
+    });
+    return () => unsubscribe();
   }, [currentUser?.uid]);
 
   // ── Date / time ─────────────────────────────────────────────────────────
@@ -358,6 +376,17 @@ export default function Home() {
         }, { merge: true }).catch((error) => {
           console.error('Failed to sync user profile:', error);
         });
+        
+        // Force navigate to Home page upon login
+        if (window.location.pathname !== '/') {
+          window.history.replaceState({}, '', '/');
+        }
+        setIsAdminOpen(false);
+        setIsFeatureHubOpen(false);
+        setIsJournalOpen(false);
+        setIsStreaksOpen(false);
+        setIsInsightsOpen(false);
+        setActiveModal(null);
       }
       setCurrentUser(
         user
@@ -727,7 +756,7 @@ export default function Home() {
   const handleOpenEditReport = (r) => { if (!checkWorkflowValidation(r)) return; setSelectedReport(r);   setActiveModal('report');   };
   const handleOpenDelete     = (r) => { if (!checkWorkflowValidation(r)) return; setSelectedReport(r);   setActiveModal('delete');   };
   const handleOpenSettings   = (section = 'general') => {
-    if (tutorialStep === 8) setTutorialStep(9);
+    if (tutorialStep === 9) setTutorialStep(10);
     setSettingsSection(section);
     navigateTo('/settings');
     setActiveModal('settings');
@@ -835,7 +864,7 @@ export default function Home() {
     } catch {
       // Continue even if browser storage is unavailable.
     }
-    setTutorialStep((currentStep) => Math.min(currentStep + 1, 9));
+    setTutorialStep((currentStep) => Math.min(currentStep + 1, 10));
   };
 
   const finishTutorial = () => {
@@ -861,12 +890,14 @@ export default function Home() {
       setTutorialStep(7);
       setIsFeatureHubOpen(true);
       openStreaksPage();
+    } else if (action === 'streaks-relapse') {
+      setTutorialStep(8);
     } else if (action === 'rewards') {
       setActiveModal('points');
-      setTutorialStep(8);
+      setTutorialStep(9);
     } else if (action === 'settings') {
       setActiveModal('settings');
-      setTutorialStep(9);
+      setTutorialStep(10);
     }
   };
 
@@ -1163,14 +1194,116 @@ export default function Home() {
 
   // ── Import / Export ───────────────────────────────────────────────────────
 
-  const handleImportData = async (importedData) => {
+  const handleImportData = async (parsedJson) => {
     try {
       if (!currentUser) return;
+      const uid = currentUser.uid;
+
+      const isV3 = parsedJson && parsedJson.version === 3;
+      const isV2 = parsedJson && parsedJson.version === 2;
+      const isLegacy = Array.isArray(parsedJson);
+
+      if (isV3) {
+        showToast('Restoring full backup, please wait...', 'info');
+        const data = parsedJson.data || {};
+        
+        const ops = [];
+
+        // Clean existing reports
+        const existingReports = await getDocs(query(collection(db, 'reports'), where('uid', '==', uid)));
+        existingReports.docs.forEach(d => ops.push(b => b.delete(d.ref)));
+        
+        // Clean existing journals
+        const existingJournals = await getDocs(query(collection(db, 'journals'), where('uid', '==', uid)));
+        existingJournals.docs.forEach(d => ops.push(b => b.delete(d.ref)));
+        
+        // Clean existing habits
+        const existingHabits = await getDocs(query(collection(db, 'streaks'), where('uid', '==', uid)));
+        existingHabits.docs.forEach(d => ops.push(b => b.delete(d.ref)));
+
+        // Add backup reports
+        (data.reports || []).forEach(r => {
+          ops.push(b => b.set(doc(collection(db, 'reports')), {
+            ...r, uid, createdAt: serverTimestamp()
+          }));
+        });
+
+        // Add backup journals
+        (data.journals || []).forEach(j => {
+          ops.push(b => b.set(doc(collection(db, 'journals')), {
+            ...j, uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+          }));
+        });
+
+        // Add backup habits
+        (data.habits || []).forEach(h => {
+          ops.push(b => b.set(doc(collection(db, 'streaks')), {
+            ...h, uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+          }));
+        });
+
+        // Set main streak
+        if (data.mainStreak && Object.keys(data.mainStreak).length > 0) {
+          ops.push(b => b.set(doc(db, 'streaks', uid), data.mainStreak, { merge: true }));
+        }
+
+        // Set points
+        if (data.points && Object.keys(data.points).length > 0) {
+          ops.push(b => b.set(doc(db, 'points', uid), { ...data.points, updatedAt: serverTimestamp() }));
+        }
+
+        // Set goal
+        if (data.goal && Object.keys(data.goal).length > 0) {
+          ops.push(b => b.set(doc(db, 'goals', uid), data.goal, { merge: true }));
+        }
+
+        // Set dictionary
+        if (data.dictionary && data.dictionary.length > 0) {
+          ops.push(b => b.set(doc(db, 'dictionaries', uid), { items: data.dictionary }, { merge: true }));
+        }
+
+        // Execute batch ops
+        let batch = writeBatch(db);
+        let count = 0;
+        for (const op of ops) {
+          op(batch);
+          count++;
+          if (count === 400) {
+            await batch.commit();
+            batch = writeBatch(db);
+            count = 0;
+          }
+        }
+        if (count > 0) {
+          await batch.commit();
+        }
+
+        // Restore localStorage
+        if (data.prayerChecklists) {
+          Object.entries(data.prayerChecklists).forEach(([date, val]) => {
+            localStorage.setItem(`prayer_checklist_${date}`, JSON.stringify(val));
+          });
+        }
+        if (data.settings) {
+          if (data.settings.theme) localStorage.setItem('app-theme', data.settings.theme);
+          if (data.settings.journalTheme) localStorage.setItem('journal-theme', data.settings.journalTheme);
+          if (data.settings.autoStreakScan) localStorage.setItem('auto-streak-security-scan', data.settings.autoStreakScan);
+          if (data.settings.soundSettings) localStorage.setItem('app-sounds', data.settings.soundSettings);
+        }
+
+        showToast('Full backup restored successfully. Please refresh.', 'success');
+        handleCloseModal();
+        return;
+      }
+
+      // Legacy / v2 import
+      const importedData = isV2 ? parsedJson.records : parsedJson;
+      const targetDate = isV2 ? parsedJson.date : selectedDate;
 
       const q = query(
         collection(db, 'reports'),
-        where('uid', '==', currentUser.uid),
-        where('date', '==', selectedDate)
+        where('uid', '==', uid),
+        where('date', '==', targetDate)
       );
       const existingSnap = await getDocs(q);
       const batch = writeBatch(db);
@@ -1178,12 +1311,12 @@ export default function Home() {
       existingSnap.docs.forEach((d) => batch.delete(d.ref));
 
       const reportsCol = collection(db, 'reports');
-       importedData.forEach((item) => {
+      importedData.forEach((item) => {
         const ref = doc(reportsCol);
         const times = getIntervalTimes(item);
         batch.set(ref, {
-          uid: currentUser.uid,
-          date: selectedDate,
+          uid,
+          date: targetDate,
           hour: item.hour || parseInt(times.startTime.split(':')[0], 10),
           ampm: item.ampm || (parseInt(times.startTime.split(':')[0], 10) >= 12 ? 'PM' : 'AM'),
           startTime: times.startTime,
@@ -1191,6 +1324,7 @@ export default function Home() {
           plan: item.plan || '',
           report: item.report || '',
           status: item.status || 'Pending',
+          tag: item.tag || '',
           createdAt: serverTimestamp(),
         });
       });
@@ -1204,37 +1338,123 @@ export default function Home() {
     }
   };
 
-  const handleExportData = () => {
+  const handleExportData = async () => {
     try {
-      if (reports.length === 0) {
-        showToast('No data to export.', 'info');
-        return;
-      }
-      const cleanedData = reports.map((r) => {
-        const times = getIntervalTimes(r);
+      if (!currentUser) return;
+      showToast('Exporting data, please wait...', 'info');
+
+      const uid = currentUser.uid;
+
+      const toISO = (ts) => ts && typeof ts.toDate === 'function' ? ts.toDate().toISOString() : ts;
+      const deepConvert = (obj) => {
+        if (!obj || typeof obj !== 'object') return obj;
+        if (typeof obj.toDate === 'function') return toISO(obj);
+        if (Array.isArray(obj)) return obj.map(deepConvert);
+        const res = {};
+        for (const [k, v] of Object.entries(obj)) {
+          res[k] = deepConvert(v);
+        }
+        return res;
+      };
+
+      // 1. Fetch ALL reports
+      const reportsSnap = await getDocs(query(collection(db, 'reports'), where('uid', '==', uid)));
+      const exportReports = reportsSnap.docs.map(d => {
+        const data = d.data();
         return {
-          hour: r.hour || parseInt(times.startTime.split(':')[0], 10),
-          ampm: r.ampm || (parseInt(times.startTime.split(':')[0], 10) >= 12 ? 'PM' : 'AM'),
-          startTime: times.startTime,
-          endTime: times.endTime,
-          plan: r.plan || '',
-          report: r.report || '',
-          status: r.status || 'Pending',
+          date: data.date, hour: data.hour, ampm: data.ampm, 
+          startTime: data.startTime, endTime: data.endTime,
+          plan: data.plan, report: data.report, status: data.status, tag: data.tag
         };
       });
-      const blob = new Blob([JSON.stringify(cleanedData, null, 2)], { type: 'application/json' });
+
+      // 2. Fetch ALL journals
+      const journalsSnap = await getDocs(query(collection(db, 'journals'), where('uid', '==', uid)));
+      const exportJournals = journalsSnap.docs.map(d => {
+        const data = d.data();
+        return {
+          date: data.date, title: data.title, content: data.content, 
+          mood: data.mood, tags: data.tags
+        };
+      });
+
+      // 3. Fetch ALL habits
+      const habitsSnap = await getDocs(query(collection(db, 'streaks'), where('uid', '==', uid)));
+      const exportHabits = habitsSnap.docs.map(d => {
+        const data = d.data();
+        return {
+          name: data.name, emoji: data.emoji, category: data.category,
+          startDate: data.startDate, bestStreak: data.bestStreak,
+          totalRelapses: data.totalRelapses, isActive: data.isActive,
+          milestones: data.milestones, relapseHistory: data.relapseHistory
+        };
+      });
+
+      // 4. Fetch main streak doc
+      const mainStreakSnap = await getDoc(doc(db, 'streaks', uid));
+      const exportMainStreak = mainStreakSnap.exists() ? mainStreakSnap.data() : {};
+
+      // 5. Fetch points doc
+      const pointsSnap = await getDoc(doc(db, 'points', uid));
+      let exportPoints = pointsSnap.exists() ? deepConvert(pointsSnap.data()) : {};
+      delete exportPoints.updatedAt;
+
+      // 6. Fetch goals doc
+      const goalsSnap = await getDoc(doc(db, 'goals', uid));
+      const exportGoal = goalsSnap.exists() ? deepConvert(goalsSnap.data()) : {};
+
+      // 7. Fetch dictionary doc
+      const dictSnap = await getDoc(doc(db, 'dictionaries', uid));
+      const exportDictionary = dictSnap.exists() ? deepConvert(dictSnap.data().items || []) : [];
+
+      // 8. Gather localStorage
+      const prayerChecklists = {};
+      const settings = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('prayer_checklist_')) {
+          try {
+            prayerChecklists[key.replace('prayer_checklist_', '')] = JSON.parse(localStorage.getItem(key));
+          } catch(e) {}
+        }
+      }
+      settings.theme = localStorage.getItem('app-theme');
+      settings.journalTheme = localStorage.getItem('journal-theme');
+      settings.autoStreakScan = localStorage.getItem('auto-streak-security-scan');
+      settings.soundSettings = localStorage.getItem('app-sounds');
+
+      const exportPayload = {
+        version: 3,
+        app: '24hours-hourlog',
+        exportedAt: new Date().toISOString(),
+        user: { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName },
+        data: {
+          reports: deepConvert(exportReports),
+          journals: deepConvert(exportJournals),
+          habits: deepConvert(exportHabits),
+          mainStreak: deepConvert(exportMainStreak),
+          points: exportPoints,
+          goal: exportGoal,
+          dictionary: exportDictionary,
+          prayerChecklists,
+          settings
+        }
+      };
+
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `hourlog-${selectedDate}.json`;
+      const todayStr = new Date().toISOString().split('T')[0];
+      link.download = `24hours-full-backup-${todayStr}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      showToast('Exported Successfully', 'success');
+      showToast(`Exported ${exportReports.length} reports, ${exportJournals.length} journals, ${exportHabits.length} habits successfully`, 'success');
     } catch (err) {
       console.error(err);
-      showToast('Something went wrong.', 'danger');
+      showToast('Failed to export data.', 'danger');
     }
   };
 
@@ -1360,6 +1580,7 @@ export default function Home() {
       <StreaksPage
         currentUser={currentUser}
         onDailyCheckIn={claimDailyCheckIn}
+        streakRequirements={dashboardStreakRequirements}
         openHabitScanner={openHabitScannerOnStreaks}
         onBack={() => {
           setIsStreaksOpen(false);
@@ -1415,7 +1636,7 @@ export default function Home() {
             openStreaksPage();
           }}
           onOpenRewards={() => {
-            if (tutorialStep === 7) setTutorialStep(8);
+            if (tutorialStep === 8) setTutorialStep(9);
             setActiveModal('points');
           }}
           onOpenInsights={() => setIsInsightsOpen(true)}

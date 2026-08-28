@@ -41,7 +41,7 @@ const FEATURE_COSTS = {
   pdf_export: 1000,
   security_scan: 500,
   islamic_theme: 750,
-  import_json: 600,
+  import_json: 50,
 };
 
 /**
@@ -879,6 +879,25 @@ export const useFirestore = (selectedDate, uid) => {
   const claimDailyCheckIn = async () => {
     if (!uid) return false;
     const today = getTodayDateString();
+
+    // Validate the 3 streak requirements BEFORE awarding check-in points
+    const todayQ = query(collection(db, 'reports'), where('uid', '==', uid), where('date', '==', today));
+    const todaySnap = await getDocs(todayQ);
+    const todayHasThreePlans = todaySnap.size >= 3;
+
+    const journalsQ = query(collection(db, 'journals'), where('uid', '==', uid));
+    const journalsSnap = await getDocs(journalsQ);
+    const hasJournalToday = journalsSnap.docs.some((journal) => journal.data().date === today);
+
+    const usageSnap = await getDoc(doc(db, 'appUsage', uid, 'days', today));
+    const activeUsageSeconds = usageSnap.exists() ? usageSnap.data().activeSeconds || 0 : 0;
+    const usageMet = activeUsageSeconds >= 180;
+
+    if (!todayHasThreePlans || !hasJournalToday || !usageMet) {
+      // Requirements not met — do NOT award daily check-in bonus
+      return false;
+    }
+
     const ref = doc(db, 'points', uid);
     await runTransaction(db, async (transaction) => {
       const snap = await transaction.get(ref);
@@ -1018,7 +1037,8 @@ export const useFirestore = (selectedDate, uid) => {
     return await redeemPerk('UNLOCK_FEATURE', cost, { featureKey, featureName });
   };
 
-  // Check Daily Sign-in bonus once a day
+  // Check Daily Sign-in bonus once a day — only attempts claim when
+  // streak requirements are likely met (claimDailyCheckIn validates them).
   useEffect(() => {
     if (!uid) return;
     const today = getTodayDateString();
@@ -1027,7 +1047,11 @@ export const useFirestore = (selectedDate, uid) => {
     getDoc(ref).then(async (snap) => {
       if (snap.exists()) {
         const data = snap.data();
-        if (data.lastDailyCheckin !== today) await claimDailyCheckIn();
+        if (data.lastDailyCheckin !== today) {
+          // claimDailyCheckIn now validates the 3 requirements internally
+          // before awarding points, so this call is safe.
+          await claimDailyCheckIn();
+        }
       }
     });
   }, [uid]);

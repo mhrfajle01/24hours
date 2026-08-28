@@ -157,14 +157,46 @@ export default function SettingsModal({
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const importedData = JSON.parse(event.target.result);
+        const parsed = JSON.parse(event.target.result);
 
-        if (!Array.isArray(importedData)) {
-          showAlert('Invalid file format. Expected a JSON array.', 'danger');
+        if (parsed && parsed.version === 3 && parsed.data) {
+          const d = parsed.data;
+          setPendingImport({
+            format: 'v3',
+            data: parsed,
+            summary: {
+              reports: Array.isArray(d.reports) ? d.reports.length : 0,
+              journals: Array.isArray(d.journals) ? d.journals.length : 0,
+              habits: Array.isArray(d.habits) ? d.habits.length : 0,
+              hasStreak: !!d.mainStreak,
+              hasPoints: !!d.points,
+              hasGoal: !!d.goal,
+              hasDictionary: Array.isArray(d.dictionary) && d.dictionary.length > 0,
+              prayerDays: d.prayerChecklists ? Object.keys(d.prayerChecklists).length : 0,
+              hasSettings: !!d.settings
+            }
+          });
           return;
         }
 
-        const isValid = importedData.every(
+        // Support v2 format (object with metadata) and legacy format (plain array)
+        let records;
+        let importDate = null;
+        let format = 'legacy';
+        if (Array.isArray(parsed)) {
+          // Legacy format: plain array of records
+          records = parsed;
+        } else if (parsed && parsed.version && Array.isArray(parsed.records)) {
+          // v2 format: { version, date, exportedAt, records }
+          records = parsed.records;
+          importDate = parsed.date || null;
+          format = 'v2';
+        } else {
+          showAlert('Invalid file format. Expected a JSON array or a valid backup object.', 'danger');
+          return;
+        }
+
+        const isValid = records.every(
           (item) =>
             typeof item.hour === 'number' &&
             ['AM', 'PM'].includes(item.ampm) &&
@@ -180,7 +212,7 @@ export default function SettingsModal({
         }
 
         // Show custom confirm instead of window.confirm
-        setPendingImport({ data: importedData, count: importedData.length });
+        setPendingImport({ format, data: parsed, count: records.length, importDate });
       } catch (err) {
         console.error(err);
         showAlert('Failed to parse JSON file: ' + err.message, 'danger');
@@ -194,7 +226,11 @@ export default function SettingsModal({
     if (!pendingImport) return;
     try {
       await onImportData(pendingImport.data);
-      showAlert(`${pendingImport.count} records imported successfully!`, 'success');
+      if (pendingImport.format === 'v3') {
+        showAlert('Full backup restored successfully! All data has been imported.', 'success');
+      } else {
+        showAlert(`${pendingImport.count} records imported successfully!`, 'success');
+      }
     } catch (err) {
       showAlert('Import failed: ' + err.message, 'danger');
     } finally {
@@ -512,18 +548,45 @@ export default function SettingsModal({
               {/* Custom Import Confirm Popup */}
               {pendingImport && (
                 <div className="border border-warning rounded-3 p-3 bg-warning bg-opacity-10 mb-3 animate-fade-in">
-                  <p className="text-dark fw-bold small mb-1">
-                    <i className="bi bi-upload me-1 text-warning" />
-                    Import {pendingImport.count} records for <strong>{selectedDate}</strong>?
-                  </p>
-                  <p className="text-secondary small mb-2">This will replace all existing logs for this date.</p>
+                  {pendingImport.format === 'v3' ? (
+                    <>
+                      <p className="text-danger fw-bold mb-2">
+                        <i className="bi bi-exclamation-triangle-fill me-1" />
+                        Restore Full Backup?
+                      </p>
+                      <p className="text-secondary small mb-2">This will <strong>REPLACE</strong> all existing data on this device with the backup data. This action cannot be undone.</p>
+                      
+                      <div className="bg-white rounded p-2 mb-3 small border">
+                        <div className="fw-bold mb-1 border-bottom pb-1">Backup Contents:</div>
+                        <div className="row g-1">
+                          <div className="col-6">📋 {pendingImport.summary.reports} Reports</div>
+                          <div className="col-6">📔 {pendingImport.summary.journals} Journals</div>
+                          <div className="col-6">🔥 {pendingImport.summary.habits} Habit Streaks</div>
+                          <div className="col-6">🏆 {pendingImport.summary.hasStreak ? 'Streak Data' : 'No Streak Data'}</div>
+                          <div className="col-6">💰 {pendingImport.summary.hasPoints ? 'Points & Rewards' : 'No Points'}</div>
+                          <div className="col-6">🎯 {pendingImport.summary.hasGoal ? 'Daily Goal' : 'No Goal'}</div>
+                          <div className="col-6">📖 {pendingImport.summary.hasDictionary ? 'Dictionary' : 'No Dictionary'}</div>
+                          <div className="col-6">🕌 {pendingImport.summary.prayerDays} Prayer Days</div>
+                          <div className="col-6">⚙️ {pendingImport.summary.hasSettings ? 'Settings' : 'No Settings'}</div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-dark fw-bold small mb-1">
+                        <i className="bi bi-upload me-1 text-warning" />
+                        Import {pendingImport.count} records for <strong>{pendingImport.importDate || selectedDate}</strong>?
+                      </p>
+                      <p className="text-secondary small mb-2">This will replace all existing logs for this date.</p>
+                    </>
+                  )}
                   <div className="d-flex gap-2">
                     <button
                       type="button"
                       className="btn btn-warning rounded-pill px-3 py-1 fw-bold small shadow-none text-dark"
                       onClick={handleConfirmImport}
                     >
-                      <i className="bi bi-check-lg me-1" />Yes, Import
+                      <i className="bi bi-check-lg me-1" />Yes, {pendingImport.format === 'v3' ? 'Restore Backup' : 'Import'}
                     </button>
                     <button
                       type="button"
@@ -1575,25 +1638,27 @@ export default function SettingsModal({
                     <button
                       className="btn btn-outline-secondary w-100 py-2 rounded-3 fw-bold small shadow-none"
                       onClick={onExportData}
-                      disabled={reports.length === 0}
-                      title="Download reports as JSON"
+                      title="Download a full backup of your data"
                     >
-                      <i className="bi bi-download me-1" />Export JSON
+                      <i className="bi bi-download me-1" />Full Backup
                     </button>
+                    <div className="text-center text-muted mt-1" style={{ fontSize: '0.65rem' }}>
+                      Backs up all data securely.
+                    </div>
                   </div>
 
                   <div className="col-6">
                     <button
                       className="btn btn-outline-secondary w-100 py-2 rounded-3 fw-bold small shadow-none"
                       onClick={() => {
-                        requestFeatureUnlock('import_json', 'Import JSON Data', 600, () => {
+                        requestFeatureUnlock('import_json', 'Restore Backup', 50, () => {
                           handleImportClick();
                         });
                       }}
-                      title="Upload JSON to restore reports"
+                      title="Upload JSON backup to restore"
                     >
                       <i className="bi bi-upload me-1" />
-                      {!isUnlocked('import_json') ? '🔒 Import JSON (600 pts / 7 days)' : 'Import JSON'}
+                      {!isUnlocked('import_json') ? '🔒 Restore (50 pts)' : 'Restore Backup'}
                     </button>
                     <input
                       type="file"
@@ -1603,7 +1668,7 @@ export default function SettingsModal({
                       className="d-none"
                     />
                     {pointsData?.unlockedFeatures?.import_json && (
-                      <div className={`small fw-semibold mt-1 ${isUnlocked('import_json') ? 'text-success' : 'text-danger'}`}>
+                      <div className={`small fw-semibold mt-1 text-center ${isUnlocked('import_json') ? 'text-success' : 'text-danger'}`}>
                         {getFeatureTimeRemaining(pointsData, 'import_json', timeNow)}
                       </div>
                     )}

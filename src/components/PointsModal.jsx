@@ -453,7 +453,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">📥 Import JSON (600 pts · 7 days)</strong>
+                          <strong className="d-block text-dark">📥 Import JSON (50 pts · 7 days)</strong>
                           <span className="small text-muted">Import backup JSON data.</span>
                         </div>
                       </div>
