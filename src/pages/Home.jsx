@@ -25,9 +25,13 @@ import NewUserTutorial from '../components/NewUserTutorial';
 import GlobalSearch from '../components/GlobalSearch';
 import PomodoroModal from '../components/PomodoroModal';
 import InsightsModal from '../components/InsightsModal';
+import MessageCenterModal from '../components/MessageCenterModal';
+import AboutAdminsModal from '../components/AboutAdminsModal';
 import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAppUsage } from '../hooks/useAppUsage';
+import { useMessages } from '../hooks/useMessages';
+import { useAdminProfiles } from '../hooks/useAdminProfiles';
 import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, isFeatureActive } from '../utils/helpers';
 import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
 import defaultDictionary from '../constants/dictionary.json';
@@ -45,6 +49,7 @@ import {
   getDoc,
   onSnapshot,
   setDoc,
+  Timestamp,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
 
@@ -156,6 +161,13 @@ export default function Home() {
   } = useFirestore(selectedDate, currentUser?.uid);
 
   const { lastDelta, floatKey, lastSourceId } = usePointsAnimation(pointsData);
+
+  const { messages, loading: messagesLoading, sendMessage, markAsRead } = useMessages(currentUser?.uid, isAdmin);
+  const unreadMessagesCount = messages ? messages.filter(m => !m.readBy?.includes(currentUser?.uid)).length : 0;
+  const [isMessageCenterOpen, setIsMessageCenterOpen] = useState(false);
+
+  const { adminProfiles, loading: adminProfilesLoading, updateMyAdminProfile } = useAdminProfiles(isAdmin, currentUser?.uid);
+  const [isAboutAdminsOpen, setIsAboutAdminsOpen] = useState(false);
 
   const finalDictionary = userDictionary && userDictionary.length > 0 ? userDictionary : defaultDictionary;
   const appUsage = useAppUsage(currentUser?.uid);
@@ -1194,6 +1206,52 @@ export default function Home() {
 
   // ── Import / Export ───────────────────────────────────────────────────────
 
+  const parseBackupTimestamp = (value) => {
+    if (!value) return value;
+    if (value instanceof Date) return Timestamp.fromDate(value);
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) return Timestamp.fromDate(parsed);
+      return value;
+    }
+    if (typeof value === 'number') return Timestamp.fromMillis(value);
+    return value;
+  };
+
+  const normalizeBackupRecord = (record) => {
+    if (!record || typeof record !== 'object') return record;
+    const normalized = { ...record };
+    for (const key of ['createdAt', 'updatedAt', 'deletedAt', 'lastSeenAt', 'timestamp']) {
+      if (key in normalized && normalized[key] !== null && normalized[key] !== undefined) {
+        normalized[key] = parseBackupTimestamp(normalized[key]);
+      }
+    }
+    return normalized;
+  };
+
+  const safeLocalStorageJson = (value) => {
+    if (value === null || typeof value === 'undefined') return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  };
+
+  const sortExportItems = (items, selector) => {
+    if (!Array.isArray(items)) return items;
+    return [...items].sort((a, b) => {
+      const aStr = selector(a ?? {});
+      const bStr = selector(b ?? {});
+      return String(aStr ?? '').localeCompare(String(bStr ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+    });
+  };
+
   const handleImportData = async (parsedJson) => {
     try {
       if (!currentUser) return;
@@ -1205,69 +1263,92 @@ export default function Home() {
 
       if (isV3) {
         showToast('Restoring full backup, please wait...', 'info');
-        const data = parsedJson.data || {};
-        
+        const data = parsedJson.data || parsedJson;
+        const backup = {
+          reports: Array.isArray(data.reports) ? data.reports : [],
+          journals: Array.isArray(data.journals) ? data.journals : [],
+          habits: Array.isArray(data.habits) ? data.habits : Array.isArray(data.streaks) ? data.streaks : [],
+          trash: Array.isArray(data.trash) ? data.trash : [],
+          mainStreak: data.mainStreak || {},
+          points: data.points || {},
+          goal: data.goal || {},
+          dictionary: Array.isArray(data.dictionary) ? data.dictionary : [],
+          prayerChecklists: data.prayerChecklists || {},
+          settings: data.settings || {},
+        };
+
         const ops = [];
 
-        // Clean existing reports
-        const existingReports = await getDocs(query(collection(db, 'reports'), where('uid', '==', uid)));
-        existingReports.docs.forEach(d => ops.push(b => b.delete(d.ref)));
-        
-        // Clean existing journals
-        const existingJournals = await getDocs(query(collection(db, 'journals'), where('uid', '==', uid)));
-        existingJournals.docs.forEach(d => ops.push(b => b.delete(d.ref)));
-        
-        // Clean existing habits
-        const existingHabits = await getDocs(query(collection(db, 'streaks'), where('uid', '==', uid)));
-        existingHabits.docs.forEach(d => ops.push(b => b.delete(d.ref)));
+        const clearCollection = async (collectionName) => {
+          const existingDocs = await getDocs(query(collection(db, collectionName), where('uid', '==', uid)));
+          existingDocs.docs.forEach((d) => ops.push((b) => b.delete(d.ref)));
+        };
 
-        // Add backup reports
-        (data.reports || []).forEach(r => {
-          ops.push(b => b.set(doc(collection(db, 'reports')), {
-            ...r, uid, createdAt: serverTimestamp()
-          }));
+        await clearCollection('reports');
+        await clearCollection('journals');
+        await clearCollection('trash');
+        await clearCollection('streaks');
+
+        const currentMainStreak = await getDoc(doc(db, 'streaks', uid));
+        if (currentMainStreak.exists()) ops.push((b) => b.delete(currentMainStreak.ref));
+
+        const currentPoints = await getDoc(doc(db, 'points', uid));
+        if (currentPoints.exists()) ops.push((b) => b.delete(currentPoints.ref));
+
+        const currentGoal = await getDoc(doc(db, 'goals', uid));
+        if (currentGoal.exists()) ops.push((b) => b.delete(currentGoal.ref));
+
+        const currentDict = await getDoc(doc(db, 'dictionaries', uid));
+        if (currentDict.exists()) ops.push((b) => b.delete(currentDict.ref));
+
+        const existingPrayers = Object.keys(localStorage).filter((key) => key.startsWith('prayer_checklist_'));
+        existingPrayers.forEach((key) => localStorage.removeItem(key));
+
+        backup.reports.forEach((r) => {
+          const cleaned = normalizeBackupRecord({ ...r, uid });
+          ops.push((b) => b.set(doc(collection(db, 'reports')), cleaned));
         });
 
-        // Add backup journals
-        (data.journals || []).forEach(j => {
-          ops.push(b => b.set(doc(collection(db, 'journals')), {
-            ...j, uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-          }));
+        backup.journals.forEach((j) => {
+          const cleaned = normalizeBackupRecord({ ...j, uid });
+          ops.push((b) => b.set(doc(collection(db, 'journals')), cleaned));
         });
 
-        // Add backup habits
-        (data.habits || []).forEach(h => {
-          ops.push(b => b.set(doc(collection(db, 'streaks')), {
-            ...h, uid, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-          }));
+        backup.habits.forEach((h) => {
+          const cleaned = normalizeBackupRecord({ ...h, uid });
+          ops.push((b) => b.set(doc(collection(db, 'streaks')), cleaned));
         });
 
-        // Set main streak
-        if (data.mainStreak && Object.keys(data.mainStreak).length > 0) {
-          ops.push(b => b.set(doc(db, 'streaks', uid), data.mainStreak, { merge: true }));
+        backup.trash.forEach((t) => {
+          const cleaned = normalizeBackupRecord({ ...t, uid });
+          ops.push((b) => b.set(doc(collection(db, 'trash')), cleaned));
+        });
+
+        if (backup.mainStreak && Object.keys(backup.mainStreak).length > 0) {
+          const cleaned = normalizeBackupRecord({ ...backup.mainStreak, uid });
+          ops.push((b) => b.set(doc(db, 'streaks', uid), cleaned, { merge: true }));
         }
 
-        // Set points
-        if (data.points && Object.keys(data.points).length > 0) {
-          ops.push(b => b.set(doc(db, 'points', uid), { ...data.points, updatedAt: serverTimestamp() }));
+        if (backup.points && Object.keys(backup.points).length > 0) {
+          const cleaned = normalizeBackupRecord(backup.points);
+          ops.push((b) => b.set(doc(db, 'points', uid), { ...cleaned }, { merge: true }));
         }
 
-        // Set goal
-        if (data.goal && Object.keys(data.goal).length > 0) {
-          ops.push(b => b.set(doc(db, 'goals', uid), data.goal, { merge: true }));
+        if (backup.goal && Object.keys(backup.goal).length > 0) {
+          const cleaned = normalizeBackupRecord(backup.goal);
+          ops.push((b) => b.set(doc(db, 'goals', uid), cleaned, { merge: true }));
         }
 
-        // Set dictionary
-        if (data.dictionary && data.dictionary.length > 0) {
-          ops.push(b => b.set(doc(db, 'dictionaries', uid), { items: data.dictionary }, { merge: true }));
+        if (backup.dictionary && backup.dictionary.length > 0) {
+          const cleaned = normalizeBackupRecord({ items: backup.dictionary });
+          ops.push((b) => b.set(doc(db, 'dictionaries', uid), cleaned, { merge: true }));
         }
 
-        // Execute batch ops
         let batch = writeBatch(db);
         let count = 0;
         for (const op of ops) {
           op(batch);
-          count++;
+          count += 1;
           if (count === 400) {
             await batch.commit();
             batch = writeBatch(db);
@@ -1278,17 +1359,23 @@ export default function Home() {
           await batch.commit();
         }
 
-        // Restore localStorage
-        if (data.prayerChecklists) {
-          Object.entries(data.prayerChecklists).forEach(([date, val]) => {
-            localStorage.setItem(`prayer_checklist_${date}`, JSON.stringify(val));
+        if (backup.prayerChecklists) {
+          Object.entries(backup.prayerChecklists).forEach(([date, value]) => {
+            localStorage.setItem(`prayer_checklist_${date}`, JSON.stringify(value));
           });
         }
-        if (data.settings) {
-          if (data.settings.theme) localStorage.setItem('app-theme', data.settings.theme);
-          if (data.settings.journalTheme) localStorage.setItem('journal-theme', data.settings.journalTheme);
-          if (data.settings.autoStreakScan) localStorage.setItem('auto-streak-security-scan', data.settings.autoStreakScan);
-          if (data.settings.soundSettings) localStorage.setItem('app-sounds', data.settings.soundSettings);
+        if (backup.settings) {
+          if (backup.settings.theme) localStorage.setItem('app-theme', String(backup.settings.theme));
+          if (backup.settings.journalTheme) localStorage.setItem('journal-theme', String(backup.settings.journalTheme));
+          if (typeof backup.settings.autoStreakScan !== 'undefined') {
+            localStorage.setItem('auto-streak-security-scan', String(Boolean(backup.settings.autoStreakScan === true || backup.settings.autoStreakScan === 'true')));
+          }
+          if (backup.settings.soundSettings !== undefined && backup.settings.soundSettings !== null) {
+            const soundSettings = typeof backup.settings.soundSettings === 'string'
+              ? safeLocalStorageJson(backup.settings.soundSettings)
+              : backup.settings.soundSettings;
+            localStorage.setItem('app-sounds', typeof soundSettings === 'string' ? soundSettings : JSON.stringify(soundSettings));
+          }
         }
 
         showToast('Full backup restored successfully. Please refresh.', 'success');
@@ -1357,87 +1444,100 @@ export default function Home() {
         return res;
       };
 
-      // 1. Fetch ALL reports
+      const exportCollection = async (collectionName) => {
+        const snap = await getDocs(query(collection(db, collectionName), where('uid', '==', uid)));
+        return snap.docs.map((d) => deepConvert({ id: d.id, ...d.data() }));
+      };
+
       const reportsSnap = await getDocs(query(collection(db, 'reports'), where('uid', '==', uid)));
-      const exportReports = reportsSnap.docs.map(d => {
+      const exportReports = reportsSnap.docs.map((d) => {
         const data = d.data();
         return {
-          date: data.date, hour: data.hour, ampm: data.ampm, 
-          startTime: data.startTime, endTime: data.endTime,
-          plan: data.plan, report: data.report, status: data.status, tag: data.tag
+          id: d.id,
+          date: data.date,
+          hour: data.hour,
+          ampm: data.ampm,
+          startTime: data.startTime,
+          endTime: data.endTime,
+          plan: data.plan,
+          report: data.report,
+          status: data.status,
+          tag: data.tag,
+          uid: data.uid,
+          createdAt: toISO(data.createdAt),
+          updatedAt: toISO(data.updatedAt),
         };
       });
 
-      // 2. Fetch ALL journals
-      const journalsSnap = await getDocs(query(collection(db, 'journals'), where('uid', '==', uid)));
-      const exportJournals = journalsSnap.docs.map(d => {
-        const data = d.data();
-        return {
-          date: data.date, title: data.title, content: data.content, 
-          mood: data.mood, tags: data.tags
-        };
-      });
+      const exportJournals = sortExportItems(await exportCollection('journals'), (item) => `${item?.date || ''} ${item?.title || ''} ${item?.id || ''}`.toLowerCase());
+      const exportHabits = sortExportItems(await exportCollection('streaks'), (item) => `${item?.title || item?.name || ''} ${item?.date || ''} ${item?.id || ''}`.toLowerCase());
+      const exportTrash = sortExportItems(await exportCollection('trash'), (item) => `${item?.date || ''} ${item?.title || item?.plan || item?.report || ''} ${item?.id || ''}`.toLowerCase());
 
-      // 3. Fetch ALL habits
-      const habitsSnap = await getDocs(query(collection(db, 'streaks'), where('uid', '==', uid)));
-      const exportHabits = habitsSnap.docs.map(d => {
-        const data = d.data();
-        return {
-          name: data.name, emoji: data.emoji, category: data.category,
-          startDate: data.startDate, bestStreak: data.bestStreak,
-          totalRelapses: data.totalRelapses, isActive: data.isActive,
-          milestones: data.milestones, relapseHistory: data.relapseHistory
-        };
-      });
-
-      // 4. Fetch main streak doc
       const mainStreakSnap = await getDoc(doc(db, 'streaks', uid));
-      const exportMainStreak = mainStreakSnap.exists() ? mainStreakSnap.data() : {};
+      const exportMainStreak = mainStreakSnap.exists() ? deepConvert(mainStreakSnap.data()) : {};
 
-      // 5. Fetch points doc
       const pointsSnap = await getDoc(doc(db, 'points', uid));
       let exportPoints = pointsSnap.exists() ? deepConvert(pointsSnap.data()) : {};
       delete exportPoints.updatedAt;
 
-      // 6. Fetch goals doc
       const goalsSnap = await getDoc(doc(db, 'goals', uid));
       const exportGoal = goalsSnap.exists() ? deepConvert(goalsSnap.data()) : {};
 
-      // 7. Fetch dictionary doc
       const dictSnap = await getDoc(doc(db, 'dictionaries', uid));
-      const exportDictionary = dictSnap.exists() ? deepConvert(dictSnap.data().items || []) : [];
+      const exportDictionary = sortExportItems(dictSnap.exists() ? deepConvert(dictSnap.data().items || []) : [], (item) => {
+        if (typeof item === 'string') return item.toLowerCase();
+        if (item && typeof item === 'object') {
+          const label = item.tag || item.label || item.name || item.title || item.keyword || item.key || JSON.stringify(item);
+          return String(label).toLowerCase();
+        }
+        return String(item ?? '').toLowerCase();
+      });
 
-      // 8. Gather localStorage
       const prayerChecklists = {};
       const settings = {};
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.startsWith('prayer_checklist_')) {
           try {
-            prayerChecklists[key.replace('prayer_checklist_', '')] = JSON.parse(localStorage.getItem(key));
-          } catch(e) {}
+            const rawValue = localStorage.getItem(key);
+            prayerChecklists[key.replace('prayer_checklist_', '')] = safeLocalStorageJson(rawValue) ?? rawValue;
+          } catch (e) {
+            // Ignore malformed storage entries
+          }
         }
       }
       settings.theme = localStorage.getItem('app-theme');
       settings.journalTheme = localStorage.getItem('journal-theme');
-      settings.autoStreakScan = localStorage.getItem('auto-streak-security-scan');
-      settings.soundSettings = localStorage.getItem('app-sounds');
+      settings.autoStreakScan = localStorage.getItem('auto-streak-security-scan') === 'true';
+      settings.soundSettings = safeLocalStorageJson(localStorage.getItem('app-sounds')) ?? localStorage.getItem('app-sounds');
 
       const exportPayload = {
         version: 3,
         app: '24hours-hourlog',
         exportedAt: new Date().toISOString(),
         user: { uid: currentUser.uid, email: currentUser.email, displayName: currentUser.displayName },
+        summary: {
+          reportCount: exportReports.length,
+          journalCount: exportJournals.length,
+          habitCount: exportHabits.length,
+          trashCount: exportTrash.length,
+          prayerChecklistCount: Object.keys(prayerChecklists).length,
+          hasPoints: !!Object.keys(exportPoints || {}).length,
+          hasMainStreak: !!Object.keys(exportMainStreak || {}).length,
+          hasGoal: !!Object.keys(exportGoal || {}).length,
+          dictionaryCount: exportDictionary.length,
+        },
         data: {
-          reports: deepConvert(exportReports),
-          journals: deepConvert(exportJournals),
-          habits: deepConvert(exportHabits),
-          mainStreak: deepConvert(exportMainStreak),
+          reports: deepConvert(sortExportItems(exportReports, (item) => `${item?.date || ''} ${item?.startTime || ''} ${item?.plan || item?.report || ''}`.toLowerCase())),
+          journals: exportJournals,
+          habits: exportHabits,
+          trash: exportTrash,
+          mainStreak: exportMainStreak,
           points: exportPoints,
           goal: exportGoal,
           dictionary: exportDictionary,
           prayerChecklists,
-          settings
+          settings,
         }
       };
 
@@ -1509,9 +1609,10 @@ export default function Home() {
         pointsData={pointsData}
         streakData={streakData}
         onRunSecurityScan={() => window.triggerManualSecurityScan?.()}
-        onOpenStreaks={() => openStreaksPage(true)}
-        onOpenRewards={handleOpenPoints}
         onUpdateUserRole={handleUpdateAdminUserRole}
+        sendMessage={sendMessage}
+        updateMyAdminProfile={updateMyAdminProfile}
+        adminProfiles={adminProfiles}
         onBack={() => {
           setIsAdminOpen(false);
           navigateTo('/');
@@ -1611,6 +1712,8 @@ export default function Home() {
         isAdmin={isAdmin}
         userPoints={pointsData?.points || 0}
         isPointsInitial={pointsData?.isInitial}
+        unreadMessagesCount={unreadMessagesCount}
+        onOpenMessages={() => setIsMessageCenterOpen(true)}
         trashCount={trashItems.length}
         currentUser={currentUser}
       />
@@ -1868,7 +1971,28 @@ export default function Home() {
         </div>
       )}
 
-      {/* ── Modals ───────────────────────────────────────────────────────── */}
+      {isMessageCenterOpen && (
+        <MessageCenterModal
+          isOpen={isMessageCenterOpen}
+          onClose={() => setIsMessageCenterOpen(false)}
+          currentUser={currentUser}
+          isAdmin={isAdmin}
+          messages={messages}
+          sendMessage={sendMessage}
+          markAsRead={markAsRead}
+        />
+      )}
+
+      {isAboutAdminsOpen && (
+        <AboutAdminsModal
+          isOpen={isAboutAdminsOpen}
+          onClose={() => setIsAboutAdminsOpen(false)}
+          adminProfiles={adminProfiles}
+          loading={adminProfilesLoading}
+        />
+      )}
+
+      {/* ── Action Modals ──────────────────────────────────────────────── */}
 
       <PlanningModal
         isOpen={activeModal === 'planning'}
@@ -1931,6 +2055,10 @@ export default function Home() {
         currentUser={currentUser}
         onUpdateProfile={handleUpdateProfile}
         onLogout={handleLogout}
+        onOpenMeetCreator={() => {
+          handleCloseModal();
+          setIsAboutAdminsOpen(true);
+        }}
       />
 
       <TrashModal

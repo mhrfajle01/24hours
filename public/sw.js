@@ -1,4 +1,4 @@
-const CACHE_NAME = 'hourlog-v1';
+const CACHE_NAME = 'hourlog-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -68,7 +68,26 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for same-origin resources with network fallback and dynamic caching
+  // SPA navigation: always serve index.html for page navigations
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put('/index.html', responseToCache);
+          });
+          return networkResponse;
+        }
+        return caches.match('/index.html');
+      }).catch(() => {
+        return caches.match('/index.html');
+      })
+    );
+    return;
+  }
+
+  // Cache-first for same-origin assets with network fallback
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -85,10 +104,7 @@ self.addEventListener('fetch', (event) => {
         });
         return networkResponse;
       }).catch(() => {
-        // Offline fallback for navigation requests
-        if (event.request.mode === 'navigate') {
-          return caches.match('/index.html');
-        }
+        // No fallback for non-navigation assets
       });
     })
   );

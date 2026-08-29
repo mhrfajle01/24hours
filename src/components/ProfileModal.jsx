@@ -11,6 +11,7 @@ export default function ProfileModal({
   currentUser,
   onUpdateProfile,
   onLogout,
+  onOpenMeetCreator
 }) {
   const [name, setName] = useState('');
   const [photoURL, setPhotoURL] = useState('');
@@ -276,6 +277,22 @@ export default function ProfileModal({
                 )}
               </div>
 
+            </div>
+            
+            {/* About Creators Button */}
+            <div className="px-4 pb-3">
+              <button 
+                type="button" 
+                className="btn w-100 rounded-4 shadow-sm border p-3 d-flex justify-content-between align-items-center bg-white hover-scale"
+                onClick={onOpenMeetCreator}
+                style={{ color: '#075E54' }}
+              >
+                <div className="d-flex align-items-center gap-2">
+                  <i className="bi bi-stars text-warning fs-5"></i>
+                  <span className="fw-bold">Meet the Creators</span>
+                </div>
+                <i className="bi bi-chevron-right text-secondary"></i>
+              </button>
             </div>
 
             {/* Footer */}

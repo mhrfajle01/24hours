@@ -20,7 +20,9 @@ export default function Header({
   onOpenFeatureHub,
   onOpenSearch,
   onOpenAdmin,
-  isAdmin = false
+  isAdmin = false,
+  unreadMessagesCount = 0,
+  onOpenMessages
 }) {
   const [timeStr, setTimeStr] = useState(getCurrentTimeString());
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
@@ -149,9 +151,22 @@ export default function Header({
           
           {/* Left: Branding + Date */}
           <div className="d-flex align-items-center gap-1 py-1">
-            <h1 className="h5 m-0 fw-bold d-flex align-items-center gap-1 text-nowrap pts-logo-container hover-scale pulse-group-1">
-              <i className="bi bi-chat-left-text-fill pts-logo-icon" style={{ color: '#25D366' }} />
-              <span className="d-none d-sm-inline">HourLog</span>
+            <h1 
+              className="h5 m-0 fw-bold d-flex align-items-center gap-1 text-nowrap pts-logo-container hover-scale pulse-group-1 position-relative"
+              style={{ cursor: 'pointer' }}
+              onClick={onOpenMessages}
+              title="Messages & Notices"
+            >
+              <i className="bi bi-whatsapp pts-logo-icon" style={{ color: '#25D366' }} />
+              <span className="d-none d-sm-inline me-1">HourLog</span>
+              {unreadMessagesCount > 0 && (
+                <span 
+                  className="position-absolute top-0 start-100 translate-middle p-1 bg-danger border border-light rounded-circle"
+                  style={{ width: '8px', height: '8px', marginTop: '2px' }}
+                >
+                  <span className="visually-hidden">New alerts</span>
+                </span>
+              )}
             </h1>
             <div className="d-flex align-items-center gap-1">
               {!isOnline ? (
@@ -228,6 +243,7 @@ export default function Header({
                 />
               </span>
             </button>
+
             <button
               type="button"
               className="btn btn-sm rounded-circle border border-light-subtle text-white hover-scale d-none d-sm-inline-flex"

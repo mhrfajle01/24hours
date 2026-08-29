@@ -85,5 +85,19 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
       allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
     }
+
+    // Rules for user-admin messaging center
+    match /messages/{messageId} {
+      allow read: if isAdmin() || (isAuthenticated() && (resource.data.receiverId == request.auth.uid || resource.data.receiverId == 'all'));
+      allow create: if isAuthenticated() && request.resource.data.senderId == request.auth.uid;
+      allow update: if isAdmin() || (isAuthenticated() && (resource.data.receiverId == request.auth.uid || resource.data.receiverId == 'all'));
+      allow delete: if isAdmin();
+    }
+
+    // Rules for Admin Profiles (About the Creator)
+    match /adminProfiles/{adminId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() && request.auth.uid == adminId;
+    }
   }
 }
