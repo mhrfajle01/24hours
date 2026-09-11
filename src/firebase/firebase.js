@@ -18,6 +18,9 @@ const app = initializeApp(firebaseConfig);
 // Initialize Firestore (simplified without persistent cache)
 const db = getFirestore(app);
 
-const auth = getAuth(app);
+import { getMessaging } from "firebase/messaging";
 
-export { db, auth };
+const auth = getAuth(app);
+const messaging = typeof window !== "undefined" ? getMessaging(app) : null;
+
+export { db, auth, messaging };

@@ -142,9 +142,38 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, strea
     }
     // Fallback calculation if getStreakDays is not available
     if (!streak || !streak.startDate) return 0;
-    const start = new Date(streak.startDate).getTime();
-    const now = new Date().getTime();
-    return Math.floor((now - start) / (1000 * 60 * 60 * 24));
+    let start;
+    const sd = streak.startDate;
+    try {
+      if (sd && typeof sd.toDate === 'function') {
+        start = sd.toDate();
+      } else if (sd instanceof Date) {
+        start = new Date(sd);
+      } else if (typeof sd === 'number') {
+        start = new Date(sd);
+      } else if (typeof sd === 'string') {
+        if (sd.includes('T')) {
+          start = new Date(sd);
+        } else {
+          const parts = sd.split('-');
+          if (parts.length === 3) {
+            start = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          } else {
+            start = new Date(sd);
+          }
+        }
+      } else {
+        return 0;
+      }
+      if (!start || isNaN(start.getTime())) return 0;
+      start.setHours(0, 0, 0, 0);
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const days = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      return isNaN(days) ? 0 : Math.max(0, days);
+    } catch (e) {
+      return 0;
+    }
   };
 
   const getCurrentMilestone = (days) => {

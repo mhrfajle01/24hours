@@ -20,13 +20,52 @@ const defaultMilestones = [
  */
 export const getStreakDays = (streak) => {
   if (!streak || !streak.startDate) return 0;
-  const [year, month, day] = streak.startDate.split('-');
-  const start = new Date(year, month - 1, day);
-  start.setHours(0, 0, 0, 0);
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const diffTime = now.getTime() - start.getTime();
-  return Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+  
+  let start;
+  const sd = streak.startDate;
+
+  try {
+    // Handle Firestore Timestamp objects (they have a .toDate() method)
+    if (sd && typeof sd.toDate === 'function') {
+      start = sd.toDate();
+    }
+    // Handle Date objects
+    else if (sd instanceof Date) {
+      start = new Date(sd);
+    }
+    // Handle numeric timestamps (milliseconds)
+    else if (typeof sd === 'number') {
+      start = new Date(sd);
+    }
+    // Handle string dates
+    else if (typeof sd === 'string') {
+      if (sd.includes('T')) {
+        start = new Date(sd);
+      } else {
+        const parts = sd.split('-');
+        if (parts.length === 3) {
+          start = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        } else {
+          start = new Date(sd);
+        }
+      }
+    } else {
+      return 0;
+    }
+
+    // Validate the parsed date
+    if (!start || isNaN(start.getTime())) return 0;
+
+    start.setHours(0, 0, 0, 0);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const diffTime = now.getTime() - start.getTime();
+    const days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    return isNaN(days) ? 0 : Math.max(0, days);
+  } catch (e) {
+    console.warn('getStreakDays: failed to parse startDate', sd, e);
+    return 0;
+  }
 };
 
 /**

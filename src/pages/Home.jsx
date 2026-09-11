@@ -162,7 +162,7 @@ export default function Home() {
 
   const { lastDelta, floatKey, lastSourceId } = usePointsAnimation(pointsData);
 
-  const { messages, loading: messagesLoading, sendMessage, markAsRead } = useMessages(currentUser?.uid, isAdmin);
+  const { messages, loading: messagesLoading, sendMessage, markAsRead, deleteMessage } = useMessages(currentUser?.uid, isAdmin, currentUser);
   const unreadMessagesCount = messages ? messages.filter(m => !m.readBy?.includes(currentUser?.uid)).length : 0;
   const [isMessageCenterOpen, setIsMessageCenterOpen] = useState(false);
 
@@ -1768,7 +1768,7 @@ export default function Home() {
       )}
 
       {/* Main timeline */}
-      <main className="flex-grow-1 pb-5">
+      <main className={`flex-grow-1 pb-5 ${isFeatureHubOpen ? 'd-none' : ''}`}>
 
         {/* Error State */}
         {error && (
@@ -1894,7 +1894,7 @@ export default function Home() {
       {/* Add Plan FAB */}
       <button
         data-tutorial="add-plan"
-        className="btn-floating-add rounded-circle shadow-lg text-white border-0 hover-scale d-flex align-items-center justify-content-center"
+        className={`btn-floating-add rounded-circle shadow-lg text-white border-0 hover-scale d-flex align-items-center justify-content-center ${isFeatureHubOpen ? 'd-none' : ''}`}
         style={{
           position: 'fixed',
           bottom: '24px',
@@ -1912,7 +1912,7 @@ export default function Home() {
       </button>
 
       {/* Undo / Redo floating bar — shown only when history exists */}
-      {(canUndo || canRedo) && (
+      {(canUndo || canRedo) && !isFeatureHubOpen && (
         <div
           className="position-fixed d-flex gap-2 animate-slide-up"
           style={{ bottom: '24px', left: '16px', zIndex: 999 }}
@@ -1980,6 +1980,7 @@ export default function Home() {
           messages={messages}
           sendMessage={sendMessage}
           markAsRead={markAsRead}
+          deleteMessage={deleteMessage}
         />
       )}
 
@@ -2260,7 +2261,7 @@ export default function Home() {
       />
 
       {/* ── Scroll to Top Button ──────────────────────────────────────── */}
-      {showScrollTop && (
+      {showScrollTop && !isFeatureHubOpen && (
         <button
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           className="btn btn-primary rounded-circle shadow-lg position-fixed d-flex align-items-center justify-content-center animate-slide-up hover-scale"

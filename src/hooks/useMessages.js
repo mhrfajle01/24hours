@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import {
-  collection, query, where, onSnapshot, addDoc, updateDoc, doc, serverTimestamp, arrayUnion
+  collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, arrayUnion
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 
-export const useMessages = (uid, isAdmin = false) => {
+export const useMessages = (uid, isAdmin = false, currentUser = null) => {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -19,9 +19,7 @@ export const useMessages = (uid, isAdmin = false) => {
 
     let q;
     if (isAdmin) {
-      // Admins see all feedback sent to 'admin', plus they can see their own sent global notices if we wanted, 
-      // but let's just fetch messages where receiverId is 'admin' (user feedback)
-      // AND maybe global notices so they can see what they sent.
+      // Admins see all feedback sent to 'admin', plus global notices
       q = query(
         collection(db, 'messages'),
         where('receiverId', 'in', ['admin', 'all'])
@@ -54,15 +52,22 @@ export const useMessages = (uid, isAdmin = false) => {
     return () => unsubscribe();
   }, [uid, isAdmin]);
 
-  const sendMessage = async ({ type, content, receiverId, title = '' }) => {
+  const sendMessage = async ({ type, content, receiverId, title = '', threadId = null, replyToName = '' }) => {
     if (!uid) throw new Error('Authentication required');
     await addDoc(collection(db, 'messages'), {
-      type, // 'feedback', 'global_notice', 'direct_notice'
+      type, // 'feedback', 'global_notice', 'direct_notice', 'bug_report'
       content,
       title,
       senderId: uid,
       receiverId,
       readBy: [],
+      // Sender identity — baked into the document at write-time
+      senderName: currentUser?.displayName || 'Anonymous',
+      senderEmail: currentUser?.email || '',
+      senderPhoto: currentUser?.photoURL || '',
+      // Threading support
+      threadId: threadId || null,
+      replyToName: replyToName || '',
       createdAt: serverTimestamp(),
     });
   };
@@ -75,14 +80,15 @@ export const useMessages = (uid, isAdmin = false) => {
   };
 
   const deleteMessage = async (messageId) => {
-    // Only admins should delete global notices, but users could hide them.
-    // For simplicity, we just mark as read. If needed, we can implement actual deletion.
+    if (!uid) return;
+    await deleteDoc(doc(db, 'messages', messageId));
   };
 
   return {
     messages,
     loading,
     sendMessage,
-    markAsRead
+    markAsRead,
+    deleteMessage,
   };
 };

@@ -3,6 +3,7 @@ import { generatePDF } from '../utils/pdfGenerator';
 import { getIntervalTimes, formatTime12h, isFeatureActive, getFeatureTimeRemaining } from '../utils/helpers';
 import { useSound, DEFAULT_SOUNDS } from '../contexts/SoundContext';
 import TagDropdown from './TagDropdown';
+import { useNotifications } from '../hooks/useNotifications';
 
 /**
  * SettingsModal — handles app-level configuration only.
@@ -33,6 +34,7 @@ export default function SettingsModal({
 }) {
   const fileInputRef = useRef(null);
   const { soundSettings, updateSoundSetting, playSound } = useSound();
+  const { permission, requestPermission } = useNotifications(currentUser);
 
   // Unlock modal confirmation state: null | { featureKey, name, cost, onSuccess }
   const [unlockModal, setUnlockModal] = useState(null);
@@ -748,16 +750,6 @@ export default function SettingsModal({
                             Reset
                           </button>
                         </div>
-
-                        <div style={settingStyle('notifications')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
-                          <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
-                            <i className="bi bi-bell-fill" style={{ color: '#075E54' }} />
-                            In-app Notifications
-                          </h6>
-                          <p className="text-secondary small mb-0">
-                            Success messages, points updates, reminders, and review alerts appear automatically while you use the app. Sound effects can be customized separately in the Sounds tab.
-                          </p>
-                        </div>
                       </div>
                       <input
                         type="url"
@@ -784,6 +776,46 @@ export default function SettingsModal({
                     </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* Notifications */}
+              <div style={settingStyle('notifications')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+                  <i className="bi bi-bell-fill" style={{ color: '#075E54' }} />
+                  Push Notifications
+                </h6>
+                <div className="d-flex flex-column gap-3">
+                  <div className="d-flex justify-content-between align-items-center">
+                    <div>
+                      <h6 className="mb-1 text-dark small fw-bold">Allow Push Notifications</h6>
+                      <p className="text-secondary mb-0" style={{ fontSize: '0.75rem' }}>
+                        Get reminders and daily check-in alerts on your device.
+                      </p>
+                    </div>
+                    <div>
+                      {permission === 'granted' ? (
+                        <span className="badge bg-success">Enabled</span>
+                      ) : permission === 'denied' ? (
+                        <span className="badge bg-danger">Blocked in Browser</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary rounded-pill fw-bold px-3"
+                          onClick={() => requestPermission().then(token => {
+                            if (token) showAlert('Notifications enabled!', 'success');
+                          })}
+                        >
+                          Enable
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="bg-light p-2 rounded-3 border">
+                    <p className="text-secondary small mb-0">
+                      <strong>Note:</strong> In-app notifications (success messages, points updates) appear automatically while using the app. This setting controls native system notifications when the app is closed.
+                    </p>
+                  </div>
                 </div>
               </div>
 

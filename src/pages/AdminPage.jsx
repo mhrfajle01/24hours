@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, query, runTransaction, serverTimestamp, updateDoc, where } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
 import { getStreakDays } from '../hooks/useStreaks';
+import CustomFeatureManager from '../components/CustomFeatureManager';
 
 const MOOD_MAP = {
   excited: { emoji: '🤩', color: '#f59e0b' },
@@ -709,6 +710,13 @@ export default function AdminPage({
           >
             My Creator Profile
           </button>
+          <button 
+            className={`admin-main-tab ${adminTab === 'features' ? 'active' : ''}`}
+            onClick={() => setAdminTab('features')}
+            style={{ flex: 1, padding: '0.8rem', borderRadius: '0.5rem', border: 'none', background: adminTab === 'features' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}
+          >
+            Features
+          </button>
         </div>
 
         {adminTab === 'users' && (
@@ -724,6 +732,12 @@ export default function AdminPage({
               {onRunSecurityScan && <button type="button" onClick={onRunSecurityScan}><i className="bi bi-shield-check" />Security</button>}
             </div>
           </>
+        )}
+
+        {adminTab === 'features' && (
+           <div className="px-3 pb-5">
+             <CustomFeatureManager />
+           </div>
         )}
 
         {adminTab === 'creator' && (

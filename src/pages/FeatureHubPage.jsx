@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { useCustomFeatures } from '../hooks/useCustomFeatures';
+import CustomFeatureViewer from '../components/CustomFeatureViewer';
 
 const sections = [
   { id: 'overview', label: 'Overview', icon: 'bi-grid-1x2-fill' },
@@ -6,6 +8,7 @@ const sections = [
   { id: 'streaks', label: 'Streaks', icon: 'bi-fire' },
   { id: 'rewards', label: 'Rewards', icon: 'bi-coin' },
   { id: 'insights', label: 'Insights', icon: 'bi-bar-chart-line-fill' },
+  { id: 'community', label: 'Custom', icon: 'bi-stars' },
 ];
 
 const cards = [
@@ -26,6 +29,8 @@ export default function FeatureHubPage({
   fullPage = false,
 }) {
   const [activeSection, setActiveSection] = useState('overview');
+  const { features, loading } = useCustomFeatures();
+  const [activeFeature, setActiveFeature] = useState(null);
 
   const openSection = (id) => {
     setActiveSection(id);
@@ -37,8 +42,15 @@ export default function FeatureHubPage({
 
   return (
     <div
-      className={`feature-hub-page w-100 overflow-auto ${fullPage ? '' : 'position-fixed top-0 start-0 h-100'}`}
-      style={{ zIndex: 1050, minHeight: fullPage ? 'calc(100dvh - 62px)' : undefined, background: '#ECE5DD' }}
+      className={`feature-hub-page w-100 ${fullPage ? '' : 'position-fixed top-0 start-0 bottom-0'}`}
+      style={{ 
+        zIndex: 1050, 
+        minHeight: fullPage ? 'calc(100dvh - 62px)' : '100dvh', 
+        height: fullPage ? 'auto' : '100dvh',
+        background: '#ECE5DD',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch'
+      }}
     >
       <div className="container-fluid max-width-container py-3 py-md-4 px-3">
         <div className="d-flex align-items-center justify-content-between mb-3">
@@ -156,7 +168,38 @@ export default function FeatureHubPage({
           </div>
         )}
 
+        {activeSection === 'community' && (
+           <div className="card border-0 shadow-sm rounded-4 p-3 mb-3">
+              <h5 className="fw-bold text-dark mb-1"><i className="bi bi-stars text-primary me-2" />Custom Features</h5>
+              <p className="text-secondary small">Explore unique mini-tools and widgets created by the community admins.</p>
+              
+              {loading ? (
+                <div className="text-secondary small"><span className="spinner-border spinner-border-sm me-1" />Loading...</div>
+              ) : features.length === 0 ? (
+                <div className="text-secondary small fst-italic">No custom features available at the moment.</div>
+              ) : (
+                <div className="row g-3 mt-1">
+                  {features.map(f => (
+                    <div className="col-12 col-sm-6" key={f.id}>
+                      <button className="card border shadow-sm rounded-4 p-3 text-start w-100 h-100 hover-scale bg-light" onClick={() => setActiveFeature(f)}>
+                        <div className="d-flex align-items-center gap-3">
+                           <i className={`bi ${f.icon} fs-4 text-primary`} />
+                           <div>
+                              <strong className="d-block text-dark">{f.title}</strong>
+                              <small className="text-secondary d-block" style={{ fontSize: '0.75rem', lineHeight: '1.2' }}>{f.description}</small>
+                           </div>
+                        </div>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+           </div>
+        )}
+
       </div>
+      
+      {activeFeature && <CustomFeatureViewer feature={activeFeature} onClose={() => setActiveFeature(null)} />}
     </div>
   );
 }
