@@ -1,15 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { formatTime12h, getIntervalTimes } from '../utils/helpers';
+import { useCustomFeatures } from '../hooks/useCustomFeatures';
 
 const QUICK_LINKS = [
+  { id: 'feature-hub', title: 'Productivity Hub', subtitle: 'All features in one place – journal, streaks, rewards and more', icon: 'bi-grid-1x2-fill', type: 'feature-hub' },
   { id: 'journal', title: 'Journal', subtitle: 'Reflections, moods, prompts and history', icon: 'bi-journal-text', type: 'journal' },
   { id: 'streaks', title: 'Streaks', subtitle: 'Daily check-in and milestones', icon: 'bi-fire', type: 'streaks' },
   { id: 'rewards', title: 'Rewards Store', subtitle: 'Perks, unlocks and points history', icon: 'bi-gift', type: 'rewards' },
   { id: 'insights', title: 'Insights', subtitle: 'Consistency, heatmap and productivity trends', icon: 'bi-bar-chart-line-fill', type: 'insights' },
+  { id: 'messages', title: 'Message Center', subtitle: 'Notices, alerts and admin messages', icon: 'bi-chat-dots', type: 'messages' },
   { id: 'security-scan', title: 'Security Scan', subtitle: 'Scan hourly blocks or habit streaks', icon: 'bi-shield-check', type: 'security-scan' },
   { id: 'pending-review', title: 'Review Pending Blocks', subtitle: 'Resolve unfinished timing blocks', icon: 'bi-clock-history', type: 'pending-review' },
   { id: 'pomodoro', title: 'Pomodoro Timer', subtitle: 'Focus timer for an hourly block', icon: 'bi-stopwatch', type: 'pomodoro' },
   { id: 'prayer', title: 'Prayer Checklist', subtitle: 'Islamic theme prayer tracking', icon: 'bi-moon-stars', type: 'islamic' },
+  { id: 'profile', title: 'My Profile', subtitle: 'View and edit your profile details', icon: 'bi-person-circle', type: 'profile' },
+  { id: 'trash', title: 'Trash', subtitle: 'View and restore deleted blocks', icon: 'bi-trash3', type: 'trash' },
+  { id: 'about-admins', title: 'About Admins', subtitle: 'See admin profiles and team info', icon: 'bi-people', type: 'about-admins' },
   { id: 'settings', title: 'Settings', subtitle: 'All app preferences and controls', icon: 'bi-gear', type: 'settings' },
   { id: 'settings-tools', title: 'Tools Settings', subtitle: 'Security scan, PDF export and dictionary tools', icon: 'bi-tools', type: 'settings-tools' },
   { id: 'settings-sounds', title: 'Sound Settings', subtitle: 'Customize success, points, missed and timer sounds', icon: 'bi-volume-up', type: 'settings-sounds' },
@@ -17,7 +23,7 @@ const QUICK_LINKS = [
   { id: 'settings-goals', title: 'Goals Settings', subtitle: 'Daily goals and consistency insights', icon: 'bi-bullseye', type: 'settings-goals' },
   { id: 'settings-data', title: 'Data Settings', subtitle: 'Import, export and browser data management', icon: 'bi-database', type: 'settings-data' },
   { id: 'habit-scanner', title: 'Habit Streak Scanner', subtitle: 'Review forgotten habit days and record what happened', icon: 'bi-shield-exclamation', type: 'security-scan' },
-  { id: 'daily-checkin', title: 'Daily Check-in', subtitle: 'Record today’s streak check-in', icon: 'bi-calendar-check', type: 'streaks' },
+  { id: 'daily-checkin', title: 'Daily Check-in', subtitle: 'Record today\u2019s streak check-in', icon: 'bi-calendar-check', type: 'streaks' },
   { id: 'automatic-scan', title: 'Automatic Streak Scan', subtitle: 'Automatically review habits when opening Streaks', icon: 'bi-arrow-repeat', type: 'settings-tools' },
   { id: 'pdf-export', title: 'PDF Export', subtitle: 'Download plans and reports as a PDF', icon: 'bi-file-pdf', type: 'settings-tools' },
   { id: 'dictionary', title: 'Suggestion Dictionary', subtitle: 'Manage plan and report suggestions', icon: 'bi-book', type: 'settings-tools' },
@@ -30,6 +36,7 @@ const QUICK_LINKS = [
 export default function GlobalSearch({ reports = [], onClose, onSelect, isAdmin = false }) {
   const [query, setQuery] = useState('');
   const inputRef = useRef(null);
+  const { features: customFeatures } = useCustomFeatures();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -63,11 +70,22 @@ export default function GlobalSearch({ reports = [], onClose, onSelect, isAdmin 
     });
 
     const links = QUICK_LINKS
-      .filter((link) => isAdmin || link.type !== 'settings-admin')
+      .filter((link) => isAdmin || (link.type !== 'settings-admin' && link.type !== 'about-admins'))
       .map((link) => ({ ...link, text: `${link.title} ${link.subtitle} ${link.type}`.toLowerCase() }));
-    if (!normalized) return [...links, ...reportResults.slice(0, 8)];
-    return [...reportResults, ...links].filter((result) => result.text.includes(normalized)).slice(0, 30);
-  }, [isAdmin, query, reports]);
+
+    const featureResults = (customFeatures || []).map((f) => ({
+      id: f.id,
+      title: f.title,
+      subtitle: f.description || 'Custom feature',
+      icon: f.icon || 'bi-stars',
+      type: 'custom-feature',
+      feature: f,
+      text: `${f.title} ${f.description || ''} custom feature`.toLowerCase(),
+    }));
+
+    if (!normalized) return [...links, ...featureResults, ...reportResults.slice(0, 8)];
+    return [...featureResults, ...reportResults, ...links].filter((result) => result.text.includes(normalized)).slice(0, 30);
+  }, [isAdmin, query, reports, customFeatures]);
 
   return (
     <div className="global-search position-fixed top-0 start-0 w-100 h-100" role="dialog" aria-modal="true" aria-label="Global search">
@@ -102,7 +120,7 @@ export default function GlobalSearch({ reports = [], onClose, onSelect, isAdmin 
               className="global-search-result w-100 text-start d-flex align-items-center gap-3 border-0 bg-white rounded-3 p-3 mb-2 shadow-sm"
               onClick={() => onSelect(result)}
             >
-              <span className={`global-search-icon ${result.type === 'report' ? 'text-success' : 'text-warning'}`}>
+              <span className={`global-search-icon ${result.type === 'report' ? 'text-success' : result.type === 'custom-feature' ? 'text-primary' : 'text-warning'}`}>
                 <i className={`bi ${result.icon} fs-5`} />
               </span>
               <span className="flex-grow-1">

@@ -27,6 +27,7 @@ import PomodoroModal from '../components/PomodoroModal';
 import InsightsModal from '../components/InsightsModal';
 import MessageCenterModal from '../components/MessageCenterModal';
 import AboutAdminsModal from '../components/AboutAdminsModal';
+import CustomFeatureViewer from '../components/CustomFeatureViewer';
 import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAppUsage } from '../hooks/useAppUsage';
@@ -202,6 +203,7 @@ export default function Home() {
   const [isStreaksOpen, setIsStreaksOpen] = useState(false);
   const [openHabitScannerOnStreaks, setOpenHabitScannerOnStreaks] = useState(false);
   const [isFeatureHubOpen, setIsFeatureHubOpen] = useState(false);
+  const [activeCustomFeature, setActiveCustomFeature] = useState(null);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
     try {
@@ -845,6 +847,20 @@ export default function Home() {
       showToast('Open an hourly block to start the Pomodoro timer.', 'info');
     } else if (result.type === 'islamic') {
       handleThemeChange('islamic');
+    } else if (result.type === 'feature-hub') {
+      handleOpenFeatureHub();
+    } else if (result.type === 'messages') {
+      setIsMessageCenterOpen(true);
+    } else if (result.type === 'about-admins') {
+      setIsAboutAdminsOpen(true);
+    } else if (result.type === 'profile') {
+      setActiveModal('profile');
+    } else if (result.type === 'trash') {
+      setActiveModal('trash');
+    } else if (result.type === 'custom-feature') {
+      setActiveCustomFeature(result.feature);
+    } else if (result.type === 'dashboard') {
+      navigateTo('/');
     }
   };
   const handleReplayTutorial = () => {
@@ -2279,6 +2295,13 @@ export default function Home() {
         >
           <i className="bi bi-arrow-up text-white fs-5" />
         </button>
+      )}
+
+      {activeCustomFeature && (
+        <CustomFeatureViewer
+          feature={activeCustomFeature}
+          onClose={() => setActiveCustomFeature(null)}
+        />
       )}
     </div>
   );
