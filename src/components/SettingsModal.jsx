@@ -4,6 +4,7 @@ import { getIntervalTimes, formatTime12h, isFeatureActive, getFeatureTimeRemaini
 import { useSound, DEFAULT_SOUNDS } from '../contexts/SoundContext';
 import TagDropdown from './TagDropdown';
 import { useNotifications } from '../hooks/useNotifications';
+import TodoAppModal from './TodoAppModal';
 
 /**
  * SettingsModal — handles app-level configuration only.
@@ -71,6 +72,7 @@ export default function SettingsModal({
   const [englishFont, setEnglishFont] = useState('Outfit');
   const [banglaFont, setBanglaFont] = useState('Noto Sans Bengali');
   const [pdfTheme, setPdfTheme] = useState('teal');
+  const [isTodoAppOpen, setIsTodoAppOpen] = useState(false);
   const [isExportingPDF, setIsExportingPDF] = useState(false);
 
   // Custom alert state
@@ -817,6 +819,22 @@ export default function SettingsModal({
                     </p>
                   </div>
                 </div>
+              </div>
+
+              {/* Todo App */}
+              <div style={settingStyle('general')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                  <i className="bi bi-check2-square" style={{ color: '#075E54' }} />
+                  Dynamic Todo App
+                </h6>
+                <p className="text-secondary small mb-2">Manage your daily tasks with smart tags, priorities, and real-time progress tracking.</p>
+                <button
+                  type="button"
+                  className="btn btn-outline-success w-100 rounded-3 fw-bold shadow-none"
+                  onClick={() => setIsTodoAppOpen(true)}
+                >
+                  <i className="bi bi-list-check me-2" /> Open Todo App
+                </button>
               </div>
 
               {/* Theme Selector */}
@@ -1817,6 +1835,13 @@ export default function SettingsModal({
           </div>
         </div>
       )}
+      
+      {/* Todo App Modal */}
+      <TodoAppModal 
+        isOpen={isTodoAppOpen} 
+        onClose={() => setIsTodoAppOpen(false)} 
+        currentUser={currentUser}
+      />
     </>
   );
 }

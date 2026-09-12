@@ -99,5 +99,12 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin() && request.auth.uid == adminId;
     }
+
+    // Rules for dynamic todo app tasks
+    match /todos/{todoId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+    }
   }
 }

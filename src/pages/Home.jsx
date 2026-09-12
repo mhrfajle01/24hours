@@ -3,6 +3,7 @@ import { useSound } from '../contexts/SoundContext';
 import Header from '../components/Header';
 import Summary from '../components/Summary';
 import ConsistencyWidget from '../components/ConsistencyWidget';
+import TodoDashboardWidget from '../components/TodoDashboardWidget';
 import Timeline from '../components/Timeline';
 import PlanningModal from '../components/PlanningModal';
 import ReportModal from '../components/ReportModal';
@@ -1838,6 +1839,10 @@ export default function Home() {
               selectedDate={selectedDate}
               pointsData={pointsData}
               onUnlockFeature={unlockFeature}
+            />
+            <TodoDashboardWidget 
+              currentUser={currentUser} 
+              onOpenSettings={handleOpenSettings} 
             />
             {theme === 'islamic' && (
               <div className="container-fluid max-width-container px-3">
