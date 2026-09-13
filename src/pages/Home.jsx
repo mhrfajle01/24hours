@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import Summary from '../components/Summary';
 import ConsistencyWidget from '../components/ConsistencyWidget';
 import TodoDashboardWidget from '../components/TodoDashboardWidget';
+import QuickAccessDashboardWidget from '../components/QuickAccessDashboardWidget';
 import Timeline from '../components/Timeline';
 import PlanningModal from '../components/PlanningModal';
 import ReportModal from '../components/ReportModal';
@@ -21,6 +22,7 @@ import IslamicPage from './IslamicPage';
 import JournalPage from './JournalPage';
 import StreaksPage from './StreaksPage';
 import FeatureHubPage from './FeatureHubPage';
+import WalletPage from './WalletPage';
 import AdminPage from './AdminPage';
 import NewUserTutorial from '../components/NewUserTutorial';
 import GlobalSearch from '../components/GlobalSearch';
@@ -204,6 +206,8 @@ export default function Home() {
   const [isStreaksOpen, setIsStreaksOpen] = useState(false);
   const [openHabitScannerOnStreaks, setOpenHabitScannerOnStreaks] = useState(false);
   const [isFeatureHubOpen, setIsFeatureHubOpen] = useState(false);
+  const [isWalletOpen, setIsWalletOpen] = useState(false);
+  const [walletInitialDist, setWalletInitialDist] = useState(null);
   const [activeCustomFeature, setActiveCustomFeature] = useState(null);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
@@ -227,6 +231,8 @@ export default function Home() {
       const path = window.location.pathname.replace(/\/+$/, '') || '/';
       setIsJournalOpen(path === '/journal');
       setIsStreaksOpen(path === '/streaks');
+      setIsWalletOpen(path === '/wallet');
+      if (path !== '/wallet') setWalletInitialDist(null);
       setIsFeatureHubOpen(path === '/productivity-hub');
       setIsAdminOpen(path === '/admin');
       if (path === '/islamic') setTheme('islamic');
@@ -400,6 +406,7 @@ export default function Home() {
         setIsFeatureHubOpen(false);
         setIsJournalOpen(false);
         setIsStreaksOpen(false);
+        setIsWalletOpen(false);
         setIsInsightsOpen(false);
         setActiveModal(null);
       }
@@ -858,6 +865,9 @@ export default function Home() {
       setActiveModal('profile');
     } else if (result.type === 'trash') {
       setActiveModal('trash');
+    } else if (result.type === 'wallet') {
+      setIsWalletOpen(true);
+      navigateTo('/wallet');
     } else if (result.type === 'custom-feature') {
       setActiveCustomFeature(result.feature);
     } else if (result.type === 'dashboard') {
@@ -1709,6 +1719,21 @@ export default function Home() {
     );
   }
 
+  // ── Wallet Page: Full separate page ──────────────────────────────────
+  if (isWalletOpen) {
+    return (
+      <WalletPage
+        currentUser={currentUser}
+        initialDistId={walletInitialDist}
+        onBack={() => {
+          setIsWalletOpen(false);
+          setWalletInitialDist(null);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -1754,6 +1779,11 @@ export default function Home() {
             if (tutorialStep === 6) setTutorialStep(7);
             setIsFeatureHubOpen(true);
             openStreaksPage();
+          }}
+          onOpenWallet={() => {
+            setIsFeatureHubOpen(true);
+            setIsWalletOpen(true);
+            navigateTo('/wallet');
           }}
           onOpenRewards={() => {
             if (tutorialStep === 8) setTutorialStep(9);
@@ -1839,6 +1869,27 @@ export default function Home() {
               selectedDate={selectedDate}
               pointsData={pointsData}
               onUnlockFeature={unlockFeature}
+            />
+            <QuickAccessDashboardWidget
+              currentUser={currentUser}
+              onOpenJournal={() => {
+                setJournalInitialDate(getTodayDateString());
+                setIsJournalOpen(true);
+                navigateTo('/journal');
+              }}
+              onOpenStreaks={() => openStreaksPage()}
+              onOpenRewards={() => setActiveModal('points')}
+              onOpenWallet={() => {
+                setIsWalletOpen(true);
+                navigateTo('/wallet');
+              }}
+              onOpenWalletDist={(distId) => {
+                setWalletInitialDist(distId);
+                setIsWalletOpen(true);
+                navigateTo('/wallet');
+              }}
+              onOpenInsights={() => setIsInsightsOpen(true)}
+              onOpenFeatureHub={handleOpenFeatureHub}
             />
             <TodoDashboardWidget 
               currentUser={currentUser} 

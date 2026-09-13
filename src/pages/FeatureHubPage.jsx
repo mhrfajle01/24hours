@@ -7,6 +7,7 @@ const sections = [
   { id: 'journal', label: 'Journal', icon: 'bi-journal-text' },
   { id: 'streaks', label: 'Streaks', icon: 'bi-fire' },
   { id: 'rewards', label: 'Rewards', icon: 'bi-coin' },
+  { id: 'wallet', label: 'Wallet', icon: 'bi-wallet2' },
   { id: 'insights', label: 'Insights', icon: 'bi-bar-chart-line-fill' },
   { id: 'community', label: 'Custom', icon: 'bi-stars' },
 ];
@@ -15,6 +16,7 @@ const cards = [
   { id: 'journal', title: 'Journal', text: 'Write reflections, track moods, and review entries.', icon: 'bi-journal-text', color: '#6f42c1' },
   { id: 'streaks', title: 'Streaks', text: 'Check in, protect habits, and reach milestones.', icon: 'bi-fire', color: '#fd7e14' },
   { id: 'rewards', title: 'Rewards Store', text: 'Spend points on freezes, perks, and unlocks.', icon: 'bi-shop', color: '#198754' },
+  { id: 'wallet', title: 'Wallet', text: 'Manage total balance and distribution categories.', icon: 'bi-wallet2', color: '#075E54' },
   { id: 'insights', title: 'Insights', text: 'Review consistency, goals, and productivity trends.', icon: 'bi-bar-chart-line-fill', color: '#0d6efd' },
 ];
 
@@ -25,6 +27,7 @@ export default function FeatureHubPage({
   onOpenJournal,
   onOpenStreaks,
   onOpenRewards,
+  onOpenWallet,
   onOpenInsights,
   fullPage = false,
 }) {
@@ -37,6 +40,7 @@ export default function FeatureHubPage({
     if (id === 'journal') onOpenJournal?.();
     if (id === 'streaks') onOpenStreaks?.();
     if (id === 'rewards') onOpenRewards?.();
+    if (id === 'wallet') onOpenWallet?.();
     if (id === 'insights') onOpenInsights?.();
   };
 
@@ -154,6 +158,16 @@ export default function FeatureHubPage({
             <p className="text-secondary small">Check in, view milestones, protect your progress, and review history.</p>
             <button className="btn btn-warning rounded-pill fw-bold align-self-start" onClick={onOpenStreaks}>
               <i className="bi bi-arrow-right-circle me-1" />Open Streaks
+            </button>
+          </div>
+        )}
+
+        {activeSection === 'wallet' && (
+          <div className="card border-0 shadow-sm rounded-4 p-3">
+            <h5 className="fw-bold text-dark mb-1"><i className="bi bi-wallet2 text-success me-2" />Wallet</h5>
+            <p className="text-secondary small">Manage your balance and distribute money across different categories.</p>
+            <button className="btn btn-success rounded-pill fw-bold align-self-start" onClick={onOpenWallet}>
+              <i className="bi bi-wallet2 me-1" />Open Wallet
             </button>
           </div>
         )}

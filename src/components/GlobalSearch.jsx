@@ -7,6 +7,7 @@ const QUICK_LINKS = [
   { id: 'journal', title: 'Journal', subtitle: 'Reflections, moods, prompts and history', icon: 'bi-journal-text', type: 'journal' },
   { id: 'streaks', title: 'Streaks', subtitle: 'Daily check-in and milestones', icon: 'bi-fire', type: 'streaks' },
   { id: 'rewards', title: 'Rewards Store', subtitle: 'Perks, unlocks and points history', icon: 'bi-gift', type: 'rewards' },
+  { id: 'wallet', title: 'Wallet', subtitle: 'Manage total balance and distributions', icon: 'bi-wallet2', type: 'wallet' },
   { id: 'insights', title: 'Insights', subtitle: 'Consistency, heatmap and productivity trends', icon: 'bi-bar-chart-line-fill', type: 'insights' },
   { id: 'messages', title: 'Message Center', subtitle: 'Notices, alerts and admin messages', icon: 'bi-chat-dots', type: 'messages' },
   { id: 'security-scan', title: 'Security Scan', subtitle: 'Scan hourly blocks or habit streaks', icon: 'bi-shield-check', type: 'security-scan' },
