@@ -42,6 +42,7 @@ const FEATURE_COSTS = {
   security_scan: 500,
   islamic_theme: 750,
   import_json: 50,
+  unlimited_todo_tags: 150,
 };
 
 /**

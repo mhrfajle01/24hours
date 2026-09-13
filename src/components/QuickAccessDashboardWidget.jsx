@@ -28,8 +28,17 @@ export default function QuickAccessDashboardWidget({
   useEffect(() => {
     if (!currentUser?.uid) return;
     const unsub = onSnapshot(doc(db, 'wallets', currentUser.uid), (snap) => {
-      if (snap.exists() && snap.data().distributions) {
-        setWalletDists(snap.data().distributions);
+      if (snap.exists()) {
+        const data = snap.data();
+        let allDists = [];
+        if (data.accounts) {
+          data.accounts.forEach(acc => {
+            if (acc.distributions) allDists = [...allDists, ...acc.distributions];
+          });
+        } else if (data.distributions) {
+          allDists = data.distributions;
+        }
+        setWalletDists(allDists);
       } else {
         setWalletDists([]);
       }

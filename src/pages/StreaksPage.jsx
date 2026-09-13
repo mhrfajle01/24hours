@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStreaks, getStreakDays } from '../hooks/useStreaks';
 import HabitScannerModal from '../components/HabitScannerModal';
+import RareEvent from '../components/RareEvent';
 
 const QUOTES = [
   "Every fall is a chance to rise. You got this! 💪",
@@ -47,6 +48,7 @@ const MILESTONES = [
 const EMOJIS = ['🚭','💪','🏃','📚','🧘','🥗','💧','🌅','🎯','📵','💤','🏋️','🎨','🧠','🙏','🚫'];
 
 export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, streakRequirements = {}, openHabitScanner = false }) {
+  const [showStreakEvent, setShowStreakEvent] = useState(false);
   // We assume useStreaks returns an object with these properties. 
   // If hooks are slightly different, this might need adjustment, but matches standard patterns.
   const { 
@@ -299,17 +301,7 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, strea
       console.error('Daily check-in failed:', error);
       return;
     }
-    const toast = document.createElement('div');
-    toast.className = 'position-fixed top-0 start-50 translate-middle-x mt-4 p-3 rounded-4 shadow-lg text-white fw-bold animate-slide-down-toast-container';
-    toast.style.background = 'linear-gradient(135deg, #25D366, #128C7E)';
-    toast.style.zIndex = 9999;
-    toast.innerHTML = '✨ Daily check-in recorded! +20 points';
-    document.body.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity 0.5s';
-      setTimeout(() => toast.remove(), 500);
-    }, 2000);
+    setShowStreakEvent(true);
   };
 
   // Main Render
@@ -323,6 +315,13 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, strea
         fontFamily: "'Outfit', sans-serif"
       }}
     >
+      {showStreakEvent && (
+        <RareEvent
+          type="streak"
+          result={<div style={{ fontWeight: '900', filter: 'drop-shadow(0 0 20px #ff4500)', lineHeight: '1.2' }}>Streak<br/>Protected!<br/><span style={{fontSize: '40px', color: '#ffd700'}}>+20 pts</span></div>}
+          onClose={() => setShowStreakEvent(false)}
+        />
+      )}
       <style>{`
         .glass-card {
           background: rgba(255, 255, 255, 0.06);

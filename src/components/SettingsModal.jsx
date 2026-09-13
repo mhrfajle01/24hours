@@ -85,6 +85,7 @@ export default function SettingsModal({
   const [confirmClearBrowserData, setConfirmClearBrowserData] = useState(false);
   const [isClearingBrowserData, setIsClearingBrowserData] = useState(false);
   const [activeSettingsSection, setActiveSettingsSection] = useState(initialSection);
+  const [walletUI, setWalletUI] = useState(() => localStorage.getItem('wallet-ui-preference') || 'dropdown');
   useEffect(() => {
     if (isOpen) setActiveSettingsSection(initialSection);
   }, [isOpen, initialSection]);
@@ -905,6 +906,41 @@ export default function SettingsModal({
                       )}
                     </div>
                     {theme === 'islamic' && <i className="bi bi-check-circle-fill ms-auto text-warning" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Wallet UI Preference */}
+              <div style={settingStyle('appearance')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                  <i className="bi bi-wallet2" style={{ color: '#075E54' }} />
+                  Wallet Interface
+                </h6>
+                <p className="text-secondary small mb-2">Choose how your multiple wallets are displayed.</p>
+                <div className="d-flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.setItem('wallet-ui-preference', 'dropdown');
+                      setWalletUI('dropdown');
+                      showAlert('Wallet set to Dropdown Switcher!', 'success');
+                      window.dispatchEvent(new Event('wallet-ui-changed'));
+                    }}
+                    className={`btn flex-fill d-flex align-items-center justify-content-center gap-2 rounded-3 py-2 border ${walletUI !== 'dashboard' ? 'btn-success text-white' : 'btn-outline-secondary'}`}
+                  >
+                    <i className="bi bi-menu-button-wide-fill" /> Dropdown Menu
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.setItem('wallet-ui-preference', 'dashboard');
+                      setWalletUI('dashboard');
+                      showAlert('Wallet set to Dashboard Grid!', 'success');
+                      window.dispatchEvent(new Event('wallet-ui-changed'));
+                    }}
+                    className={`btn flex-fill d-flex align-items-center justify-content-center gap-2 rounded-3 py-2 border ${walletUI === 'dashboard' ? 'btn-success text-white' : 'btn-outline-secondary'}`}
+                  >
+                    <i className="bi bi-grid-fill" /> Grid Dashboard
                   </button>
                 </div>
               </div>

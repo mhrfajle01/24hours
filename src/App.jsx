@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import Home from './pages/Home';
 import { SoundProvider } from './contexts/SoundContext';
 import './index.css';

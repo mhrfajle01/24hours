@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import RareEvent from './RareEvent';
 import { getTodayDateString, isFeatureActive, getFeatureTimeRemaining } from '../utils/helpers';
 
 export default function PointsModal({ show, onClose, pointsData, redeemPerk, showToast }) {
@@ -9,6 +10,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
   // Mystery Box Animation States
   const [isOpeningBox, setIsOpeningBox] = useState(false);
   const [boxReward, setBoxReward] = useState(null); // { wonAmount, tier } | null
+  const [purchaseEvent, setPurchaseEvent] = useState(null); // custom purchase string
 
   useEffect(() => {
     const interval = setInterval(() => setTimeNow(Date.now()), 60000);
@@ -25,6 +27,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
     try {
       setLoadingPerk(perkType);
       const res = await redeemPerk(perkType, cost, payload);
+      setPurchaseEvent(`Claimed!`);
       showToast(`Successfully redeemed! (-${cost} pts)`, 'success');
       return res;
     } catch (err) {
@@ -52,6 +55,15 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
       setIsOpeningBox(false);
     }
   };
+
+  const featureList = [
+    { key: 'unlimited_todo_tags', name: 'Unlimited Todo Tags', desc: 'Create custom tags without limits.', cost: 150, icon: '🏷️' },
+    { key: 'history', name: 'Points History', desc: 'View full history of all points earned and spent.', cost: 350, icon: '📜' },
+    { key: 'security_scan', name: 'Security Scan', desc: 'Scan and secure your workspace data.', cost: 500, icon: '🛡️' },
+    { key: 'islamic_theme', name: 'Islamic Theme', desc: 'Enable beautiful Islamic theme mode.', cost: 750, icon: '🌙' },
+    { key: 'pdf_export', name: 'PDF Export', desc: 'Export your data and reports to PDF.', cost: 1000, icon: '📄' },
+    { key: 'import_json', name: 'JSON Import', desc: 'Import backup JSON files.', cost: 50, icon: '📥' }
+  ];
 
   return (
     <div className="modal fade show d-block" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1050 }} tabIndex="-1">
@@ -192,6 +204,46 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                     </div>
                   </div>
                 </div>
+
+                {/* Additional 7-Day Unlockable Features */}
+                {featureList.map(feature => (
+                  <div className="col-md-4" key={feature.key}>
+                    <div className="card h-100 border-0 shadow-sm p-3 bg-body rounded">
+                      <div className="d-flex align-items-center gap-3 mb-2">
+                        <span className="fs-1">{feature.icon}</span>
+                        <div>
+                          <h6 className="fw-bold mb-1">{feature.name}</h6>
+                          <small className="text-muted" style={{ fontSize: '0.78rem' }}>{feature.desc}</small>
+                          {pointsData?.unlockedFeatures?.[feature.key] && (
+                            <small className="text-primary fw-semibold d-block mt-1">
+                              {getFeatureTimeRemaining(pointsData, feature.key, timeNow)}
+                            </small>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
+                        <span className="fw-bold text-success">{feature.cost} pts · 7 days</span>
+                        <button 
+                          className="btn btn-sm btn-outline-success rounded-pill px-3"
+                          disabled={points < feature.cost || loadingPerk === `UNLOCK_${feature.key}` || isFeatureActive(pointsData, feature.key)}
+                          onClick={async () => {
+                            try {
+                              setLoadingPerk(`UNLOCK_${feature.key}`);
+                              await redeemPerk('UNLOCK_FEATURE', feature.cost, { featureKey: feature.key, featureName: feature.name });
+                              showToast(`${feature.name} unlocked for 7 days! (-${feature.cost} pts)`, 'success');
+                            } catch (err) {
+                              showToast(err.message || 'Failed to unlock', 'danger');
+                            } finally {
+                              setLoadingPerk(null);
+                            }
+                          }}
+                        >
+                          {isFeatureActive(pointsData, feature.key) ? 'Active' : 'Unlock 7 Days'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
 
                 {/* Perk 4: Mystery Loot Box */}
                 <div className="col-md-4">
@@ -493,56 +545,34 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
 
       {/* ── Mystery Box Win Announcement Modal ──────────────────────────── */}
       {boxReward && (
-        <div 
-          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center px-3" 
-          style={{ backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1100 }}
-        >
-          <div className="card border-0 shadow-lg animate-box-reveal text-center p-4 max-width-container bg-white rounded-4 overflow-hidden position-relative" style={{ maxWidth: '420px', width: '100%' }}>
-            
-            {/* Top Badge */}
-            <div className="mb-2">
-              <span className={`badge rounded-pill px-3 py-1.5 fw-bold text-uppercase ${
-                boxReward.tier === 'jackpot' ? 'bg-warning text-dark' :
-                boxReward.tier === 'rare' ? 'bg-success text-white' :
-                boxReward.tier === 'uncommon' ? 'bg-primary text-white' : 'bg-secondary text-white'
-              }`}>
-                {boxReward.tier === 'jackpot' ? '💎 MEGA JACKPOT 💎' :
-                 boxReward.tier === 'rare' ? '🥇 RARE REWARD' :
-                 boxReward.tier === 'uncommon' ? '🥈 UNCOMMON REWARD' : '🥉 COMMON REWARD'}
-              </span>
+        <RareEvent
+          type={boxReward.tier === 'jackpot' ? 'card' : 'box'}
+          result={
+            <div className="text-center" style={{ textShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
+               <div style={{ fontSize: '2.5rem', marginBottom: '10px', color: boxReward.tier === 'jackpot' ? '#ffd700' : 'white' }}>
+                 {boxReward.tier === 'jackpot' ? '💎 MEGA JACKPOT 💎' :
+                  boxReward.tier === 'rare' ? '🥇 RARE REWARD' :
+                  boxReward.tier === 'uncommon' ? '🥈 UNCOMMON REWARD' : '🥉 COMMON REWARD'}
+               </div>
+               <div style={{ fontSize: '4.5rem', fontWeight: '900', color: '#fff', lineHeight: '1' }}>
+                 +{boxReward.wonAmount} <span style={{fontSize:'2rem', fontWeight: 'normal'}}>pts</span>
+               </div>
+               <div style={{ fontSize: '1.2rem', marginTop: '10px', opacity: 0.9 }}>
+                 Added directly to your balance!
+               </div>
             </div>
+          }
+          onClose={() => setBoxReward(null)}
+        />
+      )}
 
-            {/* Main Icon */}
-            <div className="my-3">
-              <span style={{ fontSize: '4.5rem' }}>
-                {boxReward.tier === 'jackpot' ? '🎉💎' :
-                 boxReward.tier === 'rare' ? '🏆✨' :
-                 boxReward.tier === 'uncommon' ? '🎁🌟' : '🪙'}
-              </span>
-            </div>
-
-            {/* Title & Amount */}
-            <h3 className="fw-extrabold mb-1 text-dark">
-              {boxReward.tier === 'jackpot' ? 'JACKPOT WINNER!' : 'CONGRATULATIONS!'}
-            </h3>
-            <p className="text-secondary small mb-3">You opened a Mystery Loot Box and won:</p>
-
-            <div className="p-3 bg-light rounded-3 border mb-4">
-              <span className="fs-1 fw-extrabold text-success d-block">
-                +{boxReward.wonAmount} <span className="fs-5 text-muted fw-normal">pts</span>
-              </span>
-              <small className="text-muted">Added directly to your balance!</small>
-            </div>
-
-            {/* Collect Button */}
-            <button 
-              className="btn btn-lg btn-success w-100 rounded-pill fw-bold shadow-sm hover-scale"
-              onClick={() => setBoxReward(null)}
-            >
-              Collect Reward! 🚀
-            </button>
-          </div>
-        </div>
+      {/* ── Purchase Announcement Modal ──────────────────────────── */}
+      {purchaseEvent && (
+        <RareEvent
+          type="purchase"
+          result={<div style={{ fontWeight: '900', filter: 'drop-shadow(0 0 20px #20c997)' }}>{purchaseEvent}</div>}
+          onClose={() => setPurchaseEvent(null)}
+        />
       )}
 
     </div>
