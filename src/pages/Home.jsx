@@ -164,7 +164,7 @@ export default function Home() {
 
   const { lastDelta, floatKey, lastSourceId } = usePointsAnimation(pointsData);
 
-  const { messages, loading: messagesLoading, sendMessage, markAsRead, deleteMessage } = useMessages(currentUser?.uid, isAdmin, currentUser);
+  const { messages, loading: messagesLoading, sendMessage, markAsRead, deleteMessage, editMessage, togglePin, bulkMarkAsRead, bulkDelete } = useMessages(currentUser?.uid, isAdmin, currentUser);
   const unreadMessagesCount = messages ? messages.filter(m => !m.readBy?.includes(currentUser?.uid)).length : 0;
   const [isMessageCenterOpen, setIsMessageCenterOpen] = useState(false);
 
@@ -2002,6 +2002,10 @@ export default function Home() {
           sendMessage={sendMessage}
           markAsRead={markAsRead}
           deleteMessage={deleteMessage}
+          editMessage={editMessage}
+          togglePin={togglePin}
+          bulkMarkAsRead={bulkMarkAsRead}
+          bulkDelete={bulkDelete}
         />
       )}
 
