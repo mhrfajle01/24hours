@@ -4,6 +4,7 @@ import Header from '../components/Header';
 import Summary from '../components/Summary';
 import ConsistencyWidget from '../components/ConsistencyWidget';
 import TodoDashboardWidget from '../components/TodoDashboardWidget';
+import TodoAppModal from '../components/TodoAppModal';
 import QuickAccessDashboardWidget from '../components/QuickAccessDashboardWidget';
 import Timeline from '../components/Timeline';
 import PlanningModal from '../components/PlanningModal';
@@ -193,6 +194,7 @@ export default function Home() {
   // ── Pomodoro Timer State ────────────────────────────────────────────────
   const [isPomodoroOpen, setIsPomodoroOpen] = useState(false);
   const [pomodoroReport, setPomodoroReport] = useState(null);
+  const [isTodoOpen, setIsTodoOpen] = useState(false);
 
   // ── Insights Modal State ────────────────────────────────────────────────
   const [isInsightsOpen, setIsInsightsOpen] = useState(false);
@@ -1893,7 +1895,7 @@ export default function Home() {
             />
             <TodoDashboardWidget 
               currentUser={currentUser} 
-              onOpenSettings={handleOpenSettings} 
+              onOpenTodo={() => setIsTodoOpen(true)} 
             />
             {theme === 'islamic' && (
               <div className="container-fluid max-width-container px-3">
@@ -2286,6 +2288,13 @@ export default function Home() {
           </div>
         </div>
       )}
+      {/* ── Todo App Modal ──────────────────────────────────────────── */}
+      <TodoAppModal
+        isOpen={isTodoOpen}
+        onClose={() => setIsTodoOpen(false)}
+        currentUser={currentUser}
+      />
+
       {/* ── Pomodoro Focus Modal ────────────────────────────────────── */}
       <PomodoroModal
         isOpen={isPomodoroOpen}

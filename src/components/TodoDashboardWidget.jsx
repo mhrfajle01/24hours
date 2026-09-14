@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTodos } from '../hooks/useTodos';
 
-export default function TodoDashboardWidget({ currentUser, onOpenSettings }) {
+export default function TodoDashboardWidget({ currentUser, onOpenTodo }) {
   const { todos, loading, updateTodo } = useTodos(currentUser?.uid);
   
   if (!currentUser) return null;
@@ -79,7 +79,7 @@ export default function TodoDashboardWidget({ currentUser, onOpenSettings }) {
           </div>
           <button 
             className="btn btn-sm btn-light border rounded-pill shadow-none fw-bold"
-            onClick={() => onOpenSettings('general')}
+            onClick={onOpenTodo}
             title="Open Full Todo App"
           >
             Manage <i className="bi bi-arrow-right ms-1" />

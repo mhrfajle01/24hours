@@ -48,6 +48,7 @@ export default function TodoAppModal({ isOpen, onClose, currentUser }) {
 
   // Tag unlock state
   const [showTagUnlockModal, setShowTagUnlockModal] = useState(false);
+  const hasUnlimitedTags = isFeatureActive(pointsData, 'unlimitedTags');
   const [pendingTagText, setPendingTagText] = useState('');
 
   // Check for yesterday's Inbox Zero bonus on mount
