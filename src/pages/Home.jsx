@@ -25,6 +25,7 @@ import StreaksPage from './StreaksPage';
 import FeatureHubPage from './FeatureHubPage';
 import WalletPage from './WalletPage';
 import AdminPage from './AdminPage';
+import SurveyPage from './SurveyPage';
 import NewUserTutorial from '../components/NewUserTutorial';
 import GlobalSearch from '../components/GlobalSearch';
 import PomodoroModal from '../components/PomodoroModal';
@@ -212,6 +213,7 @@ export default function Home() {
   const [walletInitialDist, setWalletInitialDist] = useState(null);
   const [activeCustomFeature, setActiveCustomFeature] = useState(null);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
+  const [isSurveyOpen, setIsSurveyOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
     try {
       return localStorage.getItem('24hours-tutorial-complete') ? -1 : 0;
@@ -1683,6 +1685,10 @@ export default function Home() {
           onDateChange={setSelectedDate}
           onOpenSettings={handleOpenSettings}
           onBack={() => handleThemeChange('light')}
+          onOpenSurvey={() => {
+            setIsSurveyOpen(true);
+            navigateTo('/survey');
+          }}
         />
       </>
     );
@@ -1730,6 +1736,19 @@ export default function Home() {
         onBack={() => {
           setIsWalletOpen(false);
           setWalletInitialDist(null);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
+  // ── Survey Page: Full separate page ──────────────────────────────────
+  if (isSurveyOpen) {
+    return (
+      <SurveyPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsSurveyOpen(false);
           navigateTo('/');
         }}
       />
@@ -1792,6 +1811,11 @@ export default function Home() {
             setActiveModal('points');
           }}
           onOpenInsights={() => setIsInsightsOpen(true)}
+          onOpenSurvey={() => {
+            setIsFeatureHubOpen(true);
+            setIsSurveyOpen(true);
+            navigateTo('/survey');
+          }}
           fullPage={window.location.pathname === '/productivity-hub'}
         />
       )}
@@ -1892,6 +1916,10 @@ export default function Home() {
               }}
               onOpenInsights={() => setIsInsightsOpen(true)}
               onOpenFeatureHub={handleOpenFeatureHub}
+              onOpenSurvey={() => {
+                setIsSurveyOpen(true);
+                navigateTo('/survey');
+              }}
             />
             <TodoDashboardWidget 
               currentUser={currentUser} 

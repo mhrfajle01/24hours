@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { useCustomFeatures } from '../hooks/useCustomFeatures';
+import CustomFeatureViewer from './CustomFeatureViewer';
 
 const baseFeatures = [
   { id: 'journal', title: 'Journal', icon: 'bi-journal-text', color: '#6f42c1' },
@@ -8,7 +10,8 @@ const baseFeatures = [
   { id: 'rewards', title: 'Rewards', icon: 'bi-shop', color: '#198754' },
   { id: 'wallet', title: 'Wallet', icon: 'bi-wallet2', color: '#075E54' },
   { id: 'insights', title: 'Insights', icon: 'bi-bar-chart-line-fill', color: '#0d6efd' },
-  { id: 'feature-hub', title: 'Hub', icon: 'bi-grid-1x2-fill', color: '#20c997' }
+  { id: 'feature-hub', title: 'Hub', icon: 'bi-grid-1x2-fill', color: '#20c997' },
+  { id: 'survey', title: 'Survey', icon: 'bi-clipboard2-check', color: '#e83e8c' }
 ];
 
 export default function QuickAccessDashboardWidget({ 
@@ -19,11 +22,14 @@ export default function QuickAccessDashboardWidget({
   onOpenWallet, 
   onOpenWalletDist,
   onOpenInsights,
-  onOpenFeatureHub
+  onOpenFeatureHub,
+  onOpenSurvey
 }) {
   const [pinnedFeatures, setPinnedFeatures] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [walletDists, setWalletDists] = useState([]);
+  const { features: customFeatures } = useCustomFeatures();
+  const [activeCustomFeature, setActiveCustomFeature] = useState(null);
 
   useEffect(() => {
     if (!currentUser?.uid) return;
@@ -65,9 +71,17 @@ export default function QuickAccessDashboardWidget({
       id: `wallet-dist-${dist.id}`,
       title: dist.name,
       icon: 'bi-receipt',
-      color: '#075E54', // Keep wallet color
+      color: '#075E54',
       isWalletDist: true,
       distId: dist.id
+    })),
+    ...customFeatures.map(cf => ({
+      id: `custom-${cf.id}`,
+      title: cf.title,
+      icon: cf.icon || 'bi-stars',
+      color: '#e83e8c',
+      isCustomFeature: true,
+      customFeatureData: cf
     }))
   ];
 
@@ -88,6 +102,10 @@ export default function QuickAccessDashboardWidget({
       onOpenWalletDist?.(feature.distId);
       return;
     }
+    if (feature.isCustomFeature) {
+      setActiveCustomFeature(feature.customFeatureData);
+      return;
+    }
     const id = feature.id;
     if (id === 'journal') onOpenJournal?.();
     if (id === 'streaks') onOpenStreaks?.();
@@ -95,6 +113,7 @@ export default function QuickAccessDashboardWidget({
     if (id === 'wallet') onOpenWallet?.();
     if (id === 'insights') onOpenInsights?.();
     if (id === 'feature-hub') onOpenFeatureHub?.();
+    if (id === 'survey') onOpenSurvey?.();
   };
 
   if (pinnedFeatures.length === 0 && !isEditMode) {
@@ -113,57 +132,60 @@ export default function QuickAccessDashboardWidget({
   const featuresToRender = isEditMode ? availableFeatures : availableFeatures.filter(f => pinnedFeatures.includes(f.id));
 
   return (
-    <div className="container-fluid max-width-container px-3 mb-3">
-      <div className="card border-0 shadow-sm rounded-4 p-3 bg-white">
-        <div className="d-flex justify-content-between align-items-center mb-3">
-          <h6 className="fw-bold text-dark mb-0">
-            <i className="bi bi-lightning-charge-fill text-warning me-2"></i>
-            Quick Access
-          </h6>
-          <button 
-            className={`btn btn-sm rounded-pill fw-bold ${isEditMode ? 'btn-success text-white' : 'btn-light border text-secondary'}`}
-            onClick={() => setIsEditMode(!isEditMode)}
-          >
-            {isEditMode ? 'Done' : <><i className="bi bi-pencil-fill me-1"></i>Edit</>}
-          </button>
-        </div>
-        
-        <div className="d-flex gap-3 overflow-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          {featuresToRender.map(feature => {
-            const isPinned = pinnedFeatures.includes(feature.id);
-            return (
-              <div 
-                key={feature.id} 
-                className="d-flex flex-column align-items-center"
-                style={{ cursor: 'pointer', minWidth: '70px', position: 'relative' }}
-                onClick={() => isEditMode ? toggleFeature(feature.id) : handleOpenFeature(feature)}
-              >
+    <>
+      <div className="container-fluid max-width-container px-3 mb-3">
+        <div className="card border-0 shadow-sm rounded-4 p-3 bg-white">
+          <div className="d-flex justify-content-between align-items-center mb-3">
+            <h6 className="fw-bold text-dark mb-0">
+              <i className="bi bi-lightning-charge-fill text-warning me-2"></i>
+              Quick Access
+            </h6>
+            <button 
+              className={`btn btn-sm rounded-pill fw-bold ${isEditMode ? 'btn-success text-white' : 'btn-light border text-secondary'}`}
+              onClick={() => setIsEditMode(!isEditMode)}
+            >
+              {isEditMode ? 'Done' : <><i className="bi bi-pencil-fill me-1"></i>Edit</>}
+            </button>
+          </div>
+          
+          <div className="d-flex gap-3 overflow-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {featuresToRender.map(feature => {
+              const isPinned = pinnedFeatures.includes(feature.id);
+              return (
                 <div 
-                  className="rounded-4 d-flex justify-content-center align-items-center shadow-sm mb-2" 
-                  style={{ 
-                    width: '56px', height: '56px', 
-                    background: isEditMode && !isPinned ? '#e9ecef' : feature.color,
-                    transition: 'all 0.2s',
-                    opacity: isEditMode && !isPinned ? 0.6 : 1
-                  }}
+                  key={feature.id} 
+                  className="d-flex flex-column align-items-center"
+                  style={{ cursor: 'pointer', minWidth: '70px', position: 'relative' }}
+                  onClick={() => isEditMode ? toggleFeature(feature.id) : handleOpenFeature(feature)}
                 >
-                  <i className={`bi ${feature.icon} text-white fs-4`}></i>
-                </div>
-                <span className="small fw-semibold text-dark text-center" style={{ fontSize: '0.75rem', lineHeight: '1.1' }}>{feature.title}</span>
-                
-                {isEditMode && (
                   <div 
-                    className={`position-absolute rounded-circle d-flex justify-content-center align-items-center shadow-sm ${isPinned ? 'bg-danger text-white' : 'bg-success text-white'}`}
-                    style={{ width: '20px', height: '20px', top: '-4px', right: '4px', border: '2px solid white' }}
+                    className="rounded-4 d-flex justify-content-center align-items-center shadow-sm mb-2" 
+                    style={{ 
+                      width: '56px', height: '56px', 
+                      background: isEditMode && !isPinned ? '#e9ecef' : feature.color,
+                      transition: 'all 0.2s',
+                      opacity: isEditMode && !isPinned ? 0.6 : 1
+                    }}
                   >
-                    <i className={`bi ${isPinned ? 'bi-dash' : 'bi-plus'} fs-6`}></i>
+                    <i className={`bi ${feature.icon} text-white fs-4`}></i>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                  <span className="small fw-semibold text-dark text-center" style={{ fontSize: '0.75rem', lineHeight: '1.1' }}>{feature.title}</span>
+                  
+                  {isEditMode && (
+                    <div 
+                      className={`position-absolute rounded-circle d-flex justify-content-center align-items-center shadow-sm ${isPinned ? 'bg-danger text-white' : 'bg-success text-white'}`}
+                      style={{ width: '20px', height: '20px', top: '-4px', right: '4px', border: '2px solid white' }}
+                    >
+                      <i className={`bi ${isPinned ? 'bi-dash' : 'bi-plus'} fs-6`}></i>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
-    </div>
+      {activeCustomFeature && <CustomFeatureViewer feature={activeCustomFeature} onClose={() => setActiveCustomFeature(null)} />}
+    </>
   );
 }

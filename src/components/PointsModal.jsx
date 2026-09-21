@@ -101,7 +101,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                 className={`btn btn-sm ${activeTab === 'history' ? 'btn-success' : 'btn-outline-secondary'}`}
                 onClick={() => setActiveTab('history')}
               >
-                {!isFeatureActive(pointsData, 'history') ? '🔒 📜 History (350 pts · 7 days)' : '📜 History'}
+                {!isFeatureActive(pointsData, 'history') ? '🔒 📜 History (350 pts)' : '📜 History'}
               </button>
               <button 
                 className={`btn btn-sm ${activeTab === 'rules' ? 'btn-success' : 'btn-outline-secondary'}`}
@@ -183,7 +183,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       </div>
                     </div>
                     <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
-                      <span className="fw-bold text-success">500 pts · 7 days</span>
+                      <span className="fw-bold text-success">500 pts</span>
                       <button 
                         className="btn btn-sm btn-outline-success rounded-pill px-3"
                         disabled={points < 500 || loadingPerk === 'UNLOCK_FEATURE' || isFeatureActive(pointsData, 'consistency_insights')}
@@ -191,7 +191,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                           try {
                             setLoadingPerk('UNLOCK_FEATURE');
                             await redeemPerk('UNLOCK_FEATURE', 500, { featureKey: 'consistency_insights', featureName: 'Consistency Insights' });
-                            showToast('Consistency Insights unlocked for 7 days! (-500 pts)', 'success');
+                            showToast('Consistency Insights unlocked! (-500 pts)', 'success');
                           } catch (err) {
                             showToast(err.message || 'Failed to unlock', 'danger');
                           } finally {
@@ -222,7 +222,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                         </div>
                       </div>
                       <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
-                        <span className="fw-bold text-success">{feature.cost} pts · 7 days</span>
+                        <span className="fw-bold text-success">{feature.cost} pts</span>
                         <button 
                           className="btn btn-sm btn-outline-success rounded-pill px-3"
                           disabled={points < feature.cost || loadingPerk === `UNLOCK_${feature.key}` || isFeatureActive(pointsData, feature.key)}
@@ -230,7 +230,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                             try {
                               setLoadingPerk(`UNLOCK_${feature.key}`);
                               await redeemPerk('UNLOCK_FEATURE', feature.cost, { featureKey: feature.key, featureName: feature.name });
-                              showToast(`${feature.name} unlocked for 7 days! (-${feature.cost} pts)`, 'success');
+                              showToast(`${feature.name} unlocked! (-${feature.cost} pts)`, 'success');
                             } catch (err) {
                               showToast(err.message || 'Failed to unlock', 'danger');
                             } finally {
@@ -297,7 +297,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                         {getFeatureTimeRemaining(pointsData, 'history', timeNow)}
                       </p>
                     )}
-                    <p className="text-muted small mb-3">Pay to view full points transaction history.</p>
+                    <p className="text-muted small mb-3">Pay to permanently unlock full points transaction history.</p>
                     <button
                       className="btn btn-warning text-dark fw-bold rounded-pill px-4"
                       disabled={points < 350 || loadingPerk === 'UNLOCK_FEATURE'}
@@ -305,7 +305,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                         try {
                           setLoadingPerk('UNLOCK_FEATURE');
                           await redeemPerk('UNLOCK_FEATURE', 350, { featureKey: 'history', featureName: 'History Tab' });
-                          showToast('History Tab unlocked for 7 days! (-350 pts)', 'success');
+                          showToast('History Tab unlocked permanently! (-350 pts)', 'success');
                         } catch (err) {
                           showToast(err.message || 'Failed to unlock History Tab', 'danger');
                         } finally {
@@ -313,7 +313,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                         }
                       }}
                     >
-                      {loadingPerk === 'UNLOCK_FEATURE' ? 'Unlocking...' : '🔒 Unlock History (350 pts · 7 days)'}
+                      {loadingPerk === 'UNLOCK_FEATURE' ? 'Unlocking...' : '🔒 Unlock History (350 pts)'}
                     </button>
                   </div>
                 ) : history.length === 0 ? (
@@ -481,31 +481,31 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                     <div className="row g-2">
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">📄 PDF Export (1000 pts · 7 days)</strong>
+                          <strong className="d-block text-dark">📄 PDF Export (1000 pts)</strong>
                           <span className="small text-muted">Download PDF reports & plans.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">🔍 Security Scan (500 pts · 7 days)</strong>
+                          <strong className="d-block text-dark">🔍 Security Scan (500 pts)</strong>
                           <span className="small text-muted">Manual timing-block scan.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">🌙 Islamic Vibe Theme (750 pts · 7 days)</strong>
+                          <strong className="d-block text-dark">🌙 Islamic Vibe Theme (750 pts)</strong>
                           <span className="small text-muted">Unlock Noor theme & Prayer Checklist.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">📜 History Tab (350 pts · 7 days)</strong>
+                          <strong className="d-block text-dark">📜 History Tab (350 pts)</strong>
                           <span className="small text-muted">View points transaction history.</span>
                         </div>
                       </div>
                       <div className="col-6 col-md-4">
                         <div className="p-2 border rounded bg-light">
-                          <strong className="d-block text-dark">📥 Import JSON (50 pts · 7 days)</strong>
+                          <strong className="d-block text-dark">📥 Import JSON (50 pts)</strong>
                           <span className="small text-muted">Import backup JSON data.</span>
                         </div>
                       </div>

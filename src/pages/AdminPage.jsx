@@ -354,18 +354,39 @@ export default function AdminPage({
     } finally { setActionLoading(false); }
   };
 
-  const handleDeleteJournal = async (journalId) => {
+  const handleDeleteJournal = async (journal) => {
+    const journalId = typeof journal === 'string' ? journal : journal.id;
+    const docDate = typeof journal !== 'string' && journal.timestamp?.toDate ? journal.timestamp.toDate() : new Date(journal.date || journal.timestamp || Date.now());
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    if (typeof journal !== 'string' && docDate > thirtyDaysAgo) {
+      window.alert("Error: You can only delete data that is older than 30 days.");
+      return;
+    }
+
     if (!window.confirm('Delete this journal entry? This cannot be undone.')) return;
     setActionLoading(true);
     try {
       await deleteDoc(doc(db, 'journals', journalId));
+      
+      if (typeof journal !== 'string') {
+        await addDoc(collection(db, 'messages'), {
+          senderId: "admin", 
+          receiverId: selectedUser.uid,
+          message: `An admin has deleted your Journal from ${docDate.toLocaleDateString()}. Don't worry, your points and streaks were not affected!`,
+          timestamp: serverTimestamp(),
+          read: false
+        });
+      }
+
       await audit('journal_deleted', selectedUser, { journalId });
       setUserJournals((items) => items.filter((j) => j.id !== journalId));
       setDetails((prev) => prev ? { ...prev, journals: Math.max(0, prev.journals - 1) } : prev);
-      notify('Journal entry deleted.');
+      notify('Journal entry deleted & user notified.');
     } catch (error) {
       console.error('Admin journal delete failed:', error);
-      notify('Journal deletion failed.');
+      notify('Journal deletion failed. Make sure it is 30 days old.');
     } finally { setActionLoading(false); }
   };
 
@@ -404,17 +425,38 @@ export default function AdminPage({
     } finally { setActionLoading(false); }
   };
 
-  const handleDeleteStreak = async (streakId) => {
+  const handleDeleteStreak = async (streak) => {
+    const streakId = typeof streak === 'string' ? streak : streak.id;
+    const docDate = typeof streak !== 'string' && streak.timestamp?.toDate ? streak.timestamp.toDate() : new Date(streak.startDate || streak.timestamp || Date.now());
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    if (typeof streak !== 'string' && docDate > thirtyDaysAgo) {
+      window.alert("Error: You can only delete data that is older than 30 days.");
+      return;
+    }
+
     if (!window.confirm('Delete this streak? This cannot be undone.')) return;
     setActionLoading(true);
     try {
       await deleteDoc(doc(db, 'streaks', streakId));
+      
+      if (typeof streak !== 'string') {
+        await addDoc(collection(db, 'messages'), {
+          senderId: "admin", 
+          receiverId: selectedUser.uid,
+          message: `An admin has deleted your Streak from ${docDate.toLocaleDateString()}. Don't worry, your points were not affected!`,
+          timestamp: serverTimestamp(),
+          read: false
+        });
+      }
+
       await audit('streak_deleted', selectedUser, { streakId });
       setUserStreaks((items) => items.filter((s) => s.id !== streakId));
-      notify('Streak deleted.');
+      notify('Streak deleted & user notified.');
     } catch (error) {
       console.error('Admin streak delete failed:', error);
-      notify('Streak deletion failed.');
+      notify('Streak deletion failed. Make sure it is 30 days old.');
     } finally { setActionLoading(false); }
   };
 
@@ -514,7 +556,7 @@ export default function AdminPage({
                       )}
                       <div className="admin-journal-actions">
                         <button onClick={() => handleEditJournal(journal)}><i className="bi bi-pencil" /> Edit</button>
-                        <button className="danger" onClick={() => handleDeleteJournal(journal.id)}><i className="bi bi-trash3" /> Delete</button>
+                        <button className="danger" onClick={() => handleDeleteJournal(journal)}><i className="bi bi-trash3" /> Delete</button>
                       </div>
                     </div>
                   )}
@@ -594,7 +636,7 @@ export default function AdminPage({
                       <div className="admin-streak-actions">
                         <button onClick={() => handleEditStreak(streak)}><i className="bi bi-pencil" /> Edit</button>
                         <button className="warning" onClick={() => handleResetStreak(streak)}><i className="bi bi-arrow-counterclockwise" /> Reset</button>
-                        <button className="danger" onClick={() => handleDeleteStreak(streak.id)}><i className="bi bi-trash3" /> Delete</button>
+                        <button className="danger" onClick={() => handleDeleteStreak(streak)}><i className="bi bi-trash3" /> Delete</button>
                       </div>
                     </div>
                   )}

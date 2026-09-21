@@ -8,6 +8,7 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Helper to check if the user is an Admin
     function isAdmin() {
       return isAuthenticated()
         && request.auth.token.email_verified == true
@@ -17,6 +18,14 @@ service cloud.firestore {
           || (exists(/databases/$(database)/documents/users/$(request.auth.uid))
             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
         );
+    }
+
+    // Helper to enforce the 30-day deletion rule for Admins.
+    // Safely checks 'timestamp', 'createdAt', or 'date' fields.
+    function isOlderThan30Days() {
+      return ('timestamp' in resource.data && resource.data.timestamp < (request.time - duration.value(30, 'd')))
+          || ('createdAt' in resource.data && resource.data.createdAt < (request.time - duration.value(30, 'd')))
+          || ('date' in resource.data && resource.data.date < (request.time - duration.value(30, 'd')));
     }
 
     match /users/{userId} {
@@ -39,18 +48,19 @@ service cloud.firestore {
     match /reports/{reportId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || (isAdmin() && isOlderThan30Days());
     }
 
     // Rules for the soft-deleted trash items collection
     match /trash/{trashId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || (isAdmin() && isOlderThan30Days());
     }
 
     // Rules for custom user suggestions dictionaries
-    // Document ID matches the user's Auth UID (request.auth.uid)
     match /dictionaries/{userId} {
       allow read, write: if isAdmin()
         || (isAuthenticated() && request.auth.uid == userId);
@@ -60,7 +70,8 @@ service cloud.firestore {
     match /streaks/{streakId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || (isAdmin() && isOlderThan30Days());
     }
 
     // Rules for user daily goals
@@ -69,7 +80,7 @@ service cloud.firestore {
         || (isAuthenticated() && request.auth.uid == userId);
     }
 
-    // Daily active app usage, separate from reports and task completion.
+    // Daily active app usage
     match /appUsage/{userId}/days/{dateId} {
       allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
     }
@@ -83,7 +94,8 @@ service cloud.firestore {
     match /journals/{journalId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || (isAdmin() && isOlderThan30Days());
     }
 
     // Rules for user-admin messaging center
@@ -94,7 +106,7 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // Rules for Admin Profiles (About the Creator)
+    // Rules for Admin Profiles
     match /adminProfiles/{adminId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin() && request.auth.uid == adminId;
@@ -104,7 +116,8 @@ service cloud.firestore {
     match /todos/{todoId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
       allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
+      allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || (isAdmin() && isOlderThan30Days());
     }
 
     // Rules for user wallets

@@ -10,6 +10,7 @@ const sections = [
   { id: 'wallet', label: 'Wallet', icon: 'bi-wallet2' },
   { id: 'insights', label: 'Insights', icon: 'bi-bar-chart-line-fill' },
   { id: 'community', label: 'Custom', icon: 'bi-stars' },
+  { id: 'survey', label: 'Survey', icon: 'bi-clipboard2-check' },
 ];
 
 const cards = [
@@ -18,6 +19,7 @@ const cards = [
   { id: 'rewards', title: 'Rewards Store', text: 'Spend points on freezes, perks, and unlocks.', icon: 'bi-shop', color: '#198754' },
   { id: 'wallet', title: 'Wallet', text: 'Manage total balance and distribution categories.', icon: 'bi-wallet2', color: '#075E54' },
   { id: 'insights', title: 'Insights', text: 'Review consistency, goals, and productivity trends.', icon: 'bi-bar-chart-line-fill', color: '#0d6efd' },
+  { id: 'survey', title: 'Survey', text: 'Create and run daily habit surveys with animations.', icon: 'bi-clipboard2-check', color: '#e83e8c' },
 ];
 
 export default function FeatureHubPage({
@@ -29,6 +31,7 @@ export default function FeatureHubPage({
   onOpenRewards,
   onOpenWallet,
   onOpenInsights,
+  onOpenSurvey,
   fullPage = false,
 }) {
   const [activeSection, setActiveSection] = useState('overview');
@@ -42,6 +45,7 @@ export default function FeatureHubPage({
     if (id === 'rewards') onOpenRewards?.();
     if (id === 'wallet') onOpenWallet?.();
     if (id === 'insights') onOpenInsights?.();
+    if (id === 'survey') onOpenSurvey?.();
   };
 
   return (
@@ -178,6 +182,16 @@ export default function FeatureHubPage({
             <p className="text-secondary small">Review consistency, goals, heatmaps, and productivity trends.</p>
             <button className="btn btn-info rounded-pill fw-bold text-white" onClick={onOpenInsights}>
               <i className="bi bi-graph-up me-1" />Open Insights
+            </button>
+          </div>
+        )}
+
+        {activeSection === 'survey' && (
+          <div className="card border-0 shadow-sm rounded-4 p-3">
+            <h5 className="fw-bold text-dark mb-1"><i className="bi bi-clipboard2-check me-2" style={{ color: '#e83e8c' }} />Survey</h5>
+            <p className="text-secondary small">Create custom daily surveys, run them with animations, and track previous results.</p>
+            <button className="btn rounded-pill fw-bold text-white" style={{ background: '#e83e8c' }} onClick={onOpenSurvey}>
+              <i className="bi bi-arrow-right-circle me-1" />Open Survey
             </button>
           </div>
         )}

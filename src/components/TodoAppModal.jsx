@@ -166,7 +166,7 @@ export default function TodoAppModal({ isOpen, onClose, currentUser }) {
     try {
       await unlockFeature('unlimited_todo_tags', TAG_UNLOCK_COST, 'Unlimited Todo Tags');
       setShowTagUnlockModal(false);
-      showPointsToast('Unlimited tags unlocked for 7 days!', TAG_UNLOCK_COST, 'spend');
+      showPointsToast('Unlimited tags unlocked permanently!', TAG_UNLOCK_COST, 'spend');
 
       // Now add the pending todo
       if (pendingTagText) {

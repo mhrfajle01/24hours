@@ -80,7 +80,7 @@ function toBnDigit(num) {
 /* ─────────────────────────────────────────────
    MAIN ISLAMIC PAGE COMPONENT
 ───────────────────────────────────────────── */
-export default function IslamicPage({ selectedDate, onDateChange, onBack, onOpenSettings }) {
+export default function IslamicPage({ selectedDate, onDateChange, onBack, onOpenSettings, onOpenSurvey }) {
   const [coords, setCoords] = useState({ latitude: 23.8103, longitude: 90.4125 });
   const [cityName, setCityName] = useState('ঢাকা');
   const [prayerTimes, setPrayerTimes] = useState({});
@@ -394,6 +394,25 @@ export default function IslamicPage({ selectedDate, onDateChange, onBack, onOpen
              `চালিয়ে যান! আরও ${toBnDigit(5 - completedCount)} টি নামাজ বাকি আছে।`}
           </p>
         </div>
+
+        {onOpenSurvey && (
+          <div className="container-fluid max-width-container px-3 mb-3">
+            <button
+              className="card border-0 shadow rounded-4 p-3 w-100 text-start text-white"
+              style={{ background: 'linear-gradient(135deg, #e83e8c, #9b59b6)' }}
+              onClick={onOpenSurvey}
+            >
+              <div className="d-flex align-items-center gap-3">
+                <i className="bi bi-clipboard2-check fs-2" />
+                <div>
+                  <strong className="d-block" style={{ fontSize: '1.05rem' }}>আমার সার্ভে</strong>
+                  <small style={{ opacity: 0.85 }}>প্রতিদিনের অভ্যাস ট্র্যাক করুন</small>
+                </div>
+                <i className="bi bi-chevron-right ms-auto fs-5" />
+              </div>
+            </button>
+          </div>
+        )}
 
         {/* ── TABS ── */}
         <div className="d-flex gap-2 mb-4 overflow-x-auto pb-1">

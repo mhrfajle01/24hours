@@ -1016,16 +1016,12 @@ export const useFirestore = (selectedDate, uid) => {
       if (featureStillActive) throw new Error(`${featureName} is already active.`);
       
       // Deduct cost and save feature unlock in firestore
-      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-      await updatePoints(-effectiveCost, `Unlocked ${featureName} 🔓 (7 days)`, 'spend');
+      await updatePoints(-effectiveCost, `Unlocked ${featureName} 🔓 (Permanent)`, 'spend');
       if (uid) {
         const ref = doc(db, 'points', uid);
         await setDoc(ref, {
           unlockedFeatures: {
             [featureKey]: true
-          },
-          featureExpirations: {
-            [featureKey]: expiresAt
           }
         }, { merge: true });
       }

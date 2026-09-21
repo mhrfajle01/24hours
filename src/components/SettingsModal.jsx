@@ -894,7 +894,7 @@ export default function SettingsModal({
                     <i className="bi bi-moon-stars-fill" style={{ color: theme === 'islamic' ? '#d97706' : undefined }} />
                     <div>
                       <div className={`fw-semibold small ${theme === 'islamic' ? 'text-warning' : ''}`}>
-                        {!isUnlocked('islamic_theme') ? '🔒 🌙 Islamic Vibe (Noor) — 750 pts / 7 days' : '🌙 Islamic Vibe (Noor)'}
+                        {!isUnlocked('islamic_theme') ? '🔒 🌙 Islamic Vibe (Noor) — 750 pts' : '🌙 Islamic Vibe (Noor)'}
                       </div>
                       <div style={{ fontSize: '0.7rem', opacity: 0.8 }} className={theme === 'islamic' ? 'text-white-50' : ''}>
                         Emerald &amp; Gold • Prayer Checklist included
@@ -1010,7 +1010,7 @@ export default function SettingsModal({
                 <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
                   <i className="bi bi-graph-up-arrow text-success fs-5" />
                   Consistency Insights & Heatmap
-                  {!isUnlocked('consistency_insights') && !pointsData?.unlockedFeatures?.consistency_insights && <span className="badge bg-warning text-dark ms-auto">🔒 500 pts / 7 days</span>}
+                  {!isUnlocked('consistency_insights') && !pointsData?.unlockedFeatures?.consistency_insights && <span className="badge bg-warning text-dark ms-auto">🔒 500 pts</span>}
                   {pointsData?.unlockedFeatures?.consistency_insights && <span className={`badge ms-auto ${isUnlocked('consistency_insights') ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>{getFeatureTimeRemaining(pointsData, 'consistency_insights', timeNow)}</span>}
                 </h6>
                 <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem', lineHeight: '1.4' }}>
@@ -1028,7 +1028,7 @@ export default function SettingsModal({
                   disabled={isUnlocked('consistency_insights')}
                 >
                   <i className="bi bi-graph-up" />
-                  {!isUnlocked('consistency_insights') ? '🔒 Unlock Insights (500 pts / 7 days)' : 'Unlocked (আনলক করা আছে)'}
+                  {!isUnlocked('consistency_insights') ? '🔒 Unlock Insights (500 pts)' : 'Unlocked (আনলক করা আছে)'}
                 </button>
               </div>
 
@@ -1037,7 +1037,7 @@ export default function SettingsModal({
                 <h6 className="fw-bold text-dark mb-2.5 d-flex align-items-center gap-2">
                   <i className="bi bi-shield-lock-fill text-danger fs-5" />
                   Security Timing-Block Scan
-                  {!isUnlocked('security_scan') && !pointsData?.unlockedFeatures?.security_scan && <span className="badge bg-warning text-dark ms-auto">🔒 500 pts / 7 days</span>}
+                  {!isUnlocked('security_scan') && !pointsData?.unlockedFeatures?.security_scan && <span className="badge bg-warning text-dark ms-auto">🔒 500 pts</span>}
                   {pointsData?.unlockedFeatures?.security_scan && <span className={`badge ms-auto ${isUnlocked('security_scan') ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>{getFeatureTimeRemaining(pointsData, 'security_scan', timeNow)}</span>}
                 </h6>
                 <p className="text-secondary small mb-3" style={{ fontSize: '0.7rem', lineHeight: '1.4' }}>
@@ -1058,7 +1058,7 @@ export default function SettingsModal({
                   }}
                 >
                   <i className="bi bi-shield-fill-exclamation" />
-                  {!isUnlocked('security_scan') ? '🔒 Scan Now (500 pts / 7 days)' : 'Scan Now (ম্যানুয়াল স্ক্যান)'}
+                  {!isUnlocked('security_scan') ? '🔒 Scan Now (500 pts)' : 'Scan Now (ম্যানুয়াল স্ক্যান)'}
                 </button>
               </div>
 
@@ -1089,7 +1089,7 @@ export default function SettingsModal({
                 <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
                   <i className="bi bi-file-pdf-fill text-danger fs-5" />
                   PDF Export (রিপোর্ট ডাউনলোড)
-                  {!isUnlocked('pdf_export') && !pointsData?.unlockedFeatures?.pdf_export && <span className="badge bg-warning text-dark ms-auto">🔒 1000 pts / 7 days</span>}
+                  {!isUnlocked('pdf_export') && !pointsData?.unlockedFeatures?.pdf_export && <span className="badge bg-warning text-dark ms-auto">🔒 1000 pts</span>}
                   {pointsData?.unlockedFeatures?.pdf_export && <span className={`badge ms-auto ${isUnlocked('pdf_export') ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>{getFeatureTimeRemaining(pointsData, 'pdf_export', timeNow)}</span>}
                 </h6>
                 
@@ -1177,7 +1177,7 @@ export default function SettingsModal({
                   ) : (
                     <>
                       <i className="bi bi-file-earmark-pdf-fill" />
-                      {!isUnlocked('pdf_export') ? '🔒 Unlock PDF Export (1000 pts / 7 days)' : 'Download PDF (ডাউনলোড করুন)'}
+                      {!isUnlocked('pdf_export') ? '🔒 Unlock PDF Export (1000 pts)' : 'Download PDF (ডাউনলোড করুন)'}
                     </>
                   )}
                 </button>
