@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import RareEvent from './RareEvent';
 import { getTodayDateString, isFeatureActive, getFeatureTimeRemaining } from '../utils/helpers';
 
-export default function PointsModal({ show, onClose, pointsData, redeemPerk, showToast }) {
+export default function PointsModal({ show, onClose, pointsData, redeemPerk, showToast, perkLimits = {}, streakData = {} }) {
   const [activeTab, setActiveTab] = useState('shop'); // 'shop' | 'history' | 'rules'
   const [loadingPerk, setLoadingPerk] = useState(null);
   const [timeNow, setTimeNow] = useState(Date.now());
@@ -11,6 +11,8 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
   const [isOpeningBox, setIsOpeningBox] = useState(false);
   const [boxReward, setBoxReward] = useState(null); // { wonAmount, tier } | null
   const [purchaseEvent, setPurchaseEvent] = useState(null); // custom purchase string
+  const [freezeEvent, setFreezeEvent] = useState(null);
+  const [excuseEvent, setExcuseEvent] = useState(null);
 
   useEffect(() => {
     const interval = setInterval(() => setTimeNow(Date.now()), 60000);
@@ -23,11 +25,29 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
   const today = getTodayDateString();
   const dailyPurchases = pointsData?.dailyPurchases?.[today] || {};
 
+  // Helper: cooldown remaining text
+  const getCooldownText = (cooldownUntil) => {
+    if (!cooldownUntil) return null;
+    const ms = new Date(cooldownUntil).getTime() - timeNow;
+    if (ms <= 0) return null;
+    const h = Math.ceil(ms / (1000 * 60 * 60));
+    return `~${h}h cooldown`;
+  };
+
+  const freezeCooldownText = getCooldownText(perkLimits.freezeCooldownUntil);
+  const excuseCooldownText = getCooldownText(perkLimits.excuseCooldownUntil);
+
   const handleRedeem = async (perkType, cost, payload = {}) => {
     try {
       setLoadingPerk(perkType);
       const res = await redeemPerk(perkType, cost, payload);
-      setPurchaseEvent(`Claimed!`);
+      if (perkType === 'STREAK_FREEZE') {
+        setFreezeEvent(true);
+      } else if (perkType === 'EXCUSE_DAY') {
+        setExcuseEvent(true);
+      } else {
+        setPurchaseEvent(`Claimed!`);
+      }
       showToast(`Successfully redeemed! (-${cost} pts)`, 'success');
       return res;
     } catch (err) {
@@ -124,16 +144,20 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       <div>
                         <h6 className="fw-bold mb-1">Streak Freeze</h6>
                         <small className="text-muted">Protects your streak if you miss completing a day.</small>
+                        <small className="d-block mt-1" style={{ fontSize: '0.72rem', color: '#6c757d' }}>
+                          {perkLimits.freezeUsesThisMonth || 0}/{perkLimits.freezeMaxPerMonth || 3} used this month
+                          {freezeCooldownText && <span className="text-warning ms-1">· {freezeCooldownText}</span>}
+                        </small>
                       </div>
                     </div>
                     <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
-                      <span className="fw-bold text-success">300 pts · Daily</span>
+                      <span className="fw-bold text-success">300 pts</span>
                       <button 
                         className="btn btn-sm btn-outline-success rounded-pill px-3"
-                        disabled={points < 300 || dailyPurchases.streakFreeze >= 1 || loadingPerk === 'STREAK_FREEZE'}
+                        disabled={points < 300 || dailyPurchases.streakFreeze >= 1 || loadingPerk === 'STREAK_FREEZE' || !!freezeCooldownText || (perkLimits.freezeUsesThisMonth || 0) >= (perkLimits.freezeMaxPerMonth || 3)}
                         onClick={() => handleRedeem('STREAK_FREEZE', 300)}
                       >
-                        {loadingPerk === 'STREAK_FREEZE' ? 'Redeeming...' : dailyPurchases.streakFreeze >= 1 ? 'Purchased Today' : 'Redeem'}
+                        {loadingPerk === 'STREAK_FREEZE' ? 'Redeeming...' : dailyPurchases.streakFreeze >= 1 ? 'Purchased Today' : (perkLimits.freezeUsesThisMonth || 0) >= (perkLimits.freezeMaxPerMonth || 3) ? 'Monthly Limit' : freezeCooldownText ? 'Cooldown' : 'Redeem'}
                       </button>
                     </div>
                   </div>
@@ -146,14 +170,18 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                       <span className="fs-1">🛡️</span>
                       <div>
                         <h6 className="fw-bold mb-1">Excuse Yesterday</h6>
-                        <small className="text-muted">Excuse a missed day so it doesn't count against goals.</small>
+                        <small className="text-muted">Excuse a missed day within 48h so it doesn't break your streak.</small>
+                        <small className="d-block mt-1" style={{ fontSize: '0.72rem', color: '#6c757d' }}>
+                          {perkLimits.excuseUsesThisMonth || 0}/{perkLimits.excuseMaxPerMonth || 2} used this month
+                          {excuseCooldownText && <span className="text-warning ms-1">· {excuseCooldownText}</span>}
+                        </small>
                       </div>
                     </div>
                     <div className="mt-auto d-flex align-items-center justify-content-between pt-3 border-top">
-                      <span className="fw-bold text-success">400 pts · Daily</span>
+                      <span className="fw-bold text-success">400 pts</span>
                       <button 
-                        className="btn btn-sm btn-outline-success rounded-pill px-3"
-                        disabled={points < 400 || dailyPurchases.excuseDay >= 1 || loadingPerk === 'EXCUSE_DAY'}
+                        className={`btn btn-sm ${dailyPurchases.excuseDay >= 1 && (streakData.currentStreak || 0) === 0 ? 'btn-warning' : 'btn-outline-success'} rounded-pill px-3`}
+                        disabled={loadingPerk === 'EXCUSE_DAY' || (dailyPurchases.excuseDay >= 1 && (streakData.currentStreak || 0) > 0) || (dailyPurchases.excuseDay < 1 && (points < 400 || !!excuseCooldownText || (perkLimits.excuseUsesThisMonth || 0) >= (perkLimits.excuseMaxPerMonth || 2)))}
                         onClick={() => {
                           const d = new Date();
                           d.setDate(d.getDate() - 1);
@@ -161,7 +189,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                           handleRedeem('EXCUSE_DAY', 400, { date: yesterdayStr });
                         }}
                       >
-                        {loadingPerk === 'EXCUSE_DAY' ? 'Redeeming...' : dailyPurchases.excuseDay >= 1 ? 'Purchased Today' : 'Excuse Day'}
+                        {loadingPerk === 'EXCUSE_DAY' ? 'Redeeming...' : dailyPurchases.excuseDay >= 1 && (streakData.currentStreak || 0) === 0 ? '🔄 Retry Fix' : dailyPurchases.excuseDay >= 1 ? 'Purchased Today' : (perkLimits.excuseUsesThisMonth || 0) >= (perkLimits.excuseMaxPerMonth || 2) ? 'Monthly Limit' : excuseCooldownText ? 'Cooldown' : 'Excuse Day'}
                       </button>
                     </div>
                   </div>
@@ -563,6 +591,36 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
             </div>
           }
           onClose={() => setBoxReward(null)}
+        />
+      )}
+
+      {/* ── Streak Freeze Animation ──────────────────────────── */}
+      {freezeEvent && (
+        <RareEvent
+          type="freeze"
+          result={
+            <div className="text-center" style={{ textShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '10px', color: '#00BFFF' }}>🧊 STREAK FREEZE ACTIVATED</div>
+              <div style={{ fontSize: '1.5rem', color: '#fff', opacity: 0.9 }}>Your streak is protected for the next missed day!</div>
+              <div style={{ fontSize: '0.85rem', marginTop: '10px', color: '#87CEFA' }}>{perkLimits.freezeMaxPerMonth - (perkLimits.freezeUsesThisMonth || 0)} uses remaining this month</div>
+            </div>
+          }
+          onClose={() => setFreezeEvent(null)}
+        />
+      )}
+
+      {/* ── Excuse Day Animation ──────────────────────────── */}
+      {excuseEvent && (
+        <RareEvent
+          type="excuse"
+          result={
+            <div className="text-center" style={{ textShadow: '0 4px 10px rgba(0,0,0,0.5)' }}>
+              <div style={{ fontSize: '2.5rem', marginBottom: '10px', color: '#FFD700' }}>🛡️ DAY EXCUSED</div>
+              <div style={{ fontSize: '1.5rem', color: '#fff', opacity: 0.9 }}>Yesterday has been forgiven — streak safe!</div>
+              <div style={{ fontSize: '0.85rem', marginTop: '10px', color: '#FFA500' }}>{(perkLimits.excuseMaxPerMonth || 2) - (perkLimits.excuseUsesThisMonth || 0)} uses remaining this month</div>
+            </div>
+          }
+          onClose={() => setExcuseEvent(null)}
         />
       )}
 

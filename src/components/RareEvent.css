@@ -28,6 +28,20 @@
 }
 .rare-streak-result { font-size: 100px; animation: popResult 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); color: #ff8c00; text-shadow: 0 0 30px #ff4500; }
 
+/* FREEZE */
+.rare-freeze-icon {
+  font-size: 120px; text-shadow: 0 0 40px #00BFFF, 0 0 80px #87CEFA;
+  animation: pulseIce 1.2s infinite alternate, floatBox 2s infinite ease-in-out;
+}
+.rare-freeze-result { font-size: 100px; animation: popResult 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); color: #00BFFF; text-shadow: 0 0 30px #87CEFA; }
+
+/* EXCUSE */
+.rare-excuse-icon {
+  font-size: 120px; text-shadow: 0 0 40px #FFD700, 0 0 80px #FFA500;
+  animation: pulseShield 1.2s infinite alternate, floatBox 2s infinite ease-in-out;
+}
+.rare-excuse-result { font-size: 100px; animation: popResult 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); color: #FFD700; text-shadow: 0 0 30px #FFA500; }
+
 /* PURCHASE */
 .rare-purchase-icon {
   width: 140px; height: 140px; background: linear-gradient(135deg, #28a745, #20c997);
@@ -51,3 +65,5 @@
 @keyframes pulseFlame { from { transform: scale(1); } to { transform: scale(1.15); } }
 @keyframes popResult { 0% { transform: scale(0.2); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes pulseIce { from { transform: scale(1); filter: brightness(1); } to { transform: scale(1.12); filter: brightness(1.3); } }
+@keyframes pulseShield { from { transform: scale(1) rotate(-3deg); } to { transform: scale(1.15) rotate(3deg); } }

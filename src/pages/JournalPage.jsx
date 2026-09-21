@@ -846,6 +846,13 @@ export default function JournalPage({ currentUser, onBack, initialDate }) {
                 <div className="d-flex flex-column gap-3">
                   {filteredEntries.map(entry => {
                     const moodObj = MOODS.find(m => m.value === entry.mood) || MOODS[2];
+                    const docDate = new Date(entry.date + 'T12:00:00');
+                    const thirtyDaysAgo = new Date();
+                    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                    const isExpired = !isNaN(docDate) && docDate < thirtyDaysAgo;
+                    const isToday = entry.date === getTodayDateString();
+                    const isDeletable = isToday || isExpired;
+                    
                     return (
                       <div key={entry.id} className="history-card p-4">
                         <div className="d-flex justify-content-between align-items-start gap-2 mb-2">
@@ -881,15 +888,15 @@ export default function JournalPage({ currentUser, onBack, initialDate }) {
                             </button>
                             <button 
                               type="button" 
-                              className={`btn btn-sm border-0 p-1 d-flex align-items-center justify-content-center rounded-circle ${entry.date === getTodayDateString() ? 'text-danger hover-scale' : 'text-white-50'}`}
-                              disabled={entry.date !== getTodayDateString()}
+                              className={`btn btn-sm border-0 p-1 d-flex align-items-center justify-content-center rounded-circle ${isDeletable ? 'text-danger hover-scale' : 'text-white-50'}`}
+                              disabled={!isDeletable}
                               onClick={() => {
-                                if (entry.date === getTodayDateString()) setEntryPendingDelete(entry);
+                                if (isDeletable) setEntryPendingDelete(entry);
                               }}
-                              title={entry.date === getTodayDateString() ? 'Delete Entry' : 'Previous-day entries cannot be deleted'}
+                              title={isDeletable ? (isExpired ? 'Delete Expired Entry' : 'Delete Entry') : 'Only today\'s entries or entries older than 30 days can be deleted'}
                               style={{ width: '32px', height: '32px', background: 'rgba(244,67,54,0.08)' }}
                             >
-                              <i className={`bi ${entry.date === getTodayDateString() ? 'bi-trash' : 'bi-lock-fill'}`} style={{ fontSize: '0.85rem' }} />
+                              <i className={`bi ${isDeletable ? 'bi-trash' : 'bi-lock-fill'}`} style={{ fontSize: '0.85rem' }} />
                             </button>
                           </div>
                         </div>
@@ -931,11 +938,13 @@ export default function JournalPage({ currentUser, onBack, initialDate }) {
           <div className="rounded-4 p-4 shadow-lg w-100 animate-slide-up" style={{ maxWidth: '420px', background: themeConfig.cardBg, border: `1px solid ${themeConfig.borderColor}` }}>
             <div className="text-center">
               <div className="fs-1 mb-2">⚠️</div>
-              <h5 className="fw-bold mb-2">Protect today’s streak</h5>
+              <h5 className="fw-bold mb-2">Delete Journal Entry</h5>
               <p className="small mb-4" style={{ color: themeConfig.secondaryText }}>
-                {deletingLastTodayJournal
-                  ? 'Deleting your only journal for today will make your daily streak requirements incomplete. Your current streak may be reduced until you save a journal for today again.'
-                  : 'You have another journal entry for today, so deleting this entry will not remove the journal requirement.'}
+                {entryPendingDelete?.date === getTodayDateString() 
+                  ? (deletingLastTodayJournal 
+                    ? 'Deleting your only journal for today will make your daily streak requirements incomplete. Your current streak may be reduced until you save a journal for today again.' 
+                    : 'You have another journal entry for today, so deleting this entry will not remove the journal requirement.')
+                  : 'Deleting this old journal will permanently remove it. Your current points and daily streaks will remain unaffected.'}
               </p>
               <div className="d-flex gap-2">
                 <button className="btn btn-outline-light rounded-pill flex-grow-1 fw-bold" onClick={() => setEntryPendingDelete(null)}>

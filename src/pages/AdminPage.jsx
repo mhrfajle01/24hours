@@ -27,6 +27,9 @@ export default function AdminPage({
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [confirmAction, setConfirmAction] = useState(null);
+  // Custom modal state (replaces window.alert / window.confirm)
+  const [modal, setModal] = useState(null); // { type: 'alert'|'confirm', title, message, onConfirm?, variant? }
+  const modalResolveRef = useRef(null);
   const [auditEntries, setAuditEntries] = useState([]);
   const [form, setForm] = useState({ points: '', streak: '', reason: '', role: 'user' });
   const [totalAllPoints, setTotalAllPoints] = useState(0);
@@ -59,6 +62,44 @@ export default function AdminPage({
   const notify = (message) => {
     setNotice(message);
     window.setTimeout(() => setNotice(''), 3500);
+  };
+
+  // ── Custom modal helpers ────────────────────────────────────────
+  const showAlert = (title, message, variant = 'error') => {
+    setModal({ type: 'alert', title, message, variant });
+  };
+
+  const showConfirm = (title, message, variant = 'warning') => {
+    return new Promise((resolve) => {
+      modalResolveRef.current = resolve;
+      setModal({ type: 'confirm', title, message, variant });
+    });
+  };
+
+  const handleModalConfirm = () => {
+    if (modalResolveRef.current) { modalResolveRef.current(true); modalResolveRef.current = null; }
+    setModal(null);
+  };
+
+  const handleModalCancel = () => {
+    if (modalResolveRef.current) { modalResolveRef.current(false); modalResolveRef.current = null; }
+    setModal(null);
+  };
+
+  /** Robustly extracts a Date from a Firestore doc's date/timestamp fields */
+  const parseDocDate = (item) => {
+    if (item.timestamp?.toDate) return item.timestamp.toDate();
+    if (item.createdAt?.toDate) return item.createdAt.toDate();
+    if (item.date) {
+      // ISO string like "2026-08-15" — append time to avoid UTC midnight issues
+      const d = new Date(item.date + 'T12:00:00');
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (item.timestamp) {
+      const d = new Date(item.timestamp);
+      if (!isNaN(d.getTime())) return d;
+    }
+    return new Date(); // fallback to now (blocks deletion by default)
   };
 
   // Load all users
@@ -356,24 +397,26 @@ export default function AdminPage({
 
   const handleDeleteJournal = async (journal) => {
     const journalId = typeof journal === 'string' ? journal : journal.id;
-    const docDate = typeof journal !== 'string' && journal.timestamp?.toDate ? journal.timestamp.toDate() : new Date(journal.date || journal.timestamp || Date.now());
+    const docDate = typeof journal !== 'string' ? parseDocDate(journal) : new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
+
     if (typeof journal !== 'string' && docDate > thirtyDaysAgo) {
-      window.alert("Error: You can only delete data that is older than 30 days.");
+      const daysLeft = Math.ceil((docDate.getTime() - thirtyDaysAgo.getTime()) / (1000 * 60 * 60 * 24));
+      showAlert('Cannot Delete Yet', `This journal entry is only ${Math.floor((Date.now() - docDate.getTime()) / (1000*60*60*24))} days old. You can delete it in ${daysLeft} more day${daysLeft !== 1 ? 's' : ''}.`);
       return;
     }
 
-    if (!window.confirm('Delete this journal entry? This cannot be undone.')) return;
+    const confirmed = await showConfirm('Delete Journal Entry', 'This action cannot be undone. The user will be notified.', 'danger');
+    if (!confirmed) return;
     setActionLoading(true);
     try {
       await deleteDoc(doc(db, 'journals', journalId));
-      
+
       if (typeof journal !== 'string') {
         await addDoc(collection(db, 'messages'), {
-          senderId: "admin", 
-          receiverId: selectedUser.uid,
+          senderId: "admin",
+          receiverId: selectedUser.id,
           message: `An admin has deleted your Journal from ${docDate.toLocaleDateString()}. Don't worry, your points and streaks were not affected!`,
           timestamp: serverTimestamp(),
           read: false
@@ -386,7 +429,7 @@ export default function AdminPage({
       notify('Journal entry deleted & user notified.');
     } catch (error) {
       console.error('Admin journal delete failed:', error);
-      notify('Journal deletion failed. Make sure it is 30 days old.');
+      showAlert('Deletion Failed', error.message || 'Journal deletion failed. Please try again.', 'error');
     } finally { setActionLoading(false); }
   };
 
@@ -427,24 +470,26 @@ export default function AdminPage({
 
   const handleDeleteStreak = async (streak) => {
     const streakId = typeof streak === 'string' ? streak : streak.id;
-    const docDate = typeof streak !== 'string' && streak.timestamp?.toDate ? streak.timestamp.toDate() : new Date(streak.startDate || streak.timestamp || Date.now());
+    const docDate = typeof streak !== 'string' ? parseDocDate({ ...streak, date: streak.startDate }) : new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
+
     if (typeof streak !== 'string' && docDate > thirtyDaysAgo) {
-      window.alert("Error: You can only delete data that is older than 30 days.");
+      const daysLeft = Math.ceil((docDate.getTime() - thirtyDaysAgo.getTime()) / (1000 * 60 * 60 * 24));
+      showAlert('Cannot Delete Yet', `This streak is only ${Math.floor((Date.now() - docDate.getTime()) / (1000*60*60*24))} days old. You can delete it in ${daysLeft} more day${daysLeft !== 1 ? 's' : ''}.`);
       return;
     }
 
-    if (!window.confirm('Delete this streak? This cannot be undone.')) return;
+    const confirmed = await showConfirm('Delete Streak', 'This action cannot be undone. The user will be notified.', 'danger');
+    if (!confirmed) return;
     setActionLoading(true);
     try {
       await deleteDoc(doc(db, 'streaks', streakId));
-      
+
       if (typeof streak !== 'string') {
         await addDoc(collection(db, 'messages'), {
-          senderId: "admin", 
-          receiverId: selectedUser.uid,
+          senderId: "admin",
+          receiverId: selectedUser.id,
           message: `An admin has deleted your Streak from ${docDate.toLocaleDateString()}. Don't worry, your points were not affected!`,
           timestamp: serverTimestamp(),
           read: false
@@ -456,12 +501,13 @@ export default function AdminPage({
       notify('Streak deleted & user notified.');
     } catch (error) {
       console.error('Admin streak delete failed:', error);
-      notify('Streak deletion failed. Make sure it is 30 days old.');
+      showAlert('Deletion Failed', error.message || 'Streak deletion failed. Please try again.', 'error');
     } finally { setActionLoading(false); }
   };
 
   const handleResetStreak = async (streak) => {
-    if (!window.confirm(`Reset "${streak.name}" streak to 0 days?`)) return;
+    const confirmed = await showConfirm('Reset Streak', `Reset "${streak.name}" to 0 days? This will record a relapse.`, 'warning');
+    if (!confirmed) return;
     setActionLoading(true);
     try {
       const today = new Date().toISOString().slice(0, 10);
@@ -897,6 +943,34 @@ export default function AdminPage({
       </div>}
 
       {confirmAction && <div className="admin-confirm-backdrop"><div className="admin-confirm-card"><span className="admin-confirm-badge"><i className="bi bi-shield-lock-fill" /></span><small>SECURITY CONFIRMATION</small><h2>Confirm this action?</h2><p>This change for <strong>{selectedUser?.displayName || selectedUser?.email}</strong> will be recorded in the audit log.</p><div className="d-flex gap-2"><button className="admin-cancel-button" onClick={() => setConfirmAction(null)}>Cancel</button><button className="admin-confirm-button" onClick={confirm}>Confirm action</button></div></div></div>}
+
+      {/* Custom Modal (alert / confirm) */}
+      {modal && (
+        <div className="admin-modal-backdrop" onClick={handleModalCancel}>
+          <div className={`admin-modal-card admin-modal-${modal.variant || 'error'}`} onClick={(e) => e.stopPropagation()}>
+            <div className="admin-modal-icon">
+              {modal.variant === 'danger' ? <i className="bi bi-exclamation-triangle-fill" /> :
+               modal.variant === 'warning' ? <i className="bi bi-exclamation-circle-fill" /> :
+               modal.variant === 'success' ? <i className="bi bi-check-circle-fill" /> :
+               <i className="bi bi-x-octagon-fill" />}
+            </div>
+            <h3 className="admin-modal-title">{modal.title}</h3>
+            <p className="admin-modal-message">{modal.message}</p>
+            <div className="admin-modal-actions">
+              {modal.type === 'confirm' ? (
+                <>
+                  <button className="admin-modal-btn cancel" onClick={handleModalCancel}>Cancel</button>
+                  <button className={`admin-modal-btn ${modal.variant === 'danger' ? 'danger' : 'primary'}`} onClick={handleModalConfirm}>
+                    {modal.variant === 'danger' ? 'Delete' : 'Confirm'}
+                  </button>
+                </>
+              ) : (
+                <button className="admin-modal-btn primary" onClick={handleModalCancel}>Got it</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

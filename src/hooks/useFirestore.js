@@ -424,6 +424,7 @@ export const useFirestore = (selectedDate, uid) => {
 
   // ─── Streak ───────────────────────────────────────────────────────────
   const [streakData, setStreakData] = useState({ currentStreak: 0, longestStreak: 0, lastActiveDate: null, streakFreezes: 1, excusedDays: [] });
+  const [perkLimits, setPerkLimits] = useState({ excuseUsesThisMonth: 0, excuseMaxPerMonth: 2, excuseCooldownUntil: null, freezeUsesThisMonth: 0, freezeMaxPerMonth: 3, freezeCooldownUntil: null });
   const [streakRequirements, setStreakRequirements] = useState({
     appUsageSeconds: 0,
     appUsageMet: false,
@@ -559,12 +560,15 @@ export const useFirestore = (selectedDate, uid) => {
         const penalty = 100 + (currentStreak * 20);
         updatePoints(-penalty, `💔 Streak Broken Penalty (${currentStreak} day streak lost, -${penalty} pts)`, 'spend', {}, `streak-break:${today}:${currentStreak}`);
 
+        // Store pre-break info so excuseDay can restore it
+        await setDoc(ref, { currentStreak: 0, lastBonusStreakDay: 0, preBreakStreak: currentStreak, preBreakPenalty: penalty, updatedAt: serverTimestamp() }, { merge: true });
         currentStreak = 0;
-        await setDoc(ref, { currentStreak, lastBonusStreakDay: 0, updatedAt: serverTimestamp() }, { merge: true });
       }
     }
     await reconcileDailyStreakBonus(today, todayQualifies ? currentStreak * 20 : 0);
     setStreakData({ currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays });
+    // Refresh perk limits from the latest data
+    refreshPerkLimits(existing);
   };
 
   const refreshStreak = async () => {
@@ -577,17 +581,153 @@ export const useFirestore = (selectedDate, uid) => {
     }
   };
 
+  /** Counts how many timestamps in the array fall within the current calendar month */
+  const countUsesThisMonth = (timestamps = []) => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    return timestamps.filter(t => new Date(t).getTime() >= monthStart).length;
+  };
+
+  /** Refreshes the perkLimits state from Firestore data */
+  const refreshPerkLimits = (data) => {
+    const excuseHistory = data.excuseUsageHistory || [];
+    const freezeHistory = data.streakFreezeUsageHistory || [];
+    const excuseUsesThisMonth = countUsesThisMonth(excuseHistory);
+    const freezeUsesThisMonth = countUsesThisMonth(freezeHistory);
+    const lastExcuse = excuseHistory.length > 0 ? excuseHistory[excuseHistory.length - 1] : null;
+    const lastFreeze = freezeHistory.length > 0 ? freezeHistory[freezeHistory.length - 1] : null;
+    const excuseCooldownUntil = lastExcuse ? new Date(new Date(lastExcuse).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
+    const freezeCooldownUntil = lastFreeze ? new Date(new Date(lastFreeze).getTime() + 24 * 60 * 60 * 1000).toISOString() : null;
+    setPerkLimits({
+      excuseUsesThisMonth,
+      excuseMaxPerMonth: 2,
+      excuseCooldownUntil,
+      freezeUsesThisMonth,
+      freezeMaxPerMonth: 3,
+      freezeCooldownUntil,
+    });
+  };
+
   const excuseDay = async (dateStr) => {
     if (!uid) return;
     const ref = doc(db, 'streaks', uid);
     const snap = await getDoc(ref);
     const existing = snap.exists() ? snap.data() : {};
+
+    // ── Validation 1: 48-hour window ──
+    const excuseDate = new Date(`${dateStr}T23:59:59`);
+    const hoursSinceMiss = (Date.now() - excuseDate.getTime()) / (1000 * 60 * 60);
+    if (hoursSinceMiss > 48) {
+      throw new Error('Too late! You can only excuse a day within 48 hours of missing it.');
+    }
+    if (hoursSinceMiss < 0) {
+      throw new Error('Cannot excuse a future date.');
+    }
+
+    // ── Validation 2: Monthly quota (max 2 per month) ──
+    const excuseHistory = existing.excuseUsageHistory || [];
+    const usesThisMonth = countUsesThisMonth(excuseHistory);
+    if (usesThisMonth >= 2) {
+      throw new Error('Monthly limit reached! You can only use Excuse Yesterday 2 times per month.');
+    }
+
+    // ── Validation 3: 24h cooldown ──
+    if (excuseHistory.length > 0) {
+      const lastUse = new Date(excuseHistory[excuseHistory.length - 1]);
+      const cooldownEnd = lastUse.getTime() + 24 * 60 * 60 * 1000;
+      if (Date.now() < cooldownEnd) {
+        const hoursLeft = Math.ceil((cooldownEnd - Date.now()) / (1000 * 60 * 60));
+        throw new Error(`Cooldown active! Available again in ~${hoursLeft}h.`);
+      }
+    }
+
+    // ── Validation 4: StreakFreeze conflict ──
     const excusedDays = [...(existing.excusedDays || [])];
-    if (!excusedDays.includes(dateStr)) {
-      excusedDays.push(dateStr);
-      await setDoc(ref, { excusedDays, updatedAt: serverTimestamp() }, { merge: true });
+    const currentStreak = existing.currentStreak || 0;
+    const lastActiveDate = existing.lastActiveDate;
+
+    if (excusedDays.includes(dateStr)) {
+      if (currentStreak === 0 && lastActiveDate) {
+        // Day was excused before but streak is still broken — do a full restore
+        await restoreBrokenStreak(ref, existing, excusedDays);
+        return { retried: true };
+      }
+      throw new Error('This day is already excused (possibly by a Streak Freeze).');
+    }
+
+    // ── Validation 5: Must have active streak or recently broken one ──
+    if (currentStreak === 0 && !lastActiveDate) {
+      throw new Error('You need an active streak history before using Excuse Yesterday.');
+    }
+
+    // ── Apply the excuse ──
+    excusedDays.push(dateStr);
+    excuseHistory.push(new Date().toISOString());
+    await setDoc(ref, {
+      excusedDays,
+      excuseUsageHistory: excuseHistory,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    refreshPerkLimits({ ...existing, excuseUsageHistory: excuseHistory });
+
+    // If streak was broken, restore it now that the gap is covered
+    if (currentStreak === 0 && lastActiveDate) {
+      await restoreBrokenStreak(ref, { ...existing, excusedDays, excuseUsageHistory: excuseHistory }, excusedDays);
+    } else {
       await refreshStreak();
     }
+  };
+
+  /** Restores a broken streak after an excuse covers the gap */
+  const restoreBrokenStreak = async (ref, data, excusedDays) => {
+    const today = getTodayDateString();
+    const lastActiveDate = data.lastActiveDate;
+    const remainingGaps = getMissingDaysBetween(lastActiveDate, today, excusedDays);
+    const streakFreezes = data.streakFreezes || 0;
+
+    if (remainingGaps.length > streakFreezes) {
+      // Still gaps remaining — can't restore
+      await refreshStreak();
+      return;
+    }
+
+    // Determine old streak count
+    let restoredStreak = data.preBreakStreak;
+
+    // Fallback for legacy data: parse from penalty history
+    if (!restoredStreak && pointsData?.history) {
+      const penaltyEntry = pointsData.history.find(h => h.title?.includes('Streak Broken Penalty'));
+      if (penaltyEntry) {
+        const match = penaltyEntry.title.match(/(\d+) day/);
+        if (match) restoredStreak = parseInt(match[1]);
+      }
+    }
+    restoredStreak = restoredStreak || 1;
+
+    // Refund the penalty
+    const penalty = data.preBreakPenalty || (100 + restoredStreak * 20);
+    await updatePoints(penalty, `🛡️ Streak Restored! Penalty refunded (+${penalty} pts)`, 'earn');
+
+    // Consume freezes for remaining gaps
+    let newFreezes = streakFreezes;
+    let newExcusedDays = [...excusedDays];
+    if (remainingGaps.length > 0) {
+      newFreezes = Math.max(0, streakFreezes - remainingGaps.length);
+      newExcusedDays = [...newExcusedDays, ...remainingGaps];
+    }
+
+    // Write restored streak to Firestore
+    await setDoc(ref, {
+      currentStreak: restoredStreak,
+      lastBonusStreakDay: restoredStreak,
+      streakFreezes: newFreezes,
+      excusedDays: newExcusedDays,
+      preBreakStreak: null,
+      preBreakPenalty: null,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    await refreshStreak();
   };
 
   const addStreakFreeze = async () => {
@@ -595,8 +735,40 @@ export const useFirestore = (selectedDate, uid) => {
     const ref = doc(db, 'streaks', uid);
     const snap = await getDoc(ref);
     const existing = snap.exists() ? snap.data() : {};
+
+    // ── Validation 1: Monthly quota (max 3 per month) ──
+    const freezeHistory = existing.streakFreezeUsageHistory || [];
+    const usesThisMonth = countUsesThisMonth(freezeHistory);
+    if (usesThisMonth >= 3) {
+      throw new Error('Monthly limit reached! You can only buy Streak Freeze 3 times per month.');
+    }
+
+    // ── Validation 2: 24h cooldown ──
+    if (freezeHistory.length > 0) {
+      const lastUse = new Date(freezeHistory[freezeHistory.length - 1]);
+      const cooldownEnd = lastUse.getTime() + 24 * 60 * 60 * 1000;
+      if (Date.now() < cooldownEnd) {
+        const hoursLeft = Math.ceil((cooldownEnd - Date.now()) / (1000 * 60 * 60));
+        throw new Error(`Cooldown active! Available again in ~${hoursLeft}h.`);
+      }
+    }
+
+    // ── Validation 3: Must have some streak activity ──
+    const currentStreak = existing.currentStreak || 0;
+    const lastActiveDate = existing.lastActiveDate;
+    if (currentStreak === 0 && !lastActiveDate) {
+      throw new Error('Start a streak first before buying Streak Freeze.');
+    }
+
+    // ── Apply the freeze ──
     const newFreezes = (existing.streakFreezes || 0) + 1;
-    await setDoc(ref, { streakFreezes: newFreezes, updatedAt: serverTimestamp() }, { merge: true });
+    freezeHistory.push(new Date().toISOString());
+    await setDoc(ref, {
+      streakFreezes: newFreezes,
+      streakFreezeUsageHistory: freezeHistory,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    refreshPerkLimits({ ...existing, streakFreezeUsageHistory: freezeHistory });
     await refreshStreak();
   };
 
@@ -949,7 +1121,12 @@ export const useFirestore = (selectedDate, uid) => {
     } else if (perkType === 'EXCUSE_DAY') {
       if (!payload.date) throw new Error('Date required to excuse missed day');
       const purchasedToday = pointsData.dailyPurchases?.[today]?.excuseDay || 0;
-      if (purchasedToday >= 1) throw new Error('Excuse Day can only be purchased once per day.');
+      // If already purchased today, allow a free retry (the previous attempt may have failed to restore streak)
+      if (purchasedToday >= 1) {
+        const retryResult = await excuseDay(payload.date);
+        if (retryResult?.retried) return retryResult; // free re-trigger, no charge
+        throw new Error('Excuse Day can only be purchased once per day.');
+      }
       await excuseDay(payload.date);
       await updatePoints(-effectiveCost, `Excused missed day (${payload.date})`, 'spend', {
         dailyPurchases: { [today]: { ...(pointsData.dailyPurchases?.[today] || {}), excuseDay: purchasedToday + 1 } }
@@ -1086,6 +1263,7 @@ export const useFirestore = (selectedDate, uid) => {
     recentPlans,
     excuseDay,
     addStreakFreeze,
+    perkLimits,
     // Points System
     pointsData,
     updatePoints,

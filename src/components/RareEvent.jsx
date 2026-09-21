@@ -13,6 +13,8 @@ export default function RareEvent({ type = 'box', result = '💎', onClose }) {
     const colors = 
       type === 'streak' ? ['#ff4500', '#ff8c00', '#ffd700', '#fff'] :
       type === 'purchase' ? ['#28a745', '#20c997', '#fff', '#ffd700'] :
+      type === 'freeze' ? ['#00BFFF', '#87CEFA', '#E0F7FF', '#fff'] :
+      type === 'excuse' ? ['#FFD700', '#FFA500', '#FF6347', '#fff'] :
       ['#FF1493', '#00FF00', '#00FFFF', '#FFD700'];
 
     const newParticles = Array.from({ length: 40 }).map((_, i) => {
@@ -41,11 +43,15 @@ export default function RareEvent({ type = 'box', result = '💎', onClose }) {
           type === 'box' ? <div className="rare-box">🎁</div> :
           type === 'card' ? <div className="rare-card-inner"><div className="rare-card-front">❓</div><div className="rare-card-back"></div></div> :
           type === 'streak' ? <div className="rare-streak-icon">🔥</div> :
+          type === 'freeze' ? <div className="rare-freeze-icon">🧊</div> :
+          type === 'excuse' ? <div className="rare-excuse-icon">🛡️</div> :
           <div className="rare-purchase-icon">🛍️</div>
         ) : (
           type === 'box' ? <div className="rare-result">{result}</div> :
           type === 'card' ? <div className="rare-card-inner flipped"><div className="rare-card-front"></div><div className="rare-card-back">{result}</div></div> :
           type === 'streak' ? <div className="rare-streak-result">{result}</div> :
+          type === 'freeze' ? <div className="rare-freeze-result">{result}</div> :
+          type === 'excuse' ? <div className="rare-excuse-result">{result}</div> :
           <div className="rare-purchase-result">{result}</div>
         )}
       </div>
@@ -54,6 +60,8 @@ export default function RareEvent({ type = 'box', result = '💎', onClose }) {
         {opened ? 'Awesome!' : 
          type === 'card' ? 'Tap to Reveal' : 
          type === 'streak' ? 'Tap to Ignite' :
+         type === 'freeze' ? 'Tap to Activate Freeze' :
+         type === 'excuse' ? 'Tap to Excuse Day' :
          type === 'purchase' ? 'Tap to Claim' :
          'Tap to Open Box'}
       </div>

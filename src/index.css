@@ -1084,6 +1084,26 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   .admin-role-row { display:grid; grid-template-columns:1fr 1fr; gap:.55rem; margin-top:.55rem; } .admin-role-row select,.admin-role-row button { width:100%; padding:.7rem; border:1px solid rgba(255,255,255,0.2); border-radius:.7rem; font-size:.75rem; } .admin-role-row select { color:#fff; background:rgba(0,0,0,0.2); } .admin-role-row select option { color:#000; } .admin-role-row button { border:0; color:#fff; background:#8a2be2; font-weight:800; transition:all 0.2s ease; } .admin-role-row button:hover { transform:translateY(-2px); box-shadow:0 0 15px rgba(138,43,226,0.4); }
   .admin-sheet-actions { display:grid; grid-template-columns:repeat(2,1fr); gap:.55rem; margin-top:.8rem; } .admin-sheet-actions button { padding:.7rem; border:0; border-radius:.7rem; color:#fff; font-size:.72rem; font-weight:800; } .admin-sheet-actions .green { background:#16a34a; } .admin-sheet-actions .red { background:#dc2626; } .admin-sheet-actions .gold { color:#713f12; background:#facc15; } .admin-sheet-actions .blue { background:#2563eb; } .admin-sheet-actions .dark { grid-column:1/-1; background:#1e293b; }
   .admin-confirm-backdrop { align-items:center; padding:1rem; } .admin-confirm-card { width:min(100%,380px); padding:1.4rem; border-radius:1.25rem; background:rgba(30,30,47,0.95); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.1); color:#fff; text-align:center; animation:modalContentSlideUp .25s ease-out; } .admin-confirm-badge { display:grid; place-items:center; width:3rem; height:3rem; margin:0 auto .7rem; border-radius:50%; color:#fff; background:linear-gradient(135deg,#8a2be2,#00d2ff); } .admin-confirm-card small { color:#00d2ff; font-size:.62rem; font-weight:800; letter-spacing:.1em; } .admin-confirm-card h2 { margin:.35rem 0; font-size:1.2rem; } .admin-confirm-card p { color:#cbd5e1; font-size:.78rem; } .admin-cancel-button,.admin-confirm-button { flex:1; padding:.7rem; border:0; border-radius:.7rem; font-weight:700; transition:all 0.2s ease; } .admin-cancel-button { color:#fff; background:rgba(255,255,255,0.1); } .admin-confirm-button { color:#fff; background:#8a2be2; } .admin-cancel-button:hover,.admin-confirm-button:hover { transform:translateY(-2px); }
+  /* Custom Admin Modal (alert / confirm) */
+  .admin-modal-backdrop { position:fixed; inset:0; z-index:3000; display:flex; align-items:center; justify-content:center; padding:1rem; background:rgba(0,0,0,.65); backdrop-filter:blur(6px); animation:adminModalFadeIn .2s ease-out; }
+  .admin-modal-card { width:min(100%,400px); padding:1.6rem 1.4rem 1.4rem; border-radius:1.3rem; background:rgba(30,30,47,0.97); backdrop-filter:blur(20px); border:1px solid rgba(255,255,255,0.1); color:#fff; text-align:center; animation:modalContentSlideUp .25s ease-out; }
+  .admin-modal-icon { display:grid; place-items:center; width:3.2rem; height:3.2rem; margin:0 auto .8rem; border-radius:50%; font-size:1.5rem; }
+  .admin-modal-error .admin-modal-icon { background:rgba(239,68,68,0.15); color:#ef4444; box-shadow:0 0 20px rgba(239,68,68,0.2); }
+  .admin-modal-danger .admin-modal-icon { background:rgba(239,68,68,0.15); color:#f87171; box-shadow:0 0 20px rgba(239,68,68,0.25); }
+  .admin-modal-warning .admin-modal-icon { background:rgba(245,158,11,0.15); color:#f59e0b; box-shadow:0 0 20px rgba(245,158,11,0.2); }
+  .admin-modal-success .admin-modal-icon { background:rgba(34,197,94,0.15); color:#22c55e; box-shadow:0 0 20px rgba(34,197,94,0.2); }
+  .admin-modal-title { margin:.2rem 0 .5rem; font-size:1.15rem; font-weight:700; }
+  .admin-modal-message { color:#94a3b8; font-size:.82rem; line-height:1.5; margin:0 0 1.2rem; }
+  .admin-modal-actions { display:flex; gap:.6rem; }
+  .admin-modal-btn { flex:1; padding:.7rem .5rem; border:0; border-radius:.7rem; font-weight:700; font-size:.82rem; cursor:pointer; transition:all .2s ease; }
+  .admin-modal-btn.cancel { color:#fff; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.1); }
+  .admin-modal-btn.cancel:hover { background:rgba(255,255,255,0.15); transform:translateY(-1px); }
+  .admin-modal-btn.primary { color:#fff; background:linear-gradient(135deg,#6366f1,#8b5cf6); }
+  .admin-modal-btn.primary:hover { background:linear-gradient(135deg,#818cf8,#a78bfa); transform:translateY(-1px); box-shadow:0 4px 14px rgba(99,102,241,0.35); }
+  .admin-modal-btn.danger { color:#fff; background:linear-gradient(135deg,#dc2626,#ef4444); }
+  .admin-modal-btn.danger:hover { background:linear-gradient(135deg,#ef4444,#f87171); transform:translateY(-1px); box-shadow:0 4px 14px rgba(239,68,68,0.35); }
+  @keyframes adminModalFadeIn { from { opacity:0; } to { opacity:1; } }
+
   @media (min-width:700px) { .admin-kpi-grid { grid-template-columns:repeat(4,1fr); } .admin-user-sheet { border-radius:1.4rem; margin-bottom:2rem; } }
   
   /* Admin Sheet Tabs */

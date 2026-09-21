@@ -158,6 +158,7 @@ export default function Home() {
     recentPlans,
     excuseDay,
     addStreakFreeze,
+    perkLimits,
     pointsData,
     updatePoints,
     reconcileBlockPoints,
@@ -2185,6 +2186,8 @@ export default function Home() {
         pointsData={pointsData}
         redeemPerk={redeemPerk}
         showToast={showToast}
+        perkLimits={perkLimits}
+        streakData={streakData}
       />
 
       <PointsCollectionAnimation
