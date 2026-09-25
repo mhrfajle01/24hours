@@ -27,6 +27,7 @@ export default function ProductLifePage({ currentUser, onBack }) {
   const [activeView, setActiveView] = useState('list'); // 'list' or 'add'
   const [newName, setNewName] = useState('');
   const [newEmoji, setNewEmoji] = useState('📱');
+  const [newStartDate, setNewStartDate] = useState('');
   
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [relapseReason, setRelapseReason] = useState('');
@@ -41,9 +42,10 @@ export default function ProductLifePage({ currentUser, onBack }) {
     e.preventDefault();
     if (!newName.trim()) return;
     const finalEmoji = newEmoji.trim() || '📱';
-    await addProduct(newName, finalEmoji);
+    await addProduct(newName, finalEmoji, newStartDate);
     setNewName('');
     setNewEmoji('📱');
+    setNewStartDate('');
     setActiveView('list');
   };
 
@@ -402,6 +404,17 @@ export default function ProductLifePage({ currentUser, onBack }) {
                       onChange={e => setNewName(e.target.value)}
                       required
                       autoFocus
+                    />
+                  </div>
+
+                  <div className="mb-4">
+                    <label className="text-white-50 small text-uppercase mb-2 d-block">Purchase Date (Optional)</label>
+                    <input 
+                      type="date"
+                      className="form-control form-control-lg bg-black bg-opacity-25 text-white border-secondary text-center"
+                      value={newStartDate}
+                      onChange={e => setNewStartDate(e.target.value)}
+                      max={new Date().toISOString().split('T')[0]}
                     />
                   </div>
 

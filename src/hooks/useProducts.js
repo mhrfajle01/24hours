@@ -59,14 +59,14 @@ export function useProducts(userId) {
     };
   }, [userId]);
 
-  const addProduct = async (name, emoji) => {
+  const addProduct = async (name, emoji, customStartDate) => {
     const tempId = 'temp_' + Date.now();
     await addToSyncQueue('products', 'create', {
       id: tempId,
       userId,
       name,
       emoji,
-      startDate: new Date().toISOString(),
+      startDate: customStartDate ? new Date(customStartDate).toISOString() : new Date().toISOString(),
       longestStreak: 0,
       status: 'active',
       relapseHistory: [],
