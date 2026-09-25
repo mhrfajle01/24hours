@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { getSyncQueue } from '../utils/localSyncManager';
 import { generatePDF } from '../utils/pdfGenerator';
 import { getIntervalTimes, formatTime12h, isFeatureActive, getFeatureTimeRemaining } from '../utils/helpers';
 import { useSound, DEFAULT_SOUNDS } from '../contexts/SoundContext';
 import TagDropdown from './TagDropdown';
 import { useNotifications } from '../hooks/useNotifications';
 import TodoAppModal from './TodoAppModal';
+import SyncButton from './SyncButton';
 
 /**
  * SettingsModal — handles app-level configuration only.
@@ -84,6 +86,7 @@ export default function SettingsModal({
   // Custom confirm state for clear browser data
   const [confirmClearBrowserData, setConfirmClearBrowserData] = useState(false);
   const [isClearingBrowserData, setIsClearingBrowserData] = useState(false);
+  const [showSyncWarning, setShowSyncWarning] = useState(false);
   const [activeSettingsSection, setActiveSettingsSection] = useState(initialSection);
   const [walletUI, setWalletUI] = useState(() => localStorage.getItem('wallet-ui-preference') || 'dropdown');
   useEffect(() => {
@@ -98,7 +101,7 @@ export default function SettingsModal({
   const [pendingImport, setPendingImport] = useState(null); // null | { data, count }
 
   useEffect(() => {
-    if (isOpen && (confirmClear || confirmClearBrowserData || pendingImport || alertBox.show)) {
+    if (isOpen && (confirmClear || confirmClearBrowserData || pendingImport || showSyncWarning || alertBox.show)) {
       const modalBody = document.getElementById('settingsModalBody');
       if (modalBody) {
         const timer = setTimeout(() => {
@@ -107,7 +110,7 @@ export default function SettingsModal({
         return () => clearTimeout(timer);
       }
     }
-  }, [isOpen, confirmClear, confirmClearBrowserData, pendingImport, alertBox.show]);
+  }, [isOpen, confirmClear, confirmClearBrowserData, pendingImport, showSyncWarning, alertBox.show]);
 
   if (!isOpen) return null;
 
@@ -251,7 +254,19 @@ export default function SettingsModal({
     }
   };
 
-  const handleClearBrowserDataClick = () => {
+  const handleClearBrowserDataClick = async () => {
+    try {
+      const items = await getSyncQueue();
+      if (items.length > 0) {
+        setShowSyncWarning(true);
+        const modalBody = document.getElementById('settingsModalBody');
+        if (modalBody) modalBody.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to check sync queue:', err);
+    }
+
     setConfirmClearBrowserData(true);
     const modalBody = document.getElementById('settingsModalBody');
     if (modalBody) {
@@ -1774,6 +1789,15 @@ export default function SettingsModal({
               )}
 
 
+              {/* Offline Sync Queue */}
+              <div style={settingStyle('data')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+                  <i className="bi bi-magic" style={{ color: '#075E54' }} />
+                  Pending Sync Data
+                </h6>
+                <SyncButton uid={currentUser?.uid} />
+              </div>
+
               {/* Browser Storage Management */}
               <div style={settingStyle('data')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
                 <h6 className="fw-bold text-dark mb-1.5 d-flex align-items-center gap-2">
@@ -1878,6 +1902,46 @@ export default function SettingsModal({
         onClose={() => setIsTodoAppOpen(false)} 
         currentUser={currentUser}
       />
+      {/* Custom Pending Sync Warning Modal Overlay */}
+      {showSyncWarning && (
+        <div 
+          className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center px-3 animate-fade-in" 
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)', zIndex: 1150 }}
+        >
+          <div className="card border-warning border-2 shadow-lg text-center p-4 max-width-container bg-white rounded-4 overflow-hidden" style={{ maxWidth: '400px', width: '100%' }}>
+            <div className="mb-2" style={{ fontSize: '4rem', animation: 'pulseRing 2s infinite' }}>⚠️</div>
+            <h4 className="text-warning fw-bold mb-2">Pending Sync Data!</h4>
+            <p className="text-secondary small mb-4">
+              You have unsynced changes in your data tab. If you clear the browser data now, these changes will be <strong>lost permanently</strong>. Please sync your data first.
+            </p>
+            <div className="d-flex flex-column gap-2">
+              <button
+                type="button"
+                className="btn btn-warning rounded-pill px-4 py-2 fw-bold shadow-sm text-dark d-flex align-items-center justify-content-center gap-2 hover-scale"
+                onClick={() => {
+                  setShowSyncWarning(false);
+                  setActiveSettingsSection('data');
+                  const modalBody = document.getElementById('settingsModalBody');
+                  if (modalBody) {
+                    setTimeout(() => {
+                      modalBody.scrollTo({ top: modalBody.scrollHeight, behavior: 'smooth' });
+                    }, 100);
+                  }
+                }}
+              >
+                <i className="bi bi-cloud-arrow-up-fill" /> Go to Sync
+              </button>
+              <button
+                type="button"
+                className="btn btn-light border rounded-pill px-4 py-2 fw-bold shadow-none hover-scale text-secondary"
+                onClick={() => setShowSyncWarning(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

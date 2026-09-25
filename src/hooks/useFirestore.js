@@ -163,12 +163,22 @@ export const useFirestore = (selectedDate, uid) => {
    * Soft delete — copies report to 'trash' collection then removes from 'reports'.
    * Returns { trashId, originalData } for undo support.
    */
-  const moveToTrash = async (id) => {
+  const moveToTrash = async (reportOrId) => {
     if (!uid) throw new Error('Authentication required');
-    const ref = doc(db, 'reports', id);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) throw new Error('Document not found');
-    const data = snap.data();
+    let data;
+    let id;
+    
+    if (typeof reportOrId === 'string') {
+      id = reportOrId;
+      const ref = doc(db, 'reports', id);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) throw new Error('Document not found');
+      data = snap.data();
+    } else {
+      id = reportOrId.id;
+      data = { ...reportOrId };
+      delete data.id;
+    }
 
     const trashRef = await addDoc(collection(db, 'trash'), {
       ...data,
@@ -176,7 +186,7 @@ export const useFirestore = (selectedDate, uid) => {
       deletedAt: serverTimestamp(),
     });
 
-    await deleteDoc(ref);
+    await deleteDoc(doc(db, 'reports', id));
     return { trashId: trashRef.id, originalData: { id, ...data } };
   };
 
@@ -472,7 +482,13 @@ export const useFirestore = (selectedDate, uid) => {
     if (!uid) return;
     const today = getTodayDateString();
     const ref = doc(db, 'streaks', uid);
-    const snap = await getDoc(ref);
+    const [snap, todaySnap, journalsSnap, usageSnap] = await Promise.all([
+      getDoc(ref),
+      getDocs(query(collection(db, 'reports'), where('uid', '==', uid), where('date', '==', today))),
+      getDocs(query(collection(db, 'journals'), where('uid', '==', uid), where('date', '==', today))),
+      getDoc(doc(db, 'appUsage', uid, 'days', today))
+    ]);
+
     const existing = snap.exists() ? snap.data() : {};
 
     let {
@@ -483,13 +499,8 @@ export const useFirestore = (selectedDate, uid) => {
       excusedDays = [],
     } = existing;
 
-    const todayQ = query(collection(db, 'reports'), where('uid', '==', uid), where('date', '==', today));
-    const todaySnap = await getDocs(todayQ);
     const todayHasThreePlans = todaySnap.size >= 3;
-    const journalsQ = query(collection(db, 'journals'), where('uid', '==', uid));
-    const journalsSnap = await getDocs(journalsQ);
-    const hasJournalToday = journalsSnap.docs.some((journal) => journal.data().date === today);
-    const usageSnap = await getDoc(doc(db, 'appUsage', uid, 'days', today));
+    const hasJournalToday = !journalsSnap.empty;
     const activeUsageSeconds = usageSnap.exists() ? usageSnap.data().activeSeconds || 0 : 0;
     const todayQualifies = activeUsageSeconds >= 180 && hasJournalToday && todayHasThreePlans;
     setStreakRequirements({
@@ -504,39 +515,7 @@ export const useFirestore = (selectedDate, uid) => {
     const missingDays = getMissingDaysBetween(lastActiveDate, today, excusedDays);
     const neededFreezes = missingDays.length;
 
-    if (todayQualifies) {
-      if (lastActiveDate !== today) {
-        const streakBeforeToday = currentStreak || 0;
-        const lastActiveDateBeforeToday = lastActiveDate;
-        if (neededFreezes <= streakFreezes) {
-          if (neededFreezes > 0) {
-            streakFreezes = Math.max(0, streakFreezes - neededFreezes);
-            excusedDays = [...excusedDays, ...missingDays];
-          }
-          currentStreak = (currentStreak || 0) + 1;
-          longestStreak = Math.max(longestStreak || 0, currentStreak);
-        } else {
-          currentStreak = 1;
-          longestStreak = Math.max(longestStreak || 0, 1);
-        }
-        lastActiveDate = today;
-
-        await setDoc(ref, {
-          currentStreak,
-          longestStreak,
-          lastActiveDate,
-          streakFreezes,
-          excusedDays,
-          streakQualifiedDate: today,
-          streakBeforeToday,
-          lastActiveDateBeforeToday,
-          lastBonusStreakDay: currentStreak,
-          lastBonusStreakDate: today,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      } else {
-      }
-    } else {
+    if (!todayQualifies) {
       // Undo today's qualification while the day is still open. This is reversible
       // if the user completes the requirements again later today.
       if (lastActiveDate === today && currentStreak > 0) {
@@ -565,7 +544,9 @@ export const useFirestore = (selectedDate, uid) => {
         currentStreak = 0;
       }
     }
-    await reconcileDailyStreakBonus(today, todayQualifies ? currentStreak * 20 : 0);
+    
+    // Check daily streak bonus ONLY for points
+    await reconcileDailyStreakBonus(today, (todayQualifies && lastActiveDate === today) ? currentStreak * 20 : 0);
     setStreakData({ currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays });
     // Refresh perk limits from the latest data
     refreshPerkLimits(existing);
@@ -786,7 +767,7 @@ export const useFirestore = (selectedDate, uid) => {
   useEffect(() => {
     if (!uid) return undefined;
     const today = getTodayDateString();
-    const journalsQ = query(collection(db, 'journals'), where('uid', '==', uid));
+    const journalsQ = query(collection(db, 'journals'), where('uid', '==', uid), where('date', '==', today));
     const unsubscribeJournals = onSnapshot(journalsQ, () => {
       refreshStreak();
     });
@@ -882,7 +863,8 @@ export const useFirestore = (selectedDate, uid) => {
     const startDate = getDateNDaysAgo(30);
     const q = query(
       collection(db, 'reports'),
-      where('uid', '==', uid)
+      where('uid', '==', uid),
+      where('date', '>=', startDate)
     );
     const unsub = onSnapshot(
       q,
@@ -956,6 +938,7 @@ export const useFirestore = (selectedDate, uid) => {
           featureExpirations: data.featureExpirations || {},
           mysteryBoxOpens: data.mysteryBoxOpens || {},
           dailyPurchases: data.dailyPurchases || {},
+          lastDailyCheckin: data.lastDailyCheckin || null,
           isInitial: false,
         });
       } else {
@@ -1054,15 +1037,14 @@ export const useFirestore = (selectedDate, uid) => {
     const today = getTodayDateString();
 
     // Validate the 3 streak requirements BEFORE awarding check-in points
-    const todayQ = query(collection(db, 'reports'), where('uid', '==', uid), where('date', '==', today));
-    const todaySnap = await getDocs(todayQ);
+    const [todaySnap, journalsSnap, usageSnap] = await Promise.all([
+      getDocs(query(collection(db, 'reports'), where('uid', '==', uid), where('date', '==', today))),
+      getDocs(query(collection(db, 'journals'), where('uid', '==', uid), where('date', '==', today))),
+      getDoc(doc(db, 'appUsage', uid, 'days', today))
+    ]);
+    
     const todayHasThreePlans = todaySnap.size >= 3;
-
-    const journalsQ = query(collection(db, 'journals'), where('uid', '==', uid));
-    const journalsSnap = await getDocs(journalsQ);
-    const hasJournalToday = journalsSnap.docs.some((journal) => journal.data().date === today);
-
-    const usageSnap = await getDoc(doc(db, 'appUsage', uid, 'days', today));
+    const hasJournalToday = !journalsSnap.empty;
     const activeUsageSeconds = usageSnap.exists() ? usageSnap.data().activeSeconds || 0 : 0;
     const usageMet = activeUsageSeconds >= 180;
 
@@ -1071,30 +1053,87 @@ export const useFirestore = (selectedDate, uid) => {
       return false;
     }
 
-    const ref = doc(db, 'points', uid);
+    const pointsRef = doc(db, 'points', uid);
+    const streaksRef = doc(db, 'streaks', uid);
+
     await runTransaction(db, async (transaction) => {
-      const snap = await transaction.get(ref);
-      const current = snap.exists() ? snap.data() : { points: 0, history: [] };
-      if (current.lastDailyCheckin === today) return;
-      const processedEvents = current.processedPointEvents || {};
-      const eventKey = `daily-checkin:${today}`;
-      if (processedEvents[eventKey]) return;
-      processedEvents[eventKey] = true;
-      const record = {
-        id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        title: `Daily Check-in (${today})`,
-        amount: 20,
-        date: new Date().toISOString(),
-        type: 'earn',
-      };
-      transaction.set(ref, {
-        points: (current.points || 0) + 20,
-        history: [record, ...(current.history || [])].slice(0, 50),
-        lastDailyCheckin: today,
-        processedPointEvents: processedEvents,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      // Fetch both docs first (all gets must precede sets)
+      const pointsSnap = await transaction.get(pointsRef);
+      const streaksSnap = await transaction.get(streaksRef);
+
+      // --- Claim Points ---
+      const current = pointsSnap.exists() ? pointsSnap.data() : { points: 0, history: [] };
+      const hasClaimedPointsToday = current.lastDailyCheckin === today;
+      
+      if (!hasClaimedPointsToday) {
+        const processedEvents = current.processedPointEvents || {};
+        const eventKey = `daily-checkin:${today}`;
+        if (!processedEvents[eventKey]) {
+          processedEvents[eventKey] = true;
+          const record = {
+            id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            title: `Daily Check-in (${today})`,
+            amount: 20,
+            date: new Date().toISOString(),
+            type: 'earn',
+          };
+          transaction.set(pointsRef, {
+            points: (current.points || 0) + 20,
+            history: [record, ...(current.history || [])].slice(0, 50),
+            lastDailyCheckin: today,
+            processedPointEvents: processedEvents,
+            updatedAt: serverTimestamp(),
+          }, { merge: true });
+        }
+      }
+
+      // --- Claim Streak ---
+      const existingStreaks = streaksSnap.exists() ? streaksSnap.data() : {};
+      let {
+        currentStreak = 0,
+        longestStreak = 0,
+        lastActiveDate = null,
+        streakFreezes = 1,
+        excusedDays = [],
+      } = existingStreaks;
+
+      if (lastActiveDate !== today) {
+        const missingDays = getMissingDaysBetween(lastActiveDate, today, excusedDays);
+        const neededFreezes = missingDays.length;
+        const streakBeforeToday = currentStreak || 0;
+        const lastActiveDateBeforeToday = lastActiveDate;
+        
+        if (neededFreezes <= streakFreezes) {
+          if (neededFreezes > 0) {
+            streakFreezes = Math.max(0, streakFreezes - neededFreezes);
+            excusedDays = [...excusedDays, ...missingDays];
+          }
+          currentStreak = (currentStreak || 0) + 1;
+          longestStreak = Math.max(longestStreak || 0, currentStreak);
+        } else {
+          currentStreak = 1;
+          longestStreak = Math.max(longestStreak || 0, 1);
+        }
+        
+        lastActiveDate = today;
+
+        transaction.set(streaksRef, {
+          currentStreak,
+          longestStreak,
+          lastActiveDate,
+          streakFreezes,
+          excusedDays,
+          streakQualifiedDate: today,
+          streakBeforeToday,
+          lastActiveDateBeforeToday,
+          lastBonusStreakDay: currentStreak,
+          lastBonusStreakDate: today,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+      }
     });
+
+    await refreshStreakInternal(); // update local state
     return true;
   };
 
@@ -1193,12 +1232,16 @@ export const useFirestore = (selectedDate, uid) => {
       if (featureStillActive) throw new Error(`${featureName} is already active.`);
       
       // Deduct cost and save feature unlock in firestore
-      await updatePoints(-effectiveCost, `Unlocked ${featureName} 🔓 (Permanent)`, 'spend');
+      const expiryDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      await updatePoints(-effectiveCost, `Unlocked ${featureName} 🔓 (7 Days)`, 'spend');
       if (uid) {
         const ref = doc(db, 'points', uid);
         await setDoc(ref, {
           unlockedFeatures: {
             [featureKey]: true
+          },
+          featureExpirations: {
+            [featureKey]: expiryDate
           }
         }, { merge: true });
       }
@@ -1211,24 +1254,7 @@ export const useFirestore = (selectedDate, uid) => {
     return await redeemPerk('UNLOCK_FEATURE', cost, { featureKey, featureName });
   };
 
-  // Check Daily Sign-in bonus once a day — only attempts claim when
-  // streak requirements are likely met (claimDailyCheckIn validates them).
-  useEffect(() => {
-    if (!uid) return;
-    const today = getTodayDateString();
-    const ref = doc(db, 'points', uid);
-
-    getDoc(ref).then(async (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.lastDailyCheckin !== today) {
-          // claimDailyCheckIn now validates the 3 requirements internally
-          // before awarding points, so this call is safe.
-          await claimDailyCheckIn();
-        }
-      }
-    });
-  }, [uid]);
+  // Automatic check-in has been disabled so users must manually claim their daily streak.
 
   return {
     // Reports

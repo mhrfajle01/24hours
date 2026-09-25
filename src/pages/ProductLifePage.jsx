@@ -32,6 +32,7 @@ export default function ProductLifePage({ currentUser, onBack }) {
   const [relapseReason, setRelapseReason] = useState('');
   const [isDestroying, setIsDestroying] = useState(false);
   const [showRelapseModal, setShowRelapseModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const activeProducts = products.filter(p => p.status === 'active');
   const fallenProducts = products.filter(p => p.status === 'destroyed');
@@ -53,11 +54,16 @@ export default function ProductLifePage({ currentUser, onBack }) {
     setRelapseReason('');
   };
 
-  const handleDelete = async () => {
-    if (selectedProduct && window.confirm('Are you sure you want to delete this product completely?')) {
+  const handleDelete = () => {
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (selectedProduct) {
       await deleteProduct(selectedProduct.id);
       setActiveView('list');
       setSelectedProduct(null);
+      setShowDeleteModal(false);
     }
   };
 
@@ -448,6 +454,31 @@ export default function ProductLifePage({ currentUser, onBack }) {
                 </button>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+      {/* DELETE CONFIRMATION MODAL */}
+      {showDeleteModal && selectedProduct && (
+        <div className="modal-overlay position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center z-3" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(5px)' }}>
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="glass-card rounded-4 p-4 mx-3 w-100 position-relative text-center" 
+            style={{ maxWidth: '400px' }}
+          >
+            <div className="fs-1 mb-2">🗑️</div>
+            <h4 className="fw-bold mb-2 text-danger">Delete Product</h4>
+            <p className="text-white-50 small mb-4">
+              Are you sure you want to completely delete <strong>{selectedProduct.name}</strong>? This action cannot be undone.
+            </p>
+            <div className="d-flex gap-2">
+              <button type="button" className="btn btn-dark flex-grow-1 rounded-pill" onClick={() => setShowDeleteModal(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-danger flex-grow-1 rounded-pill fw-bold" onClick={confirmDelete}>
+                Yes, Delete It
+              </button>
+            </div>
           </motion.div>
         </div>
       )}

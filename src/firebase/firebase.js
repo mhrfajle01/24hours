@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 // Firebase configuration provided by the user
@@ -15,8 +15,13 @@ const firebaseConfig = {
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore (simplified without persistent cache)
-const db = getFirestore(app);
+// Initialize Firestore with Persistent Cache (Offline and Caching support)
+// This will locally cache data to speed up reads and reduce Firestore costs
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({
+    tabManager: persistentMultipleTabManager()
+  })
+});
 
 import { getMessaging } from "firebase/messaging";
 

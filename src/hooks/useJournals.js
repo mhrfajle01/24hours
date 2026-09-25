@@ -1,17 +1,7 @@
 import { useState, useEffect } from 'react';
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  doc,
-  serverTimestamp,
-  orderBy
-} from 'firebase/firestore';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
+import { addToSyncQueue, getSyncQueue } from '../utils/localSyncManager';
 
 /**
  * useJournals — Real-time hook for managing user journal entries.
@@ -22,6 +12,34 @@ export const useJournals = (uid) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const fetchAndMergeJournals = async (snapshotData) => {
+    const syncQueue = await getSyncQueue();
+    const pendingJournals = syncQueue.filter(item => item.collection === 'journals');
+    
+    let merged = [...snapshotData];
+    
+    pendingJournals.forEach(pending => {
+      if (pending.action === 'create') {
+        merged.push(pending.data);
+      } else if (pending.action === 'update') {
+        const idx = merged.findIndex(j => j.id === pending.data.id);
+        if (idx !== -1) merged[idx] = { ...merged[idx], ...pending.data };
+      } else if (pending.action === 'delete') {
+        merged = merged.filter(j => j.id !== pending.data.id);
+      }
+    });
+
+    merged.sort((a, b) => {
+      if (b.date !== a.date) return b.date.localeCompare(a.date);
+      const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt || 0);
+      const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt || 0);
+      return timeB - timeA;
+    });
+
+    setEntries(merged);
+    setLoading(false);
+  };
+
   useEffect(() => {
     if (!uid) {
       setEntries([]);
@@ -31,7 +49,8 @@ export const useJournals = (uid) => {
     setLoading(true);
     setError(null);
 
-    // Fetch entries, without orderBy to avoid composite index requirement
+    let currentSnapshotData = [];
+
     const q = query(
       collection(db, 'journals'),
       where('uid', '==', uid)
@@ -40,16 +59,8 @@ export const useJournals = (uid) => {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const fetched = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        // Sort in memory by date descending, then by createdAt descending
-        fetched.sort((a, b) => {
-          if (b.date !== a.date) return b.date.localeCompare(a.date);
-          const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
-          const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-          return timeB - timeA;
-        });
-        setEntries(fetched);
-        setLoading(false);
+        currentSnapshotData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        fetchAndMergeJournals(currentSnapshotData);
       },
       (err) => {
         console.error('Firestore journals error:', err);
@@ -58,31 +69,44 @@ export const useJournals = (uid) => {
       }
     );
 
-    return () => unsubscribe();
+    const handleLocalSync = () => fetchAndMergeJournals(currentSnapshotData);
+    window.addEventListener('syncQueueUpdated', handleLocalSync);
+
+    return () => {
+      unsubscribe();
+      window.removeEventListener('syncQueueUpdated', handleLocalSync);
+    };
   }, [uid]);
 
   const addJournalEntry = async (entryData) => {
     if (!uid) throw new Error('Authentication required');
-    const ref = await addDoc(collection(db, 'journals'), {
+    const tempId = 'temp_' + Date.now();
+    const newJournal = {
       ...entryData,
+      id: tempId,
       uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    return ref.id;
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    await addToSyncQueue('journals', 'create', newJournal);
+    window.dispatchEvent(new Event('syncQueueUpdated'));
+    return tempId;
   };
 
   const updateJournalEntry = async (id, updatedData) => {
     if (!uid) throw new Error('Authentication required');
-    await updateDoc(doc(db, 'journals', id), {
+    await addToSyncQueue('journals', 'update', { 
+      id, 
       ...updatedData,
-      updatedAt: serverTimestamp(),
+      updatedAt: Date.now()
     });
+    window.dispatchEvent(new Event('syncQueueUpdated'));
   };
 
   const deleteJournalEntry = async (id) => {
     if (!uid) throw new Error('Authentication required');
-    await deleteDoc(doc(db, 'journals', id));
+    await addToSyncQueue('journals', 'delete', { id });
+    window.dispatchEvent(new Event('syncQueueUpdated'));
   };
 
   return {

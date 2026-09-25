@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import './RareEvent.css';
 
 export default function RareEvent({ type = 'box', result = '💎', onClose }) {
@@ -25,7 +26,7 @@ export default function RareEvent({ type = 'box', result = '💎', onClose }) {
     setParticles(newParticles);
   };
 
-  return (
+  return createPortal(
     <div className="rare-overlay" onClick={handleInteract}>
       <div className="rare-container">
         {opened && (
@@ -65,6 +66,7 @@ export default function RareEvent({ type = 'box', result = '💎', onClose }) {
          type === 'purchase' ? 'Tap to Claim' :
          'Tap to Open Box'}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

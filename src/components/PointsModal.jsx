@@ -325,7 +325,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                         {getFeatureTimeRemaining(pointsData, 'history', timeNow)}
                       </p>
                     )}
-                    <p className="text-muted small mb-3">Pay to permanently unlock full points transaction history.</p>
+                    <p className="text-muted small mb-3">Pay to unlock full points transaction history for 7 days.</p>
                     <button
                       className="btn btn-warning text-dark fw-bold rounded-pill px-4"
                       disabled={points < 350 || loadingPerk === 'UNLOCK_FEATURE'}
@@ -333,7 +333,7 @@ export default function PointsModal({ show, onClose, pointsData, redeemPerk, sho
                         try {
                           setLoadingPerk('UNLOCK_FEATURE');
                           await redeemPerk('UNLOCK_FEATURE', 350, { featureKey: 'history', featureName: 'History Tab' });
-                          showToast('History Tab unlocked permanently! (-350 pts)', 'success');
+                          showToast('History Tab unlocked for 7 days! (-350 pts)', 'success');
                         } catch (err) {
                           showToast(err.message || 'Failed to unlock History Tab', 'danger');
                         } finally {

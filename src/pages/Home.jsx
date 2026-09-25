@@ -1183,7 +1183,7 @@ export default function Home() {
   const handleConfirmDelete = async () => {
     try {
       if (!selectedReport) return;
-      const { trashId, originalData } = await moveToTrash(selectedReport.id);
+      const { trashId, originalData } = await moveToTrash(selectedReport);
       if (originalData.status) {
         await reconcileBlockPoints(originalData, 'Pending');
       }
@@ -1913,6 +1913,7 @@ export default function Home() {
               selectedDate={selectedDate}
               pointsData={pointsData}
               onUnlockFeature={unlockFeature}
+              claimDailyCheckIn={claimDailyCheckIn}
             />
             <QuickAccessDashboardWidget
               currentUser={currentUser}

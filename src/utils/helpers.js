@@ -164,7 +164,13 @@ export const getTodayDateString = () => {
 
 /** Returns whether a points feature is currently available. */
 export const isFeatureActive = (pointsData, featureKey) => {
-  return !!pointsData?.unlockedFeatures?.[featureKey];
+  const isUnlocked = !!pointsData?.unlockedFeatures?.[featureKey];
+  const expiresAt = pointsData?.featureExpirations?.[featureKey];
+  
+  if (isUnlocked && expiresAt && new Date(expiresAt).getTime() <= Date.now()) {
+    return false; // Feature has expired
+  }
+  return isUnlocked;
 };
 
 export const getFeatureTimeRemaining = (pointsData, featureKey, now = Date.now()) => {

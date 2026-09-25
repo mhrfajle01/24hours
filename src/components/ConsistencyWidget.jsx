@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { calculateStats, isFeatureActive, formatDurationMinutes } from '../utils/helpers';
+import RareEvent from './RareEvent';
 
 /**
  * Renders a live countdown timer showing remaining time until 12:00 AM midnight reset.
@@ -66,9 +67,26 @@ export default function ConsistencyWidget({
   onOpenStreaks,
   pointsData,
   onUnlockFeature,
+  claimDailyCheckIn,
 }) {
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [unlockError, setUnlockError] = useState('');
+  const [showStreakEvent, setShowStreakEvent] = useState(false);
+
+  const getTodayDateString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const hasClaimedToday = pointsData?.lastDailyCheckin === getTodayDateString() && streakData?.lastActiveDate === getTodayDateString();
+
+  const handleClaimStreak = async () => {
+    if (claimDailyCheckIn && !hasClaimedToday) {
+      const success = await claimDailyCheckIn();
+      if (success) {
+        setShowStreakEvent(true);
+      }
+    }
+  };
 
   const isConsistencyUnlocked = isFeatureActive(pointsData, 'consistency_insights');
 
@@ -395,9 +413,32 @@ export default function ConsistencyWidget({
               Complete the missing requirements today or you may lose this streak.
             </div>
           )}
+          {streakRequirements.qualified && !hasClaimedToday && (
+            <div className="mt-3 text-center">
+              <button 
+                className="btn rounded-pill fw-extrabold px-4 shadow-sm"
+                style={{ background: 'linear-gradient(45deg, #FFD700, #FFA500)', color: '#000', border: 'none', boxShadow: '0 0 15px rgba(255, 215, 0, 0.4)' }}
+                onClick={handleClaimStreak}
+              >
+                🎁 Claim Streak
+              </button>
+            </div>
+          )}
+          {hasClaimedToday && (
+            <div className="mt-3 text-center text-success small fw-bold">
+              <i className="bi bi-check-circle-fill me-1"></i> Streak Claimed Today!
+            </div>
+          )}
         </div>
 
       </div>
+      {showStreakEvent && (
+        <RareEvent
+          type="box"
+          result={<div style={{ fontWeight: '900', filter: 'drop-shadow(0 0 20px #FFD700)', lineHeight: '1.2' }}>Streak<br/>Claimed!<br/><span style={{fontSize: '40px', color: '#25D366'}}>🔥 +1 Day</span></div>}
+          onClose={() => setShowStreakEvent(false)}
+        />
+      )}
     </div>
   );
 }
