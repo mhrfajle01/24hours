@@ -3,6 +3,7 @@ import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, query, runT
 import { db } from '../firebase/firebase';
 import { getStreakDays } from '../hooks/useStreaks';
 import CustomFeatureManager from '../components/CustomFeatureManager';
+import { sendPushToUser, sendPushToAllUsers, getAllUserFCMTokens } from '../utils/pushNotifications';
 
 const MOOD_MAP = {
   excited: { emoji: '🤩', color: '#f59e0b' },
@@ -45,6 +46,15 @@ export default function AdminPage({
   const [streakForm, setStreakForm] = useState({ startDate: '', bestStreak: '' });
   const [editingStreak, setEditingStreak] = useState(null);
   const [directMessage, setDirectMessage] = useState('');
+
+  // Push Notification Hub State
+  const [pushTitle, setPushTitle] = useState('');
+  const [pushBody, setPushBody] = useState('');
+  const [pushTarget, setPushTarget] = useState('all');
+  const [pushSending, setPushSending] = useState(false);
+  const [pushResult, setPushResult] = useState(null);
+  const [pushUsers, setPushUsers] = useState([]);
+  const [pushUsersLoading, setPushUsersLoading] = useState(false);
   
   // Creator Profile State
   const [adminTab, setAdminTab] = useState('users'); // 'users' or 'creator'
@@ -284,12 +294,65 @@ export default function AdminPage({
         receiverId: selectedUser.id,
       });
       await audit('message_sent', selectedUser, { length: directMessage.length });
+      // Option 2: Auto-send push notification when admin sends a direct message
+      try {
+        await sendPushToUser(
+          selectedUser.id,
+          '📬 New message from Admin',
+          directMessage.length > 100 ? directMessage.substring(0, 100) + '...' : directMessage,
+          { type: 'direct_message' }
+        );
+      } catch (pushErr) {
+        console.warn('Push notification failed (non-critical):', pushErr);
+      }
       setDirectMessage('');
       notify('Message sent to user.');
     } catch (error) {
       console.error('Admin send message failed:', error);
       notify('Failed to send message.');
     } finally { setActionLoading(false); }
+  };
+
+  // Push Notification Hub Functions
+  const loadPushUsers = async () => {
+    setPushUsersLoading(true);
+    try {
+      const result = await getAllUserFCMTokens();
+      setPushUsers(result);
+    } catch (err) {
+      console.error('Failed to load push users:', err);
+    } finally {
+      setPushUsersLoading(false);
+    }
+  };
+
+  const handleSendPush = async () => {
+    if (!pushTitle.trim() || !pushBody.trim()) return;
+    setPushSending(true);
+    setPushResult(null);
+    try {
+      let result;
+      if (pushTarget === 'all') {
+        result = await sendPushToAllUsers(pushTitle, pushBody, { type: 'admin_blast' });
+      } else {
+        result = await sendPushToUser(pushTarget, pushTitle, pushBody, { type: 'admin_direct' });
+      }
+      setPushResult(result);
+      if (result.success > 0) {
+        notify(`Push sent! ${result.success} delivered, ${result.failure} failed.`);
+        setPushTitle('');
+        setPushBody('');
+      } else if (result.noTokens) {
+        notify('No push tokens found. Users need to enable notifications first.');
+      } else {
+        notify('Push notification failed to deliver.');
+      }
+    } catch (err) {
+      console.error('Push send error:', err);
+      notify('Error: ' + err.message);
+    } finally {
+      setPushSending(false);
+    }
   };
 
   const handleAddSocialLink = () => {
@@ -805,6 +868,13 @@ export default function AdminPage({
           >
             Features
           </button>
+          <button 
+            className={`admin-main-tab ${adminTab === 'push' ? 'active' : ''}`}
+            onClick={() => { setAdminTab('push'); loadPushUsers(); }}
+            style={{ flex: 1, padding: '0.8rem', borderRadius: '0.5rem', border: 'none', background: adminTab === 'push' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}
+          >
+            <i className="bi bi-bell-fill" style={{ marginRight: '0.3rem' }} />Push
+          </button>
         </div>
 
         {adminTab === 'users' && (
@@ -826,6 +896,185 @@ export default function AdminPage({
            <div className="px-3 pb-5">
              <CustomFeatureManager />
            </div>
+        )}
+
+        {adminTab === 'push' && (
+          <section className="admin-section-card">
+            <div className="admin-section-heading">
+              <div>
+                <small>NOTIFICATIONS</small>
+                <h2>Push Notification Hub</h2>
+              </div>
+              <button className="admin-icon-button light" onClick={loadPushUsers} aria-label="Refresh">
+                <i className="bi bi-arrow-clockwise" />
+              </button>
+            </div>
+
+            {/* Quick Stats */}
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: '120px', padding: '0.8rem', borderRadius: '0.5rem', background: 'rgba(0,210,255,0.08)', border: '1px solid rgba(0,210,255,0.2)', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#00d2ff' }}>{pushUsers.length}</div>
+                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>Users with Push</div>
+              </div>
+              <div style={{ flex: 1, minWidth: '120px', padding: '0.8rem', borderRadius: '0.5rem', background: 'rgba(37,211,102,0.08)', border: '1px solid rgba(37,211,102,0.2)', textAlign: 'center' }}>
+                <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#25D366' }}>{pushUsers.reduce((sum, u) => sum + u.tokens.length, 0)}</div>
+                <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.6)' }}>Total Devices</div>
+              </div>
+            </div>
+
+            {/* Compose Notification */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
+              <div>
+                <small style={{ color: '#00d2ff', fontSize: '0.65rem', fontWeight: 'bold' }}>TARGET</small>
+                <select 
+                  value={pushTarget} 
+                  onChange={(e) => setPushTarget(e.target.value)}
+                  style={{ width: '100%', padding: '0.7rem', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.7rem', outline: 0, fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)', color: '#fff', marginTop: '0.3rem' }}
+                >
+                  <option value="all">📢 All Users ({pushUsers.length} with push enabled)</option>
+                  {pushUsers.map(u => (
+                    <option key={u.userId} value={u.userId}>
+                      👤 {u.displayName} ({u.email || u.userId}) — {u.tokens.length} device(s)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <small style={{ color: '#00d2ff', fontSize: '0.65rem', fontWeight: 'bold' }}>NOTIFICATION TITLE</small>
+                <input 
+                  type="text"
+                  value={pushTitle}
+                  onChange={(e) => setPushTitle(e.target.value)}
+                  placeholder="e.g. Don't lose your streak! 🔥"
+                  style={{ width: '100%', padding: '0.7rem', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.7rem', outline: 0, fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)', color: '#fff', marginTop: '0.3rem' }}
+                />
+              </div>
+
+              <div>
+                <small style={{ color: '#00d2ff', fontSize: '0.65rem', fontWeight: 'bold' }}>NOTIFICATION BODY</small>
+                <textarea
+                  value={pushBody}
+                  onChange={(e) => setPushBody(e.target.value)}
+                  placeholder="Your streak is about to expire! Open the app now to keep it alive."
+                  rows={3}
+                  style={{ width: '100%', padding: '0.7rem', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '0.7rem', outline: 0, fontSize: '0.8rem', background: 'rgba(0,0,0,0.2)', color: '#fff', marginTop: '0.3rem', resize: 'vertical' }}
+                />
+              </div>
+
+              {/* Preview */}
+              {(pushTitle.trim() || pushBody.trim()) && (
+                <div style={{ padding: '1rem', borderRadius: '0.7rem', background: 'rgba(255,255,255,0.05)', border: '1px dashed rgba(255,255,255,0.15)' }}>
+                  <small style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.6rem', fontWeight: 'bold', letterSpacing: '0.05em' }}>PREVIEW</small>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.8rem', marginTop: '0.5rem' }}>
+                    <div style={{ width: '36px', height: '36px', borderRadius: '0.5rem', background: 'linear-gradient(135deg, #00d4ff, #8a2be2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <i className="bi bi-bell-fill" style={{ color: '#fff', fontSize: '0.9rem' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: '700', fontSize: '0.85rem', color: '#fff' }}>{pushTitle || 'Notification Title'}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.7)', marginTop: '0.2rem' }}>{pushBody || 'Notification body text'}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button 
+                onClick={handleSendPush}
+                disabled={pushSending || !pushTitle.trim() || !pushBody.trim()}
+                style={{ 
+                  width: '100%', padding: '0.8rem', border: 'none', borderRadius: '0.6rem', fontWeight: '800', 
+                  color: '#fff', cursor: pushSending || !pushTitle.trim() || !pushBody.trim() ? 'not-allowed' : 'pointer',
+                  background: pushSending || !pushTitle.trim() || !pushBody.trim() 
+                    ? 'rgba(255,255,255,0.1)' 
+                    : 'linear-gradient(135deg, #8a2be2, #00d4ff)',
+                  opacity: pushSending || !pushTitle.trim() || !pushBody.trim() ? 0.5 : 1,
+                  fontSize: '0.85rem',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                {pushSending ? (
+                  <><span className="spinner-border spinner-border-sm" style={{ marginRight: '0.5rem' }} />Sending...</>
+                ) : (
+                  <><i className="bi bi-send-fill" style={{ marginRight: '0.5rem' }} />Send Push Notification</>
+                )}
+              </button>
+
+              {/* Result Feedback */}
+              {pushResult && (
+                <div style={{ 
+                  padding: '0.8rem', borderRadius: '0.5rem', fontSize: '0.8rem',
+                  background: pushResult.success > 0 ? 'rgba(37,211,102,0.1)' : 'rgba(255,107,107,0.1)', 
+                  border: `1px solid ${pushResult.success > 0 ? 'rgba(37,211,102,0.3)' : 'rgba(255,107,107,0.3)'}`,
+                  color: pushResult.success > 0 ? '#25D366' : '#ff6b6b',
+                }}>
+                  {pushResult.noTokens ? (
+                    <><i className="bi bi-exclamation-triangle me-2" />No push tokens found. Users need to enable notifications first.</>
+                  ) : pushResult.success > 0 ? (
+                    <><i className="bi bi-check-circle-fill me-2" />{pushResult.success} notification(s) delivered. {pushResult.failure > 0 && `${pushResult.failure} failed.`}</>
+                  ) : (
+                    <><i className="bi bi-x-circle-fill me-2" />Failed to deliver notifications.</>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Users with Push Enabled */}
+            <div style={{ marginTop: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.8rem' }}>
+                <small style={{ color: '#00d2ff', fontSize: '0.65rem', fontWeight: 'bold' }}>USERS WITH PUSH ENABLED</small>
+                <small style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.65rem' }}>{pushUsers.length} users</small>
+              </div>
+              {pushUsersLoading ? (
+                <div className="admin-empty"><span className="spinner-border spinner-border-sm" /> Loading...</div>
+              ) : pushUsers.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>
+                  <i className="bi bi-bell-slash" style={{ fontSize: '2rem', display: 'block', marginBottom: '0.5rem' }} />
+                  No users have enabled push notifications yet.
+                </div>
+              ) : (
+                <div className="animated-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  {pushUsers.map((u, index) => (
+                    <div 
+                      key={u.userId} 
+                      className="animated-row"
+                      style={{ 
+                        animationDelay: `${index * 0.05}s`,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                        padding: '0.6rem 0.8rem', borderRadius: '0.5rem', 
+                        background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(255,255,255,0.06)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                        <span style={{ 
+                          width: '32px', height: '32px', borderRadius: '50%', 
+                          background: 'linear-gradient(135deg, #00d4ff, #8a2be2)', 
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                          fontWeight: '800', fontSize: '0.7rem', color: '#fff' 
+                        }}>
+                          {(u.displayName || '?').charAt(0).toUpperCase()}
+                        </span>
+                        <div>
+                          <div style={{ fontWeight: '600', fontSize: '0.8rem', color: '#fff' }}>{u.displayName}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)' }}>{u.email || u.userId}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.06)', padding: '0.2rem 0.5rem', borderRadius: '1rem' }}>
+                          {u.tokens.length} device{u.tokens.length !== 1 ? 's' : ''}
+                        </span>
+                        <button 
+                          onClick={() => { setPushTarget(u.userId); setPushTitle(''); setPushBody(''); setPushResult(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                          style={{ background: 'rgba(0,210,255,0.1)', color: '#00d2ff', border: '1px solid rgba(0,210,255,0.2)', padding: '0.3rem 0.6rem', borderRadius: '0.3rem', fontSize: '0.65rem', cursor: 'pointer', fontWeight: '600' }}
+                        >
+                          <i className="bi bi-bell" style={{ marginRight: '0.2rem' }} />Ping
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
         )}
 
         {adminTab === 'creator' && (

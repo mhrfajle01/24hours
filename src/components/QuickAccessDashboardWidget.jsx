@@ -11,7 +11,8 @@ const baseFeatures = [
   { id: 'wallet', title: 'Wallet', icon: 'bi-wallet2', color: '#075E54' },
   { id: 'insights', title: 'Insights', icon: 'bi-bar-chart-line-fill', color: '#0d6efd' },
   { id: 'feature-hub', title: 'Hub', icon: 'bi-grid-1x2-fill', color: '#20c997' },
-  { id: 'survey', title: 'Survey', icon: 'bi-clipboard2-check', color: '#e83e8c' }
+  { id: 'survey', title: 'Survey', icon: 'bi-clipboard2-check', color: '#e83e8c' },
+  { id: 'product-life', title: 'Products', icon: 'bi-box-seam', color: '#0dcaf0' }
 ];
 
 export default function QuickAccessDashboardWidget({ 
@@ -23,7 +24,8 @@ export default function QuickAccessDashboardWidget({
   onOpenWalletDist,
   onOpenInsights,
   onOpenFeatureHub,
-  onOpenSurvey
+  onOpenSurvey,
+  onOpenProductLife
 }) {
   const [pinnedFeatures, setPinnedFeatures] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -159,6 +161,7 @@ export default function QuickAccessDashboardWidget({
     if (id === 'insights') onOpenInsights?.();
     if (id === 'feature-hub') onOpenFeatureHub?.();
     if (id === 'survey') onOpenSurvey?.();
+    if (id === 'product-life') onOpenProductLife?.();
   };
 
   if (pinnedFeatures.length === 0) {

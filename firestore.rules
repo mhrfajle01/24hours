@@ -112,6 +112,12 @@ service cloud.firestore {
       allow write: if isAdmin() && request.auth.uid == adminId;
     }
 
+    // Rules for FCM push notification config (server key)
+    match /config/{configId} {
+      allow read: if isAdmin();
+      allow write: if false; // Only set via Firebase Console
+    }
+
     // Rules for dynamic todo app tasks
     match /todos/{todoId} {
       allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);

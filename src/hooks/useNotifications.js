@@ -17,10 +17,9 @@ export const useNotifications = (user) => {
       setPermission(currentPermission);
       
       if (currentPermission === 'granted' && messaging) {
-        // VAPID key is required to receive push notifications
-        // Replace with your actual VAPID key if needed
+        // VAPID key for FCM push notifications
         const token = await getToken(messaging, {
-          vapidKey: 'BLeW-W3O2h-zW67tO5iQkF_2h_Y5pUXX-zP4q7162rF1T1pYqM8J_xUjF2K_iG9wK4-VfP9QjW_N_U_9XQ_L_oI' // Placeholder or use your actual key
+          vapidKey: 'BAfkqUVQqhxiV2Bt34JRFv_FbGhAAAaGHtvSLzUjzwxm4OeHWXdLxoZzuX1Q0tvogyluVUUCPh1jpF1NQaQBQQY'
         });
         
         setFcmToken(token);

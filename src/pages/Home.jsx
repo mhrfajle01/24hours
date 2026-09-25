@@ -26,6 +26,7 @@ import FeatureHubPage from './FeatureHubPage';
 import WalletPage from './WalletPage';
 import AdminPage from './AdminPage';
 import SurveyPage from './SurveyPage';
+import ProductLifePage from './ProductLifePage';
 import NewUserTutorial from '../components/NewUserTutorial';
 import GlobalSearch from '../components/GlobalSearch';
 import PomodoroModal from '../components/PomodoroModal';
@@ -33,6 +34,7 @@ import InsightsModal from '../components/InsightsModal';
 import MessageCenterModal from '../components/MessageCenterModal';
 import AboutAdminsModal from '../components/AboutAdminsModal';
 import CustomFeatureViewer from '../components/CustomFeatureViewer';
+import NotificationPrompt from '../components/NotificationPrompt';
 import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAppUsage } from '../hooks/useAppUsage';
@@ -215,6 +217,7 @@ export default function Home() {
   const [activeCustomFeature, setActiveCustomFeature] = useState(null);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isSurveyOpen, setIsSurveyOpen] = useState(false);
+  const [isProductsLifeOpen, setIsProductsLifeOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
     try {
       return localStorage.getItem('24hours-tutorial-complete') ? -1 : 0;
@@ -240,6 +243,7 @@ export default function Home() {
       if (path !== '/wallet') setWalletInitialDist(null);
       setIsFeatureHubOpen(path === '/productivity-hub');
       setIsAdminOpen(path === '/admin');
+      setIsProductsLifeOpen(path === '/product-life');
       if (path === '/islamic') setTheme('islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
@@ -1711,6 +1715,19 @@ export default function Home() {
     );
   }
 
+  // ── Products Life Page ────────────────────────────────────────────────
+  if (isProductsLifeOpen) {
+    return (
+      <ProductLifePage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsProductsLifeOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
   // ── Streaks Page: Full separate page ──────────────────────────────────
   if (isStreaksOpen) {
     return (
@@ -1920,6 +1937,10 @@ export default function Home() {
               onOpenSurvey={() => {
                 setIsSurveyOpen(true);
                 navigateTo('/survey');
+              }}
+              onOpenProductLife={() => {
+                setIsProductsLifeOpen(true);
+                navigateTo('/product-life');
               }}
             />
             <TodoDashboardWidget 
@@ -2403,6 +2424,8 @@ export default function Home() {
           onClose={() => setActiveCustomFeature(null)}
         />
       )}
+
+      <NotificationPrompt currentUser={currentUser} />
     </div>
   );
 }

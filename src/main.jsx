@@ -35,13 +35,20 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-// Register Service Worker for PWA
+// Register Service Workers for PWA + Firebase Cloud Messaging
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
+    // PWA caching service worker
     navigator.serviceWorker
       .register('/sw.js')
-      .then((reg) => console.log('Service Worker registered successfully:', reg.scope))
-      .catch((err) => console.error('Service Worker registration failed:', err));
+      .then((reg) => console.log('PWA Service Worker registered:', reg.scope))
+      .catch((err) => console.error('PWA Service Worker registration failed:', err));
+
+    // Firebase Cloud Messaging service worker for push notifications
+    navigator.serviceWorker
+      .register('/firebase-messaging-sw.js')
+      .then((reg) => console.log('FCM Service Worker registered:', reg.scope))
+      .catch((err) => console.error('FCM Service Worker registration failed:', err));
   });
 }
 

@@ -76,7 +76,27 @@ export const useMessages = (uid, isAdmin = false, currentUser = null) => {
       editedAt: null,
       createdAt: serverTimestamp(),
     });
+
+    // Option 2: Auto-send push notification for admin notices
+    if (isAdmin && (type === 'global_notice' || type === 'direct_notice')) {
+      try {
+        const pushUtils = await import('../utils/pushNotifications');
+        const notifTitle = type === 'global_notice'
+          ? '📢 Announcement'
+          : `📬 Message from ${currentUser?.displayName || 'Admin'}`;
+        const notifBody = content.length > 120 ? content.substring(0, 120) + '...' : content;
+
+        if (type === 'global_notice' || receiverId === 'all') {
+          await pushUtils.sendPushToAllUsers(notifTitle, notifBody, { type: 'message_center' });
+        } else if (receiverId && receiverId !== 'admin') {
+          await pushUtils.sendPushToUser(receiverId, notifTitle, notifBody, { type: 'message_center' });
+        }
+      } catch (pushErr) {
+        console.warn('Auto push notification failed (non-critical):', pushErr);
+      }
+    }
   };
+
 
   const markAsRead = async (messageId) => {
     if (!uid) return;
