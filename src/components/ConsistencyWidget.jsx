@@ -51,6 +51,7 @@ function StreakCountdown() {
 export default function ConsistencyWidget({
   reports = [],
   streakData = { currentStreak: 0, longestStreak: 0, lastActiveDate: null, streakFreezes: 1, excusedDays: [] },
+  streakLoaded = false,
   appUsage = { activeSeconds: 0, isActive: false },
   streakRequirements = { appUsageSeconds: 0, appUsageMet: false, journalMet: false, planningCount: 0, planningMet: false, qualified: false },
   weeklyStats = null,
@@ -198,32 +199,78 @@ export default function ConsistencyWidget({
               style={{
                 width: '56px',
                 height: '56px',
-                background: streakData.currentStreak > 0 
-                  ? 'linear-gradient(135deg, #FF9900 0%, #FF5E00 100%)' 
-                  : '#BDC3C7',
+                background: !streakLoaded
+                  ? 'linear-gradient(135deg, #A0AEC0 0%, #CBD5E0 100%)'
+                  : streakData.currentStreak > 0 
+                    ? 'linear-gradient(135deg, #FF9900 0%, #FF5E00 100%)' 
+                    : '#BDC3C7',
                 fontSize: '1.6rem',
-                animation: streakData.currentStreak > 0 ? 'activeBorderPulse 2s infinite ease-in-out' : 'none'
+                animation: !streakLoaded
+                  ? 'streakSyncPulse 1.5s ease-in-out infinite'
+                  : streakData.currentStreak > 0 ? 'activeBorderPulse 2s infinite ease-in-out' : 'none'
               }}
-              title={`Current streak: ${streakData.currentStreak} days`}
+              title={streakLoaded ? `Current streak: ${streakData.currentStreak} days` : 'Syncing streak data...'}
             >
-              <i className={`bi ${streakData.currentStreak > 0 ? 'bi-fire' : 'bi-app-indicator'}`}></i>
+              {!streakLoaded ? (
+                <i className="bi bi-arrow-repeat" style={{ animation: 'streakSyncSpin 1s linear infinite' }}></i>
+              ) : (
+                <i className={`bi ${streakData.currentStreak > 0 ? 'bi-fire' : 'bi-app-indicator'}`}></i>
+              )}
             </div>
             
             <div>
               <div className="d-flex align-items-center gap-2">
-                <span className="fw-extrabold fs-4 text-dark">{streakData.currentStreak}</span>
-                <span className="text-secondary small fw-bold text-uppercase" style={{ letterSpacing: '0.5px' }}>
-                  Day Streak
-                </span>
+                {!streakLoaded ? (
+                  <>
+                    <span 
+                      style={{
+                        display: 'inline-block',
+                        width: '28px',
+                        height: '26px',
+                        borderRadius: '6px',
+                        background: 'linear-gradient(90deg, #E2E8F0 25%, #EDF2F7 50%, #E2E8F0 75%)',
+                        backgroundSize: '200% 100%',
+                        animation: 'streakShimmer 1.5s ease-in-out infinite',
+                      }}
+                    />
+                    <span className="text-muted small fw-bold" style={{ letterSpacing: '0.5px', animation: 'streakFadeInOut 1.5s ease-in-out infinite' }}>
+                      <i className="bi bi-arrow-repeat me-1" style={{ fontSize: '0.7rem', animation: 'streakSyncSpin 1s linear infinite' }}></i>
+                      Syncing...
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="fw-extrabold fs-4 text-dark">{streakData.currentStreak}</span>
+                    <span className="text-secondary small fw-bold text-uppercase" style={{ letterSpacing: '0.5px' }}>
+                      Day Streak
+                    </span>
+                  </>
+                )}
               </div>
               <div className="text-muted small d-flex flex-wrap align-items-center gap-2" style={{ fontSize: '0.78rem' }}>
-                <span>Longest Streak: <strong className="text-secondary">{streakData.longestStreak || 0}d</strong></span>
-                {streakData.currentStreak > 0 && (
-                  <span className="text-success fw-semibold d-inline-flex align-items-center gap-0.5">
-                    <i className="bi bi-shield-check"></i>Active
-                  </span>
+                {!streakLoaded ? (
+                  <span 
+                    style={{
+                      display: 'inline-block',
+                      width: '100px',
+                      height: '14px',
+                      borderRadius: '4px',
+                      background: 'linear-gradient(90deg, #E2E8F0 25%, #EDF2F7 50%, #E2E8F0 75%)',
+                      backgroundSize: '200% 100%',
+                      animation: 'streakShimmer 1.5s ease-in-out infinite 0.2s',
+                    }}
+                  />
+                ) : (
+                  <>
+                    <span>Longest Streak: <strong className="text-secondary">{streakData.longestStreak || 0}d</strong></span>
+                    {streakData.currentStreak > 0 && (
+                      <span className="text-success fw-semibold d-inline-flex align-items-center gap-0.5">
+                        <i className="bi bi-shield-check"></i>Active
+                      </span>
+                    )}
+                    <StreakCountdown />
+                  </>
                 )}
-                <StreakCountdown />
               </div>
             </div>
           </div>

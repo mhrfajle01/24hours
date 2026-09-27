@@ -105,5 +105,10 @@ export function useProducts(userId) {
     window.dispatchEvent(new Event('syncQueueUpdated'));
   };
 
-  return { products, loading, addProduct, logRelapse, destroyProduct, deleteProduct };
+  const updateProduct = async (productId, updates) => {
+    await addToSyncQueue('products', 'update', { id: productId, ...updates });
+    window.dispatchEvent(new Event('syncQueueUpdated'));
+  };
+
+  return { products, loading, addProduct, updateProduct, logRelapse, destroyProduct, deleteProduct };
 }

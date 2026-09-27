@@ -22,7 +22,7 @@ const MILESTONES = [
 ];
 
 export default function ProductLifePage({ currentUser, onBack }) {
-  const { products, loading, addProduct, logRelapse, destroyProduct, deleteProduct } = useProducts(currentUser?.uid);
+  const { products, loading, addProduct, updateProduct, logRelapse, destroyProduct, deleteProduct } = useProducts(currentUser?.uid);
   
   const [activeView, setActiveView] = useState('list'); // 'list' or 'add'
   const [newName, setNewName] = useState('');
@@ -34,6 +34,10 @@ export default function ProductLifePage({ currentUser, onBack }) {
   const [isDestroying, setIsDestroying] = useState(false);
   const [showRelapseModal, setShowRelapseModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmoji, setEditEmoji] = useState('');
+  const [editStartDate, setEditStartDate] = useState('');
 
   const activeProducts = products.filter(p => p.status === 'active');
   const fallenProducts = products.filter(p => p.status === 'destroyed');
@@ -229,6 +233,14 @@ export default function ProductLifePage({ currentUser, onBack }) {
                             <span>Best: {Math.max(product.longestStreak || 0, days)}d</span>
                             <span>Issues Logged: {product.relapseHistory?.length || 0}</span>
                           </div>
+                          {product.startDate && (
+                            <div className="text-center mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                              <span className="badge rounded-pill px-3 py-2" style={{ background: 'rgba(0, 212, 255, 0.12)', color: '#7dd8f0', fontSize: '0.75rem', letterSpacing: '0.3px' }}>
+                                <i className="bi bi-calendar-event me-1"></i>
+                                Bought: {new Date(product.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -250,6 +262,12 @@ export default function ProductLifePage({ currentUser, onBack }) {
                             <div>
                               <span className="fs-4 me-2">{product.emoji}</span>
                               <span className="fw-bold">{product.name}</span>
+                              {product.startDate && (
+                                <div className="text-white-50" style={{ fontSize: '0.7rem', marginTop: '2px' }}>
+                                  <i className="bi bi-calendar-event me-1"></i>
+                                  {new Date(product.startDate).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </div>
+                              )}
                             </div>
                             <div className="text-end">
                               <div className="text-danger fw-bold">{product.longestStreak} days</div>
@@ -272,10 +290,87 @@ export default function ProductLifePage({ currentUser, onBack }) {
             
             return (
               <div className="animate-slide-up pb-5">
-                <div className="text-center mb-4">
-                  <div className="fs-1">{selectedProduct.emoji}</div>
-                  <h3 className="fw-extrabold glowing-text">{selectedProduct.name}</h3>
-                  <div className="fs-5 text-white-50">{days} Days Owned</div>
+                <div className="text-center mb-4 position-relative">
+                  {!isEditing ? (
+                    <>
+                      <div className="fs-1">{selectedProduct.emoji}</div>
+                      <h3 className="fw-extrabold glowing-text">{selectedProduct.name}</h3>
+                      <div className="fs-5 text-white-50">{days} Days Owned</div>
+                      <button
+                        className="btn btn-sm rounded-pill px-3 mt-2"
+                        style={{ background: 'rgba(0, 212, 255, 0.15)', color: '#00d4ff', border: '1px solid rgba(0, 212, 255, 0.3)' }}
+                        onClick={() => {
+                          setIsEditing(true);
+                          setEditName(selectedProduct.name);
+                          setEditEmoji(selectedProduct.emoji);
+                          setEditStartDate(selectedProduct.startDate ? new Date(selectedProduct.startDate).toISOString().split('T')[0] : '');
+                        }}
+                      >
+                        <i className="bi bi-pencil-square me-1"></i> Edit Product
+                      </button>
+                    </>
+                  ) : (
+                    <div className="glass-card rounded-4 p-4 text-start">
+                      <h6 className="fw-bold text-uppercase text-white-50 mb-3" style={{ letterSpacing: '1px', fontSize: '0.75rem' }}>Edit Product</h6>
+                      <div className="mb-3 text-center">
+                        <div className="fs-1 bg-black bg-opacity-25 rounded-circle d-inline-flex align-items-center justify-content-center border border-secondary" style={{ width: '70px', height: '70px' }}>
+                          <input
+                            type="text"
+                            value={editEmoji}
+                            onChange={e => setEditEmoji(e.target.value)}
+                            className="bg-transparent border-0 text-center text-white p-0 m-0 w-100"
+                            style={{ outline: 'none', fontSize: '2.2rem' }}
+                            maxLength="2"
+                          />
+                        </div>
+                      </div>
+                      <div className="mb-3">
+                        <label className="text-white-50 small mb-1 d-block">Product Name</label>
+                        <input
+                          type="text"
+                          className="form-control bg-black bg-opacity-25 text-white border-secondary"
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="mb-3">
+                        <label className="text-white-50 small mb-1 d-block">Purchase / Start Date</label>
+                        <input
+                          type="date"
+                          className="form-control bg-black bg-opacity-25 text-white border-secondary"
+                          value={editStartDate}
+                          onChange={e => setEditStartDate(e.target.value)}
+                          max={new Date().toISOString().split('T')[0]}
+                        />
+                      </div>
+                      <div className="d-flex gap-2">
+                        <button
+                          className="btn flex-grow-1 rounded-pill fw-bold btn-dark"
+                          onClick={() => setIsEditing(false)}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          className="btn flex-grow-1 rounded-pill fw-bold text-black"
+                          style={{ background: '#00d4ff' }}
+                          onClick={async () => {
+                            if (!editName.trim()) return;
+                            const updates = {
+                              name: editName.trim(),
+                              emoji: editEmoji.trim() || '📱',
+                              startDate: editStartDate ? new Date(editStartDate).toISOString() : selectedProduct.startDate,
+                            };
+                            await updateProduct(selectedProduct.id, updates);
+                            setSelectedProduct(prev => ({ ...prev, ...updates }));
+                            setIsEditing(false);
+                          }}
+                        >
+                          <i className="bi bi-check-lg me-1"></i> Save
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="row g-3 mb-4">
@@ -292,6 +387,21 @@ export default function ProductLifePage({ currentUser, onBack }) {
                     </div>
                   </div>
                 </div>
+
+                {/* Bought / Started Date */}
+                {selectedProduct.startDate && (
+                  <div className="glass-card rounded-4 p-3 mb-4 d-flex align-items-center gap-3">
+                    <div className="d-flex align-items-center justify-content-center rounded-circle" style={{ width: '44px', height: '44px', minWidth: '44px', background: 'rgba(0, 212, 255, 0.15)' }}>
+                      <i className="bi bi-calendar-event fs-5 text-info"></i>
+                    </div>
+                    <div>
+                      <div className="text-white-50 small text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '1px' }}>Bought On</div>
+                      <div className="fw-bold" style={{ color: '#7dd8f0' }}>
+                        {new Date(selectedProduct.startDate).toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Milestones */}
                 <div className="glass-card rounded-4 p-4 mb-4">

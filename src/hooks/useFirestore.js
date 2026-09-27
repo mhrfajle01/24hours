@@ -434,6 +434,7 @@ export const useFirestore = (selectedDate, uid) => {
 
   // ─── Streak ───────────────────────────────────────────────────────────
   const [streakData, setStreakData] = useState({ currentStreak: 0, longestStreak: 0, lastActiveDate: null, streakFreezes: 1, excusedDays: [] });
+  const [streakLoaded, setStreakLoaded] = useState(false);
   const [perkLimits, setPerkLimits] = useState({ excuseUsesThisMonth: 0, excuseMaxPerMonth: 2, excuseCooldownUntil: null, freezeUsesThisMonth: 0, freezeMaxPerMonth: 3, freezeCooldownUntil: null });
   const [streakRequirements, setStreakRequirements] = useState({
     appUsageSeconds: 0,
@@ -548,6 +549,7 @@ export const useFirestore = (selectedDate, uid) => {
     // Check daily streak bonus ONLY for points
     await reconcileDailyStreakBonus(today, (todayQualifies && lastActiveDate === today) ? currentStreak * 20 : 0);
     setStreakData({ currentStreak, longestStreak, lastActiveDate, streakFreezes, excusedDays });
+    setStreakLoaded(true);
     // Refresh perk limits from the latest data
     refreshPerkLimits(existing);
   };
@@ -1281,6 +1283,7 @@ export const useFirestore = (selectedDate, uid) => {
     updateDictionary,
     // Consistency
     streakData,
+    streakLoaded,
     streakRequirements,
     weeklyStats,
     dailyGoal,

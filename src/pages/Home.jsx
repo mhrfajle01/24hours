@@ -152,6 +152,7 @@ export default function Home() {
     dictionaryLoading,
     updateDictionary,
     streakData,
+    streakLoaded,
     streakRequirements,
     weeklyStats,
     dailyGoal,
@@ -1895,6 +1896,7 @@ export default function Home() {
               appUsage={appUsage}
               streakRequirements={dashboardStreakRequirements}
               streakData={streakData}
+              streakLoaded={streakLoaded}
               weeklyStats={weeklyStats}
               dailyGoal={dailyGoal}
               onUpdateDailyGoal={updateDailyGoal}
