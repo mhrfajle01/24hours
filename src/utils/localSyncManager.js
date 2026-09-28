@@ -1,6 +1,6 @@
 // A lightweight Promise wrapper for IndexedDB to handle Local-First architecture
 const DB_NAME = '24HoursLocalDB';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_DATA = 'data';
 const STORE_SYNC_QUEUE = 'sync_queue';
 
@@ -16,6 +16,13 @@ function getDB() {
       }
       if (!db.objectStoreNames.contains(STORE_SYNC_QUEUE)) {
         db.createObjectStore(STORE_SYNC_QUEUE, { keyPath: 'syncId' });
+      }
+      // Must match useFirestore.js – if that module opens the DB first this
+      // block is skipped, but if *this* module wins the race we still need
+      // the reports_local store to exist.
+      if (!db.objectStoreNames.contains('reports_local')) {
+        const store = db.createObjectStore('reports_local', { keyPath: 'id' });
+        store.createIndex('uid_date', ['uid', 'date'], { unique: false });
       }
     };
   });

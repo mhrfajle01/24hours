@@ -67,7 +67,7 @@ export const useFirestore = (selectedDate, uid) => {
 
   // ─── IndexedDB helpers for reports ────────────────────────────────────
   const IDB_REPORTS_STORE = 'reports_local';
-  const IDB_DB_VERSION = 2;
+  const IDB_DB_VERSION = 3;
 
   const getLocalDB = () =>
     new Promise((resolve, reject) => {
@@ -196,22 +196,27 @@ export const useFirestore = (selectedDate, uid) => {
 
     const unsubscribe = onSnapshot(
       q,
-      async (snapshot) => {
+      (snapshot) => {
         if (cancelled) return;
         const fetched = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-        // Reconcile: merge Firestore data into IndexedDB
-        await idbPutMany(fetched.map(r => ({ ...r, uid, date: selectedDate })));
-
-        // Get full local set (may include not-yet-synced items)
-        const localReports = await idbGetReports(uid, selectedDate);
-        const merged = mergeReports(localReports, fetched);
-
-        setReports(sortReports(merged));
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(merged));
-        } catch {}
+        // Set Firestore data immediately — don't block on async IDB ops
+        setReports(prev => {
+          const firestoreIds = new Set(fetched.map(r => r.id));
+          const localOnlyItems = prev.filter(r => r._localOnly && !firestoreIds.has(r.id));
+          return sortReports([...fetched, ...localOnlyItems]);
+        });
         setLoading(false);
+
+        // Cache to IDB + localStorage in background (non-blocking)
+        (async () => {
+          try {
+            await idbPutMany(fetched.map(r => ({ ...r, uid, date: selectedDate })));
+          } catch (e) { console.warn('IDB cache sync failed:', e); }
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(fetched));
+          } catch {}
+        })();
       },
       (err) => {
         if (cancelled) return;
@@ -280,8 +285,8 @@ export const useFirestore = (selectedDate, uid) => {
       _localOnly: true,
     };
 
-    // 1. Write to IndexedDB immediately
-    await idbPutReport(fullReport);
+    // 1. Write to IndexedDB (non-fatal — sync must still be queued)
+    try { await idbPutReport(fullReport); } catch (e) { console.warn('idb cache write failed:', e); }
 
     // 2. Update state immediately (instant UI)
     setReports(prev => sortReports([...prev, fullReport]));
@@ -299,12 +304,14 @@ export const useFirestore = (selectedDate, uid) => {
       sortReports(prev.map(r => r.id === id ? { ...r, ...updatedData } : r))
     );
 
-    // 2. Update IndexedDB
-    const localReports = await idbGetReports(uid, selectedDate);
-    const existing = localReports.find(r => r.id === id);
-    if (existing) {
-      await idbPutReport({ ...existing, ...updatedData });
-    }
+    // 2. Update IndexedDB (non-fatal)
+    try {
+      const localReports = await idbGetReports(uid, selectedDate);
+      const existing = localReports.find(r => r.id === id);
+      if (existing) {
+        await idbPutReport({ ...existing, ...updatedData });
+      }
+    } catch (e) { console.warn('idb cache update failed:', e); }
 
     // 3. Background Firestore sync
     syncToFirestore('update', 'reports', { id, ...updatedData });
