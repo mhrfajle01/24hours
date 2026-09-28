@@ -44,22 +44,9 @@ import { getTodayDateString, getCurrentHourAndAMPM, getIntervalTimes, formatTime
 import { runFullUIScan, startPeriodicScan } from '../utils/scanService';
 import defaultDictionary from '../constants/dictionary.json';
 import { db, auth } from '../firebase/firebase';
-import {
-  writeBatch,
-  updateDoc,
-  addDoc,
-  doc,
-  collection,
-  serverTimestamp,
-  query,
-  where,
-  getDocs,
-  getDoc,
-  onSnapshot,
-  setDoc,
-  Timestamp,
-} from 'firebase/firestore';
+import { writeBatch, updateDoc, addDoc, doc, collection, serverTimestamp, query, where, getDocs, getDoc, onSnapshot, setDoc, Timestamp } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, updateProfile } from 'firebase/auth';
+import { requestNotificationPermission, onForegroundMessage, sendLocalNotification } from '../utils/notifications';
 
 const PRIMARY_ADMIN_EMAIL = 'mhrfazle@gmail.com';
 
@@ -431,9 +418,26 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Listen to foreground FCM messages
+    const unsubscribeFCM = onForegroundMessage((payload) => {
+      const title = payload.notification?.title || 'New Message';
+      const body = payload.notification?.body || '';
+      showToast(`${title}: ${body}`, 'info');
+      sendLocalNotification(title, body);
+    });
+    return () => unsubscribeFCM();
+  }, []);
+
+  useEffect(() => {
     const t = setInterval(() => {
-      setCurrentTime(new Date());
+      const now = new Date();
+      setCurrentTime(now);
       setCurrentHourData(getCurrentHourAndAMPM());
+      
+      // Hourly push notification triggered locally if app is open
+      if (now.getMinutes() === 0 && now.getSeconds() === 0) {
+        sendLocalNotification('New Block Started', `It is now ${formatTime12h(now)}. Time to update your log!`);
+      }
     }, 1000); // Central clock ticks every 1s
     return () => clearInterval(t);
   }, []);
@@ -519,6 +523,24 @@ export default function Home() {
       });
 
       if (foundPastPending.length > 0) {
+        // Send a push notification if there are newly ended blocks
+        const notifiedBlocksStr = localStorage.getItem('hourlog_notified_blocks') || '[]';
+        let notifiedBlocks = [];
+        try { notifiedBlocks = JSON.parse(notifiedBlocksStr); } catch(e){}
+        
+        let newlyEnded = 0;
+        foundPastPending.forEach(r => {
+          if (!notifiedBlocks.includes(r.id)) {
+            newlyEnded++;
+            notifiedBlocks.push(r.id);
+          }
+        });
+
+        if (newlyEnded > 0) {
+           localStorage.setItem('hourlog_notified_blocks', JSON.stringify(notifiedBlocks));
+           sendLocalNotification('Time Block Ended!', `You have ${foundPastPending.length} pending block(s) to review. Let's update your log!`);
+        }
+
         setPastPendingReports(foundPastPending);
         if (isToday) {
           setAwayDuration({ minutes: gapMinutes, label: durationLabel, lastSeenTime });
@@ -536,6 +558,7 @@ export default function Home() {
         }
       } else {
         // All pending blocks resolved — hide toast
+        localStorage.removeItem('hourlog_notified_blocks');
         setPastPendingReports([]);
         setShowPendingToast(false);
       }

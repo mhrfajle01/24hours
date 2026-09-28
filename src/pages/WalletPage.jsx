@@ -29,6 +29,13 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
 
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [confirmDeleteWallet, setConfirmDeleteWallet] = useState(null);
+
+  // Transfer & Deposit
+  const [isTransferOpen, setIsTransferOpen] = useState(false);
+  const [transferForm, setTransferForm] = useState({ from: 'main', to: '', amount: '', note: '' });
+  const [isDepositOpen, setIsDepositOpen] = useState(false);
+  const [depositForm, setDepositForm] = useState({ targetId: 'main', amount: '', note: '' });
   
   // Listen for UI preference changes from Settings Modal
   useEffect(() => {
@@ -139,6 +146,115 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
     showToast('Balance updated');
   };
 
+  const logTransaction = (account, txn) => {
+    const txns = account.transactions || [];
+    return { ...account, transactions: [{ id: Date.now().toString(36), date: new Date().toISOString(), ...txn }, ...txns] };
+  };
+
+  const handleDeposit = () => {
+    const amt = parseFloat(depositForm.amount);
+    if (isNaN(amt) || amt <= 0) { showToast('Invalid amount', 'danger'); return; }
+    
+    let updatedAccount = { ...currentAccount };
+    
+    if (depositForm.targetId === 'main') {
+      updatedAccount.amount += amt;
+    } else {
+      // We don't mutate dist.amount anymore; it represents the fixed budget.
+      // The deposit is simply logged in transactions and dynamically calculated.
+    }
+    
+    updatedAccount = logTransaction(updatedAccount, {
+      type: 'deposit',
+      targetId: depositForm.targetId,
+      amount: amt,
+      note: depositForm.note || 'Deposit'
+    });
+
+    const newAccounts = accounts.map(a => a.id === activeAccountId ? updatedAccount : a);
+    saveWallet(newAccounts);
+    setIsDepositOpen(false);
+    showToast('Funds added successfully');
+  };
+
+  const handleTransfer = () => {
+    const amt = parseFloat(transferForm.amount);
+    if (isNaN(amt) || amt <= 0) { showToast('Invalid amount', 'danger'); return; }
+    if (transferForm.from === transferForm.to) { showToast('Cannot transfer to same account', 'danger'); return; }
+    if (!transferForm.to) { showToast('Select a destination', 'danger'); return; }
+
+    const [fromWalletId, fromId] = transferForm.from.split(':');
+    const [toWalletId, toId] = transferForm.to.split(':');
+
+    // Deep clone accounts
+    let newAccounts = JSON.parse(JSON.stringify(accounts));
+    const sourceWallet = newAccounts.find(a => a.id === fromWalletId);
+    const targetWallet = newAccounts.find(a => a.id === toWalletId);
+
+    if (!sourceWallet || !targetWallet) { showToast('Error locating wallets', 'danger'); return; }
+
+    // Calculate dynamic balance for a distribution
+    const getDistBalance = (wallet, distId) => {
+      const dist = (wallet.distributions || []).find(d => d.id === distId);
+      if (!dist) return 0;
+      const distTxns = wallet.transactions || [];
+      const added = distTxns.reduce((sum, t) => {
+        if (t.type === 'deposit' && t.targetId === distId) return sum + t.amount;
+        if (t.type === 'transfer' && t.to === distId) return sum + t.amount;
+        if (t.type === 'transfer' && t.from === distId) return sum - t.amount;
+        return sum;
+      }, 0);
+      const spent = (dist.expenses || []).reduce((sum, e) => sum + e.amount, 0);
+      return dist.amount + added - spent;
+    };
+
+    // Check balances
+    let sourceBalance = 0;
+    if (fromId === 'main') sourceBalance = sourceWallet.amount;
+    else sourceBalance = getDistBalance(sourceWallet, fromId);
+    
+    if (amt > sourceBalance) { showToast('Insufficient funds', 'danger'); return; }
+
+    // Deduct from source (only mutate if it's the main account)
+    if (fromId === 'main') sourceWallet.amount -= amt;
+
+    // Add to target (only mutate if it's the main account)
+    if (toId === 'main') targetWallet.amount += amt;
+
+    // Log transaction
+    const txnBase = { amount: amt, note: transferForm.note || 'Transfer', type: 'transfer' };
+    
+    if (fromWalletId === toWalletId) {
+      // Intra-wallet transfer
+      sourceWallet.transactions = [{
+        id: Date.now().toString(36), date: new Date().toISOString(), ...txnBase, from: fromId, to: toId
+      }, ...(sourceWallet.transactions || [])];
+    } else {
+      // Inter-wallet transfer
+      sourceWallet.transactions = [{
+        id: Date.now().toString(36), date: new Date().toISOString(), ...txnBase, from: fromId, to: `${toWalletId}:${toId}`, note: transferForm.note || `Transfer to ${targetWallet.name}`
+      }, ...(sourceWallet.transactions || [])];
+      
+      targetWallet.transactions = [{
+        id: Date.now().toString(36) + 'R', date: new Date().toISOString(), ...txnBase, from: `${fromWalletId}:${fromId}`, to: toId, note: transferForm.note || `Transfer from ${sourceWallet.name}`
+      }, ...(targetWallet.transactions || [])];
+    }
+
+    saveWallet(newAccounts);
+    setIsTransferOpen(false);
+    showToast('Transfer complete');
+  };
+
+  const handleDeleteWallet = (walletId) => {
+    const newAccounts = accounts.filter(a => a.id !== walletId);
+    saveWallet(newAccounts);
+    if (activeAccountId === walletId) {
+      setActiveAccountId(newAccounts.length > 0 ? newAccounts[0].id : null);
+    }
+    setConfirmDeleteWallet(null);
+    showToast('Wallet deleted');
+  };
+
   const handleSaveDist = () => {
     if (!distForm.name.trim()) { showToast('Name required', 'danger'); return; }
     const amt = parseFloat(distForm.amount);
@@ -146,14 +262,7 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
 
     const isEdit = !!distForm.id;
     const accountDists = currentAccount.distributions || [];
-    const currentTotalDist = accountDists
-      .filter(d => d.id !== distForm.id)
-      .reduce((sum, d) => sum + d.amount, 0);
-
-    if (currentTotalDist + amt > currentAccount.amount) {
-      showToast('Distributed amount exceeds total balance', 'danger');
-      return;
-    }
+    // Distributions are now separate from main balance.
 
     const newItem = {
       id: isEdit ? distForm.id : Date.now().toString(36) + Math.random().toString(36).substr(2, 9),
@@ -209,8 +318,18 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
     
     const newDistributions = [...accountDists];
     newDistributions[distIndex] = dist;
+    
+    let updatedAccount = { ...currentAccount, distributions: newDistributions };
+    updatedAccount = logTransaction(updatedAccount, {
+      id: newItem.id,
+      date: newItem.date,
+      type: 'expense',
+      targetId: selectedDistId,
+      amount: amt,
+      note: expenseForm.note
+    });
 
-    const newAccounts = accounts.map(a => a.id === activeAccountId ? { ...a, distributions: newDistributions } : a);
+    const newAccounts = accounts.map(a => a.id === activeAccountId ? updatedAccount : a);
     saveWallet(newAccounts);
     setIsExpenseOpen(false);
     showToast(`Expense ${isEdit ? 'updated' : 'added'}`);
@@ -227,7 +346,10 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
     const newDistributions = [...accountDists];
     newDistributions[distIndex] = dist;
 
-    const newAccounts = accounts.map(a => a.id === activeAccountId ? { ...a, distributions: newDistributions } : a);
+    let updatedAccount = { ...currentAccount, distributions: newDistributions };
+    updatedAccount.transactions = (updatedAccount.transactions || []).filter(t => t.id !== expenseId);
+
+    const newAccounts = accounts.map(a => a.id === activeAccountId ? updatedAccount : a);
     saveWallet(newAccounts);
     showToast('Expense deleted');
   };
@@ -246,10 +368,19 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
       setSelectedDistId(null);
       return null;
     }
+    const distTxns = currentAccount.transactions || [];
+    const addedFunds = distTxns.reduce((sum, t) => {
+      if (t.type === 'deposit' && t.targetId === dist.id) return sum + t.amount;
+      if (t.type === 'transfer' && t.to === dist.id) return sum + t.amount;
+      if (t.type === 'transfer' && t.from === dist.id) return sum - t.amount;
+      return sum;
+    }, 0);
     const spent = (dist.expenses || []).reduce((sum, e) => sum + e.amount, 0);
-    const remaining = dist.amount - spent;
-    const spentPerc = dist.amount > 0 ? Math.min((spent / dist.amount) * 100, 100) : 0;
-    const isOverBudget = spent > dist.amount;
+    
+    const totalAvailable = dist.amount + addedFunds;
+    const remaining = totalAvailable - spent;
+    const spentPerc = totalAvailable > 0 ? Math.min((spent / totalAvailable) * 100, 100) : 0;
+    const isOverBudget = spent > totalAvailable;
 
     return (
       <div className="wallet-page w-100 position-fixed top-0 start-0 bottom-0" style={{ zIndex: 1050, height: '100dvh', background: '#ECE5DD', overflowY: 'auto' }}>
@@ -267,7 +398,7 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
           <div className="card border-0 shadow-sm rounded-4 p-4 mb-4" style={{ background: isOverBudget ? 'linear-gradient(135deg, #c62828, #e53935)' : 'linear-gradient(135deg, #075E54, #128C7E)' }}>
             <div className="d-flex justify-content-between align-items-center mb-3">
               <div>
-                <div className="text-white-50 fw-semibold mb-1">Remaining Budget</div>
+                <div className="text-white-50 fw-semibold mb-1">Available to Spend</div>
                 <div className="text-white fw-bold display-6">৳{remaining.toLocaleString()}</div>
               </div>
             </div>
@@ -276,51 +407,73 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
             </div>
             <div className="d-flex justify-content-between text-white-50 small mt-2">
               <span>Spent: ৳{spent.toLocaleString()}</span>
-              <span>Allocated: ৳{dist.amount.toLocaleString()}</span>
+              <span>Budget: ৳{dist.amount.toLocaleString()} {addedFunds !== 0 ? `(${addedFunds > 0 ? '+' : ''}${addedFunds.toLocaleString()})` : ''}</span>
             </div>
           </div>
 
-          <div className="d-flex align-items-center justify-content-between mb-3">
-            <h5 className="fw-bold text-dark m-0"><i className="bi bi-receipt text-warning me-2" />Expense Log</h5>
-            <button className="btn btn-success rounded-pill fw-bold btn-sm hover-scale shadow-sm" onClick={() => { setExpenseForm({ id: null, note: '', amount: '' }); setIsExpenseOpen(true); }}>
-              <i className="bi bi-plus-lg me-1" /> Add Expense
+          <div className="d-flex gap-2 mb-4">
+            <button className="btn btn-success rounded-pill fw-bold shadow-sm flex-grow-1" onClick={() => { setDepositForm({ targetId: dist.id, amount: '', note: '' }); setIsDepositOpen(true); }}>
+              <i className="bi bi-plus-circle-fill me-1" /> Add Funds
+            </button>
+            <button className="btn btn-light bg-white border rounded-pill fw-bold shadow-sm flex-grow-1" onClick={() => { setExpenseForm({ id: null, note: '', amount: '' }); setIsExpenseOpen(true); }}>
+              <i className="bi bi-dash-circle-fill text-danger me-1" /> Add Expense
             </button>
           </div>
 
-          {(!dist.expenses || dist.expenses.length === 0) ? (
-            <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white mb-4">
-              <i className="bi bi-journal-text fs-1 text-muted mb-2"></i>
-              <h6 className="fw-bold text-dark">No expenses logged</h6>
-              <p className="text-secondary small mb-3">Track your spending for {dist.name} here.</p>
-              <button className="btn btn-outline-success rounded-pill fw-bold" onClick={() => { setExpenseForm({ id: null, note: '', amount: '' }); setIsExpenseOpen(true); }}>
-                <i className="bi bi-plus-lg me-1" /> Add First Expense
-              </button>
-            </div>
-          ) : (
-            <div className="d-flex flex-column gap-3 pb-5">
-              {(dist.expenses || []).map(exp => (
-                <div key={exp.id} className="card border-0 shadow-sm rounded-4 p-3 hover-scale">
-                  <div className="d-flex justify-content-between align-items-center">
-                    <div className="d-flex align-items-center gap-3">
-                      <div className="rounded-circle d-flex align-items-center justify-content-center bg-danger bg-opacity-10 text-danger" style={{ width: '40px', height: '40px', minWidth: '40px' }}>
-                        <i className="bi bi-arrow-down-right" />
-                      </div>
-                      <div style={{ wordBreak: 'break-word' }}>
-                        <div className="fw-bold text-dark">{exp.note}</div>
-                        <div className="text-muted small" style={{ fontSize: '0.75rem' }}>{new Date(exp.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-                      </div>
-                    </div>
-                    <div className="d-flex align-items-center gap-2 ms-2">
-                      <div className="fw-bold text-danger whitespace-nowrap">-৳{exp.amount.toLocaleString()}</div>
-                      <button className="btn btn-light rounded-circle shadow-sm flex-shrink-0" style={{ width: '32px', height: '32px', padding: 0 }} onClick={() => handleDeleteExpense(dist.id, exp.id)}>
-                        <i className="bi bi-trash3-fill text-danger small" />
-                      </button>
-                    </div>
-                  </div>
+          <div className="d-flex align-items-center justify-content-between mb-3">
+            <h5 className="fw-bold text-dark m-0"><i className="bi bi-clock-history text-warning me-2" />Transaction Log</h5>
+          </div>
+
+          {(() => {
+            const distTransactions = (currentAccount.transactions || []).filter(t => t.targetId === dist.id || t.from === dist.id || t.to === dist.id).sort((a, b) => new Date(b.date) - new Date(a.date));
+            if (distTransactions.length === 0) {
+              return (
+                <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white mb-4">
+                  <i className="bi bi-journal-text fs-1 text-muted mb-2"></i>
+                  <h6 className="fw-bold text-dark">No transactions yet</h6>
+                  <p className="text-secondary small mb-3">Track your deposits and spending for {dist.name} here.</p>
+                  <button className="btn btn-outline-success rounded-pill fw-bold" onClick={() => { setExpenseForm({ id: null, note: '', amount: '' }); setIsExpenseOpen(true); }}>
+                    <i className="bi bi-plus-lg me-1" /> Add First Expense
+                  </button>
                 </div>
-              ))}
-            </div>
-          )}
+              );
+            }
+            return (
+              <div className="d-flex flex-column gap-3 pb-5">
+                {distTransactions.map(txn => {
+                  let icon = 'bi-check-circle'; let iconColor = 'text-success'; let bg = 'bg-success'; let amountColor = 'text-success'; let prefix = '+';
+                  if (txn.type === 'expense' || (txn.type === 'transfer' && txn.from === dist.id)) {
+                    icon = 'bi-arrow-down-right'; iconColor = 'text-danger'; bg = 'bg-danger'; amountColor = 'text-danger'; prefix = '-';
+                  } else if (txn.type === 'transfer' && txn.to === dist.id) {
+                    icon = 'bi-arrow-left-right'; iconColor = 'text-primary'; bg = 'bg-primary'; amountColor = 'text-primary'; prefix = '+';
+                  }
+                  return (
+                    <div key={txn.id} className="card border-0 shadow-sm rounded-4 p-3 hover-scale">
+                      <div className="d-flex justify-content-between align-items-center">
+                        <div className="d-flex align-items-center gap-3">
+                          <div className={`rounded-circle d-flex align-items-center justify-content-center ${bg} bg-opacity-10 ${iconColor}`} style={{ width: '40px', height: '40px', minWidth: '40px' }}>
+                            <i className={`bi ${icon}`} />
+                          </div>
+                          <div style={{ wordBreak: 'break-word' }}>
+                            <div className="fw-bold text-dark">{txn.note || txn.type}</div>
+                            <div className="text-muted small" style={{ fontSize: '0.75rem' }}>{new Date(txn.date).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                          </div>
+                        </div>
+                        <div className="d-flex align-items-center gap-2 ms-2">
+                          <div className={`fw-bold ${amountColor} whitespace-nowrap`}>{prefix}৳{txn.amount.toLocaleString()}</div>
+                          {txn.type === 'expense' && (
+                            <button className="btn btn-light rounded-circle shadow-sm flex-shrink-0" style={{ width: '32px', height: '32px', padding: 0 }} onClick={() => handleDeleteExpense(dist.id, txn.id)}>
+                              <i className="bi bi-trash3-fill text-danger small" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {isExpenseOpen && (
             <>
@@ -345,6 +498,42 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                     <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
                       <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setIsExpenseOpen(false)}>Cancel</button>
                       <button className="btn btn-success rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleSaveExpense}>Save Expense</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {isDepositOpen && (
+            <>
+              <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1100 }} onClick={() => setIsDepositOpen(false)}></div>
+              <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1110 }} tabIndex="-1">
+                <div className="modal-dialog modal-dialog-centered">
+                  <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                    <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
+                      <h5 className="modal-title fw-bold">Add Funds</h5>
+                      <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setIsDepositOpen(false)}></button>
+                    </div>
+                    <div className="modal-body p-4 bg-light d-flex flex-column gap-3">
+                      <div>
+                        <label className="form-label fw-bold text-secondary">Target</label>
+                        <select className="form-select rounded-3 shadow-sm border-0" value={depositForm.targetId} disabled>
+                          <option value={dist.id}>{dist.name}</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="form-label fw-bold text-secondary">Amount (৳)</label>
+                        <input type="number" className="form-control rounded-3 shadow-sm border-0" placeholder="Enter amount" value={depositForm.amount} onChange={(e) => setDepositForm({ ...depositForm, amount: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="form-label fw-bold text-secondary">Note (Optional)</label>
+                        <input type="text" className="form-control rounded-3 shadow-sm border-0" placeholder="e.g. Salary" value={depositForm.note} onChange={(e) => setDepositForm({ ...depositForm, note: e.target.value })} />
+                      </div>
+                    </div>
+                    <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
+                      <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setIsDepositOpen(false)}>Cancel</button>
+                      <button className="btn btn-success rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleDeposit}>Deposit</button>
                     </div>
                   </div>
                 </div>
@@ -395,6 +584,13 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                   <div className="card border-0 shadow-sm rounded-4 p-4 hover-scale cursor-pointer h-100" style={{ cursor: 'pointer', background: 'linear-gradient(135deg, #075E54, #128C7E)' }} onClick={() => setActiveAccountId(acc.id)}>
                     <div className="d-flex justify-content-between align-items-center mb-3">
                       <div className="text-white-50 fw-semibold"><i className="bi bi-wallet2 me-2" />{acc.name}</div>
+                      <button 
+                        className="btn btn-sm btn-outline-light rounded-circle border-0 px-2 py-1" 
+                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteWallet(acc.id); }}
+                        title="Delete Wallet"
+                      >
+                        <i className="bi bi-trash" />
+                      </button>
                     </div>
                     <div className="text-white fw-bold display-6 mb-2">৳{acc.amount.toLocaleString()}</div>
                     <div className="text-white-50 small">Spent: ৳{accSpent.toLocaleString()}</div>
@@ -441,6 +637,30 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
           </>
         )}
         
+        {confirmDeleteWallet && (
+          <>
+            <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1200 }} onClick={() => setConfirmDeleteWallet(null)}></div>
+            <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1210 }} tabIndex="-1">
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                  <div className="modal-header border-0 text-white pb-3" style={{ background: 'linear-gradient(135deg, #b71c1c, #c62828)' }}>
+                    <h5 className="modal-title fw-bold d-flex align-items-center gap-2"><i className="bi bi-trash3-fill"></i> Delete Wallet</h5>
+                    <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setConfirmDeleteWallet(null)}></button>
+                  </div>
+                  <div className="modal-body p-4 bg-light text-center">
+                    <h5 className="fw-bold text-dark mb-2">Are you sure?</h5>
+                    <p className="text-secondary small">This will delete the wallet and all its distributions. This action cannot be undone.</p>
+                  </div>
+                  <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4 d-flex justify-content-center gap-2">
+                    <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setConfirmDeleteWallet(null)}>Cancel</button>
+                    <button className="btn text-white rounded-pill px-4 py-2 fw-bold shadow-sm" style={{ background: '#c62828' }} onClick={() => handleDeleteWallet(confirmDeleteWallet)}>Delete</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+        
         {toast.show && (
           <div className="position-fixed top-0 start-50 translate-middle-x mt-3 shadow-lg animate-slide-down-toast-container" style={{ zIndex: 2000, width: 'min(92vw, 400px)' }}>
             <div className={`toast show align-items-center border-0 rounded-4 text-white px-3 py-2 bg-${toast.type === 'danger' ? 'danger' : 'success'}`}>
@@ -461,10 +681,11 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
   if (currentAccount) {
     totalDistributed = (currentAccount.distributions || []).reduce((sum, d) => sum + d.amount, 0);
     totalSpentAcrossAll = (currentAccount.distributions || []).reduce((sum, d) => sum + (d.expenses || []).reduce((s, e) => s + e.amount, 0), 0);
-    remaining = Math.max(0, currentAccount.amount - totalDistributed);
-    distPerc = currentAccount.amount > 0 ? (totalDistributed / currentAccount.amount) * 100 : 0;
+    remaining = currentAccount.amount;
+    const totalAssets = currentAccount.amount + totalDistributed;
+    distPerc = totalAssets > 0 ? (totalDistributed / totalAssets) * 100 : 0;
     remainPerc = Math.max(0, 100 - distPerc);
-    overallSpentPerc = currentAccount.amount > 0 ? (totalSpentAcrossAll / currentAccount.amount) * 100 : 0;
+    overallSpentPerc = totalDistributed > 0 ? (totalSpentAcrossAll / totalDistributed) * 100 : 0;
   }
 
   // Ensure there's a fallback UI when no accounts exist (dropdown mode)
@@ -579,12 +800,29 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                   <div className="text-white-50 fw-semibold mb-1">Total Balance</div>
                   <div className="text-white fw-bold display-5">৳{currentAccount?.amount.toLocaleString()}</div>
                 </div>
-                <button
-                  className="btn btn-light rounded-circle shadow-sm hover-scale"
-                  style={{ width: '48px', height: '48px' }}
-                  onClick={() => { setEditTotalValue(currentAccount?.amount.toString() || '0'); setIsEditTotalOpen(true); }}
-                >
-                  <i className="bi bi-pencil-fill text-success" />
+                <div className="d-flex gap-2">
+                  <button
+                    className="btn btn-light rounded-circle shadow-sm hover-scale"
+                    style={{ width: '48px', height: '48px' }}
+                    onClick={() => { setEditTotalValue(currentAccount?.amount.toString() || '0'); setIsEditTotalOpen(true); }}
+                  >
+                    <i className="bi bi-pencil-fill text-success" />
+                  </button>
+                  <button
+                    className="btn btn-danger rounded-circle shadow-sm hover-scale text-white"
+                    style={{ width: '48px', height: '48px' }}
+                    onClick={() => setConfirmDeleteWallet(currentAccount?.id)}
+                  >
+                    <i className="bi bi-trash-fill" />
+                  </button>
+                </div>
+              </div>
+              <div className="d-flex gap-2 mt-4">
+                <button className="btn btn-light bg-white rounded-pill fw-bold flex-grow-1 shadow-sm border" onClick={() => { setDepositForm({ targetId: 'main', amount: '', note: '' }); setIsDepositOpen(true); }}>
+                  <i className="bi bi-plus-circle-fill text-success me-2" /> Add Funds
+                </button>
+                <button className="btn btn-light bg-white rounded-pill fw-bold flex-grow-1 shadow-sm border" onClick={() => { setTransferForm({ from: `${currentAccount?.id}:main`, to: '', amount: '', note: '' }); setIsTransferOpen(true); }}>
+                  <i className="bi bi-arrow-left-right text-primary me-2" /> Transfer
                 </button>
               </div>
             </div>
@@ -606,17 +844,16 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                 </div>
                 <div className="col-4">
                   <div className="p-2 bg-light rounded-3 border h-100">
-                    <div className="text-secondary small fw-semibold" style={{ fontSize: '0.7rem' }}>Unallocated</div>
+                    <div className="text-secondary small fw-semibold" style={{ fontSize: '0.7rem' }}>Main Balance</div>
                     <div className="fs-6 fw-bold text-success">৳{remaining.toLocaleString()}</div>
                   </div>
                 </div>
               </div>
               <div className="d-flex justify-content-between text-muted small mb-1">
-                <span>Budget Spent: {overallSpentPerc.toFixed(1)}%</span>
+                <span>Allocations Spent: {overallSpentPerc.toFixed(1)}%</span>
               </div>
               <div className="progress rounded-pill bg-light border" style={{ height: '20px' }}>
                 <div className="progress-bar bg-danger progress-bar-striped progress-bar-animated" role="progressbar" style={{ width: `${overallSpentPerc}%` }}></div>
-                <div className="progress-bar bg-success" role="progressbar" style={{ width: `${Math.max(0, distPerc - overallSpentPerc)}%` }}></div>
               </div>
             </div>
 
@@ -639,10 +876,18 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
             ) : (
               <div className="d-flex flex-column gap-3 pb-5">
                 {currentAccount.distributions.map(dist => {
+                  const distTxns = currentAccount.transactions || [];
+                  const addedFunds = distTxns.reduce((sum, t) => {
+                    if (t.type === 'deposit' && t.targetId === dist.id) return sum + t.amount;
+                    if (t.type === 'transfer' && t.to === dist.id) return sum + t.amount;
+                    if (t.type === 'transfer' && t.from === dist.id) return sum - t.amount;
+                    return sum;
+                  }, 0);
                   const spent = (dist.expenses || []).reduce((sum, e) => sum + e.amount, 0);
-                  const distRemaining = dist.amount - spent;
-                  const spentPerc = dist.amount > 0 ? Math.min((spent / dist.amount) * 100, 100) : 0;
-                  const isOverBudget = spent > dist.amount;
+                  const totalAvailable = dist.amount + addedFunds;
+                  const distRemaining = totalAvailable - spent;
+                  const spentPerc = totalAvailable > 0 ? Math.min((spent / totalAvailable) * 100, 100) : 0;
+                  const isOverBudget = spent > totalAvailable;
 
                   return (
                     <div key={dist.id} className="card border-0 shadow-sm rounded-4 p-3 hover-scale cursor-pointer" onClick={(e) => { if (!e.target.closest('.action-btns')) setSelectedDistId(dist.id); }}>
@@ -651,7 +896,7 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                           <div className="rounded-circle d-flex align-items-center justify-content-center text-white bg-success shadow-sm" style={{ width: '40px', height: '40px' }}><i className="bi bi-wallet2" /></div>
                           <div>
                             <div className="fw-bold text-dark">{dist.name}</div>
-                            <div className="d-flex align-items-center gap-2"><span className="text-secondary small" style={{ fontSize: '0.8rem' }}>Allocated: ৳{dist.amount.toLocaleString()}</span></div>
+                            <div className="d-flex align-items-center gap-2"><span className="text-secondary small" style={{ fontSize: '0.8rem' }}>Budget: ৳{dist.amount.toLocaleString()} {addedFunds !== 0 ? `(${addedFunds > 0 ? '+' : ''}${addedFunds.toLocaleString()})` : ''}</span></div>
                           </div>
                         </div>
                         <div className="d-flex gap-2 action-btns">
@@ -677,6 +922,49 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                 })}
               </div>
             )}
+            
+            {/* Global Transaction History */}
+            <div className="mt-4 mb-4">
+              <h5 className="fw-bold text-dark mb-3"><i className="bi bi-clock-history text-secondary me-2" />Recent Transactions</h5>
+              {!currentAccount.transactions || currentAccount.transactions.length === 0 ? (
+                <div className="card border-0 shadow-sm rounded-4 p-4 text-center bg-white">
+                  <p className="text-secondary small mb-0">No transactions yet.</p>
+                </div>
+              ) : (
+                <div className="d-flex flex-column gap-2">
+                  {currentAccount.transactions.slice(0, 10).map(txn => {
+                    let icon = 'bi-check-circle';
+                    let iconColor = 'text-success';
+                    let bg = 'bg-success';
+                    let amountColor = 'text-success';
+                    let prefix = '+';
+                    
+                    if (txn.type === 'expense') {
+                      icon = 'bi-arrow-down-right'; iconColor = 'text-danger'; bg = 'bg-danger'; amountColor = 'text-danger'; prefix = '-';
+                    } else if (txn.type === 'transfer') {
+                      icon = 'bi-arrow-left-right'; iconColor = 'text-primary'; bg = 'bg-primary'; amountColor = 'text-primary'; prefix = '⇆';
+                    }
+
+                    return (
+                      <div key={txn.id} className="card border-0 shadow-sm rounded-4 p-3 hover-scale">
+                        <div className="d-flex justify-content-between align-items-center">
+                          <div className="d-flex align-items-center gap-3">
+                            <div className={`rounded-circle d-flex align-items-center justify-content-center ${bg} bg-opacity-10 ${iconColor}`} style={{ width: '40px', height: '40px' }}>
+                              <i className={`bi ${icon}`} />
+                            </div>
+                            <div>
+                              <div className="fw-bold text-dark">{txn.note || txn.type}</div>
+                              <div className="text-muted small" style={{ fontSize: '0.75rem' }}>{new Date(txn.date).toLocaleString()}</div>
+                            </div>
+                          </div>
+                          <div className={`fw-bold ${amountColor}`}>{prefix}৳{txn.amount.toLocaleString()}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </>
         )}
       </div>
@@ -801,6 +1089,129 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                 <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4 d-flex justify-content-center gap-2">
                   <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setConfirmDelete(null)}>Cancel</button>
                   <button className="btn text-white rounded-pill px-4 py-2 fw-bold shadow-sm" style={{ background: '#c62828' }} onClick={() => handleDeleteDist(confirmDelete)}>Delete</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Add Funds Modal */}
+      {isDepositOpen && (
+        <>
+          <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1100 }} onClick={() => setIsDepositOpen(false)}></div>
+          <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1110 }} tabIndex="-1">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
+                  <h5 className="modal-title fw-bold">Add Funds</h5>
+                  <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setIsDepositOpen(false)}></button>
+                </div>
+                <div className="modal-body p-4 bg-light d-flex flex-column gap-3">
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Target</label>
+                    <select className="form-select rounded-3 shadow-sm border-0" value={depositForm.targetId} onChange={(e) => setDepositForm({ ...depositForm, targetId: e.target.value })}>
+                      <option value="main">Main Balance</option>
+                      {(currentAccount?.distributions || []).map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Amount (৳)</label>
+                    <input type="number" className="form-control rounded-3 shadow-sm border-0" placeholder="Enter amount" value={depositForm.amount} onChange={(e) => setDepositForm({ ...depositForm, amount: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Note (Optional)</label>
+                    <input type="text" className="form-control rounded-3 shadow-sm border-0" placeholder="e.g. Salary" value={depositForm.note} onChange={(e) => setDepositForm({ ...depositForm, note: e.target.value })} />
+                  </div>
+                </div>
+                <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
+                  <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setIsDepositOpen(false)}>Cancel</button>
+                  <button className="btn btn-success rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleDeposit}>Deposit</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Transfer Modal */}
+      {isTransferOpen && (
+        <>
+          <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1100 }} onClick={() => setIsTransferOpen(false)}></div>
+          <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1110 }} tabIndex="-1">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
+                  <h5 className="modal-title fw-bold">Transfer Money</h5>
+                  <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setIsTransferOpen(false)}></button>
+                </div>
+                <div className="modal-body p-4 bg-light d-flex flex-column gap-3">
+                  <div>
+                    <label className="form-label fw-bold text-secondary">From</label>
+                    <select className="form-select rounded-3 shadow-sm border-0" value={transferForm.from} onChange={(e) => setTransferForm({ ...transferForm, from: e.target.value })}>
+                      {accounts.map(w => (
+                        <optgroup label={w.name} key={w.id}>
+                          <option value={`${w.id}:main`}>Main Balance</option>
+                          {(w.distributions || []).map(d => (
+                            <option value={`${w.id}:${d.id}`} key={d.id}>{d.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label fw-bold text-secondary">To</label>
+                    <select className="form-select rounded-3 shadow-sm border-0" value={transferForm.to} onChange={(e) => setTransferForm({ ...transferForm, to: e.target.value })}>
+                      <option value="">Select Destination</option>
+                      {accounts.map(w => (
+                        <optgroup label={w.name} key={w.id}>
+                          <option value={`${w.id}:main`}>Main Balance</option>
+                          {(w.distributions || []).map(d => (
+                            <option value={`${w.id}:${d.id}`} key={d.id}>{d.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Amount (৳)</label>
+                    <input type="number" className="form-control rounded-3 shadow-sm border-0" placeholder="Enter amount" value={transferForm.amount} onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Note (Optional)</label>
+                    <input type="text" className="form-control rounded-3 shadow-sm border-0" placeholder="e.g. Move to savings" value={transferForm.note} onChange={(e) => setTransferForm({ ...transferForm, note: e.target.value })} />
+                  </div>
+                </div>
+                <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
+                  <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setIsTransferOpen(false)}>Cancel</button>
+                  <button className="btn btn-primary rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleTransfer}>Transfer</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Delete Wallet Modal */}
+      {confirmDeleteWallet && (
+        <>
+          <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1200 }} onClick={() => setConfirmDeleteWallet(null)}></div>
+          <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1210 }} tabIndex="-1">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                <div className="modal-header border-0 text-white pb-3" style={{ background: 'linear-gradient(135deg, #b71c1c, #c62828)' }}>
+                  <h5 className="modal-title fw-bold d-flex align-items-center gap-2"><i className="bi bi-trash3-fill"></i> Delete Wallet</h5>
+                  <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setConfirmDeleteWallet(null)}></button>
+                </div>
+                <div className="modal-body p-4 bg-light text-center">
+                  <h5 className="fw-bold text-dark mb-2">Are you sure?</h5>
+                  <p className="text-secondary small">This will delete the wallet and all its distributions. This action cannot be undone.</p>
+                </div>
+                <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4 d-flex justify-content-center gap-2">
+                  <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setConfirmDeleteWallet(null)}>Cancel</button>
+                  <button className="btn text-white rounded-pill px-4 py-2 fw-bold shadow-sm" style={{ background: '#c62828' }} onClick={() => handleDeleteWallet(confirmDeleteWallet)}>Delete</button>
                 </div>
               </div>
             </div>

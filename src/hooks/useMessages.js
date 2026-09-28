@@ -45,6 +45,23 @@ export const useMessages = (uid, isAdmin = false, currentUser = null) => {
         return timeB - timeA;
       });
       
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const data = change.doc.data();
+          // Avoid notifying for our own messages, and try to only notify for newly created messages (last 10 seconds)
+          if (data.senderId !== uid && data.createdAt) {
+            const timeDiff = Date.now() - data.createdAt.toMillis();
+            if (timeDiff < 10000) {
+              const pushTitle = data.type === 'global_notice' ? '📢 Announcement' : `📬 Message from ${data.senderName}`;
+              const pushBody = data.content.length > 50 ? data.content.substring(0, 50) + '...' : data.content;
+              if (Notification.permission === 'granted') {
+                new Notification(pushTitle, { body: pushBody, icon: '/logo192.png' });
+              }
+            }
+          }
+        }
+      });
+
       setMessages(fetched);
       setLoading(false);
     }, (err) => {

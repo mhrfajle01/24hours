@@ -27,7 +27,7 @@ export default function NotificationPrompt({ currentUser }) {
             const dismissedAt = data.notificationPromptDismissedAt.toDate();
             const daysSinceDismissed = (new Date() - dismissedAt) / (1000 * 60 * 60 * 24);
             // Don't ask again if dismissed within the last 30 days
-            if (daysSinceDismissed < 30) return;
+            // if (daysSinceDismissed < 30) return; // Removed temporarily so localhost tests can work
           }
           // If they already have tokens, maybe they granted on another device but not this one. We can ask.
         }
