@@ -61,27 +61,133 @@ export const useFirestore = (selectedDate, uid) => {
   const [trashItems, setTrashItems] = useState([]);
   const [trashLoading, setTrashLoading] = useState(false);
 
-  // ─── Reports real-time listener ───────────────────────────────────────
+  // ─── Local ID generator ───────────────────────────────────────────────
+  const generateLocalId = () =>
+    `local_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+
+  // ─── IndexedDB helpers for reports ────────────────────────────────────
+  const IDB_REPORTS_STORE = 'reports_local';
+  const IDB_DB_VERSION = 2;
+
+  const getLocalDB = () =>
+    new Promise((resolve, reject) => {
+      const request = indexedDB.open('24HoursLocalDB', IDB_DB_VERSION);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('data')) {
+          db.createObjectStore('data', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('sync_queue')) {
+          db.createObjectStore('sync_queue', { keyPath: 'syncId' });
+        }
+        if (!db.objectStoreNames.contains(IDB_REPORTS_STORE)) {
+          const store = db.createObjectStore(IDB_REPORTS_STORE, { keyPath: 'id' });
+          store.createIndex('uid_date', ['uid', 'date'], { unique: false });
+        }
+      };
+    });
+
+  const idbGetReports = async (userId, date) => {
+    try {
+      const db = await getLocalDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(IDB_REPORTS_STORE, 'readonly');
+        const store = tx.objectStore(IDB_REPORTS_STORE);
+        const index = store.index('uid_date');
+        const request = index.getAll([userId, date]);
+        request.onsuccess = () => resolve((request.result || []).filter(r => !r._deleted));
+        request.onerror = () => resolve([]);
+      });
+    } catch { return []; }
+  };
+
+  const idbPutReport = async (report) => {
+    try {
+      const db = await getLocalDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_REPORTS_STORE, 'readwrite');
+        const store = tx.objectStore(IDB_REPORTS_STORE);
+        store.put(report);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) { console.warn('idbPutReport failed:', e); }
+  };
+
+  const idbPutMany = async (items) => {
+    try {
+      const db = await getLocalDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_REPORTS_STORE, 'readwrite');
+        const store = tx.objectStore(IDB_REPORTS_STORE);
+        items.forEach(item => store.put(item));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) { console.warn('idbPutMany failed:', e); }
+  };
+
+  const idbDeleteReport = async (id) => {
+    try {
+      const db = await getLocalDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(IDB_REPORTS_STORE, 'readwrite');
+        const store = tx.objectStore(IDB_REPORTS_STORE);
+        store.delete(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (e) { console.warn('idbDeleteReport failed:', e); }
+  };
+
+  // ─── Background sync helper (queue-only, like journals/products) ───────
+  const syncToFirestore = (action, collectionName, data) => {
+    const doQueue = async () => {
+      try {
+        const { addToSyncQueue } = await import('../utils/localSyncManager');
+        await addToSyncQueue(collectionName, action, data);
+        window.dispatchEvent(new Event('syncQueueUpdated'));
+      } catch (e) {
+        console.warn('Failed to queue sync:', e);
+      }
+    };
+    doQueue();
+  };
+
+  // ─── Reports: local-first listener ────────────────────────────────────
   useEffect(() => {
     if (!selectedDate || !uid) {
       setReports([]);
       setLoading(false);
       return;
     }
+
+    let cancelled = false;
+
+    // 1. Load from IndexedDB instantly
+    const loadLocal = async () => {
+      const localReports = await idbGetReports(uid, selectedDate);
+      if (!cancelled && localReports.length > 0) {
+        setReports(sortReports(localReports));
+        setLoading(false);
+      }
+    };
+    loadLocal();
+
+    // 2. Also try localStorage cache (fast fallback for first load)
     const cacheKey = `reports-cache:${uid}:${selectedDate}`;
-    let hasCachedReports = false;
     try {
       const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-      if (Array.isArray(cached)) {
-        setReports(sortReports(cached));
-        hasCachedReports = true;
+      if (Array.isArray(cached) && cached.length > 0) {
+        setReports(prev => prev.length > 0 ? prev : sortReports(cached));
+        setLoading(false);
       }
-    } catch (cacheError) {
-      console.warn('Unable to read cached reports:', cacheError);
-    }
-    setLoading(!hasCachedReports);
-    setError(null);
+    } catch {}
 
+    // 3. Firestore real-time listener for background sync
+    setError(null);
     const q = query(
       collection(db, 'reports'),
       where('uid', '==', uid),
@@ -90,25 +196,43 @@ export const useFirestore = (selectedDate, uid) => {
 
     const unsubscribe = onSnapshot(
       q,
-      (snapshot) => {
+      async (snapshot) => {
+        if (cancelled) return;
         const fetched = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setReports(sortReports(fetched));
+
+        // Reconcile: merge Firestore data into IndexedDB
+        await idbPutMany(fetched.map(r => ({ ...r, uid, date: selectedDate })));
+
+        // Get full local set (may include not-yet-synced items)
+        const localReports = await idbGetReports(uid, selectedDate);
+        const merged = mergeReports(localReports, fetched);
+
+        setReports(sortReports(merged));
         try {
-          localStorage.setItem(cacheKey, JSON.stringify(fetched));
-        } catch (cacheError) {
-          console.warn('Unable to cache reports:', cacheError);
-        }
+          localStorage.setItem(cacheKey, JSON.stringify(merged));
+        } catch {}
         setLoading(false);
       },
       (err) => {
+        if (cancelled) return;
         console.error('Firestore reports error:', err);
         setError(err);
         setLoading(false);
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [selectedDate, uid]);
+
+  /** Merge local-only items with Firestore items (Firestore wins for shared IDs) */
+  const mergeReports = (localItems, firestoreItems) => {
+    const firestoreIds = new Set(firestoreItems.map(r => r.id));
+    const localOnlyItems = localItems.filter(r => r._localOnly && !firestoreIds.has(r.id));
+    return [...firestoreItems, ...localOnlyItems];
+  };
 
   // ─── Trash real-time listener ─────────────────────────────────────────
   useEffect(() => {
@@ -141,61 +265,123 @@ export const useFirestore = (selectedDate, uid) => {
     return () => unsubscribe();
   }, [uid]);
 
-  // ─── Reports CRUD ─────────────────────────────────────────────────────
+  // ─── Reports CRUD (Local-First) ───────────────────────────────────────
 
-  /** Add a new report; returns the new document ID */
+  /** Add a new report — instant local write, background Firestore sync */
   const addReport = async (reportData) => {
     if (!uid) throw new Error('Authentication required');
-    const ref = await addDoc(collection(db, 'reports'), {
+    const id = generateLocalId();
+    const now = new Date().toISOString();
+    const fullReport = {
       ...reportData,
+      id,
       uid,
-      createdAt: serverTimestamp(),
-    });
-    return ref.id;
+      createdAt: now,
+      _localOnly: true,
+    };
+
+    // 1. Write to IndexedDB immediately
+    await idbPutReport(fullReport);
+
+    // 2. Update state immediately (instant UI)
+    setReports(prev => sortReports([...prev, fullReport]));
+
+    // 3. Background Firestore sync
+    syncToFirestore('create', 'reports', fullReport);
+
+    return id;
   };
 
-  /** Update specific fields on an existing report */
+  /** Update specific fields on an existing report — instant local, background cloud */
   const updateReport = async (id, updatedData) => {
-    await updateDoc(doc(db, 'reports', id), updatedData);
+    // 1. Update state immediately
+    setReports(prev =>
+      sortReports(prev.map(r => r.id === id ? { ...r, ...updatedData } : r))
+    );
+
+    // 2. Update IndexedDB
+    const localReports = await idbGetReports(uid, selectedDate);
+    const existing = localReports.find(r => r.id === id);
+    if (existing) {
+      await idbPutReport({ ...existing, ...updatedData });
+    }
+
+    // 3. Background Firestore sync
+    syncToFirestore('update', 'reports', { id, ...updatedData });
   };
 
   /**
-   * Soft delete — copies report to 'trash' collection then removes from 'reports'.
+   * Soft delete — instant local removal + background Firestore trash move.
    * Returns { trashId, originalData } for undo support.
    */
   const moveToTrash = async (reportOrId) => {
     if (!uid) throw new Error('Authentication required');
     let data;
     let id;
-    
+
     if (typeof reportOrId === 'string') {
       id = reportOrId;
-      const ref = doc(db, 'reports', id);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) throw new Error('Document not found');
-      data = snap.data();
+      const localReports = await idbGetReports(uid, selectedDate);
+      const found = localReports.find(r => r.id === id);
+      if (found) {
+        data = { ...found };
+        delete data.id;
+        delete data._localOnly;
+        delete data._deleted;
+      } else {
+        // Fallback to Firestore
+        const ref = doc(db, 'reports', id);
+        const snap = await getDoc(ref);
+        if (!snap.exists()) throw new Error('Document not found');
+        data = snap.data();
+      }
     } else {
       id = reportOrId.id;
       data = { ...reportOrId };
       delete data.id;
+      delete data._localOnly;
+      delete data._deleted;
     }
 
-    const trashRef = await addDoc(collection(db, 'trash'), {
-      ...data,
-      originalId: id,
-      deletedAt: serverTimestamp(),
-    });
+    const trashId = generateLocalId();
 
-    await deleteDoc(doc(db, 'reports', id));
-    return { trashId: trashRef.id, originalData: { id, ...data } };
+    // 1. Remove from local state immediately
+    setReports(prev => prev.filter(r => r.id !== id));
+
+    // 2. Remove from IndexedDB
+    await idbDeleteReport(id);
+
+    // 3. Background Firestore: add to trash + delete from reports
+    const doTrash = async () => {
+      try {
+        const trashRef = await addDoc(collection(db, 'trash'), {
+          ...data,
+          originalId: id,
+          deletedAt: serverTimestamp(),
+        });
+        await deleteDoc(doc(db, 'reports', id));
+        return trashRef.id;
+      } catch (e) {
+        console.warn('Background trash move failed:', e);
+      }
+    };
+    doTrash();
+
+    return { trashId, originalData: { id, ...data } };
   };
 
   /**
-   * Hard delete — permanently removes from 'reports' without trash.
-   * Used internally for undo of ADD operations.
+   * Hard delete — instant local removal, background Firestore delete.
    */
   const hardDeleteReport = async (id) => {
-    await deleteDoc(doc(db, 'reports', id));
+    // 1. Remove from state immediately
+    setReports(prev => prev.filter(r => r.id !== id));
+
+    // 2. Remove from IndexedDB
+    await idbDeleteReport(id);
+
+    // 3. Background Firestore delete
+    syncToFirestore('delete', 'reports', { id });
   };
 
   // ─── Trash operations ─────────────────────────────────────────────────
@@ -211,9 +397,28 @@ export const useFirestore = (selectedDate, uid) => {
     if (!snap.exists()) throw new Error('Trash item not found');
     const { originalId, deletedAt, ...reportData } = snap.data();
 
-    const newRef = await addDoc(collection(db, 'reports'), reportData);
-    await deleteDoc(trashRef);
-    return newRef.id;
+    const id = generateLocalId();
+    const fullReport = { ...reportData, id, _localOnly: true };
+
+    // 1. Add to IndexedDB + state immediately
+    await idbPutReport({ ...fullReport, uid, date: reportData.date || selectedDate });
+    setReports(prev => sortReports([...prev, fullReport]));
+
+    // 2. Background Firestore
+    const doRestore = async () => {
+      try {
+        const newRef = await addDoc(collection(db, 'reports'), reportData);
+        await deleteDoc(trashRef);
+        // Update local ID to Firestore ID
+        await idbDeleteReport(id);
+        await idbPutReport({ ...reportData, id: newRef.id, uid, date: reportData.date || selectedDate });
+      } catch (e) {
+        console.warn('Background restore failed:', e);
+      }
+    };
+    doRestore();
+
+    return id;
   };
 
   /** Permanently delete a single item from trash */
@@ -252,40 +457,39 @@ export const useFirestore = (selectedDate, uid) => {
       batch.set(newDocRef, reportData);
       batch.delete(doc(trashCol, trashId));
       newIds.push(newDocRef.id);
+
+      // Also add to IndexedDB for instant display
+      await idbPutReport({ ...reportData, id: newDocRef.id, uid, date: reportData.date || selectedDate });
     }
 
     await batch.commit();
     return newIds;
   };
 
-  // ─── Bulk operations ──────────────────────────────────────────────────
+  // ─── Bulk operations (Local-First) ────────────────────────────────────
 
   /**
-   * Auto-generate a full day's hourly blocks.
+   * Auto-generate a full day's hourly blocks — instant local write.
    * Returns array of new docIds (for undo support).
    */
   const generateDayReports = async (date) => {
     if (!uid) throw new Error('Authentication required');
-    const q = query(
-      collection(db, 'reports'),
-      where('uid', '==', uid),
-      where('date', '==', date)
-    );
-    const snap = await getDocs(q);
 
-    // Map existing reports to their start and end times in minutes
-    const existingIntervals = snap.docs.map((d) => {
-      const data = d.data();
-      const times = getIntervalTimes(data);
+    // Use local data for overlap checking (instant, no network)
+    const existingReports = date === selectedDate
+      ? reports
+      : await idbGetReports(uid, date);
+
+    const existingIntervals = existingReports.map((r) => {
+      const times = getIntervalTimes(r);
       const startMin = timeToMinutes(times.startTime);
       let endMin = timeToMinutes(times.endTime);
-      if (endMin <= startMin) endMin += 24 * 60; // overnight wrap
+      if (endMin <= startMin) endMin += 24 * 60;
       return { startMin, endMin };
     });
 
     const dayHours = getDayHoursList();
-    const batch = writeBatch(db);
-    const reportsCol = collection(db, 'reports');
+    const newReports = [];
     const newIds = [];
 
     dayHours.forEach(({ hour, ampm }) => {
@@ -295,16 +499,16 @@ export const useFirestore = (selectedDate, uid) => {
 
       const newStart = timeToMinutes(startStr);
       let newEnd = timeToMinutes(endStr);
-      if (newEnd <= newStart) newEnd += 24 * 60; // overnight wrap
+      if (newEnd <= newStart) newEnd += 24 * 60;
 
-      // Check if this default slot overlaps with any existing custom/default slots
       const hasOverlap = existingIntervals.some(
         (exist) => newStart < exist.endMin && newEnd > exist.startMin
       );
 
       if (!hasOverlap) {
-        const ref = doc(reportsCol);
-        batch.set(ref, {
+        const id = generateLocalId();
+        const report = {
+          id,
           uid,
           date,
           hour,
@@ -314,46 +518,100 @@ export const useFirestore = (selectedDate, uid) => {
           plan: '',
           report: '',
           status: 'Pending',
-          createdAt: serverTimestamp(),
-        });
-        newIds.push(ref.id);
+          createdAt: new Date().toISOString(),
+          _localOnly: true,
+        };
+        newReports.push(report);
+        newIds.push(id);
       }
     });
 
-    if (newIds.length > 0) await batch.commit();
+    if (newReports.length > 0) {
+      // 1. Write all to IndexedDB immediately
+      await idbPutMany(newReports);
+
+      // 2. Update state immediately (instant UI)
+      if (date === selectedDate) {
+        setReports(prev => sortReports([...prev, ...newReports]));
+      }
+
+      // 3. Queue all for sync (like journals — no direct Firestore write)
+      const doQueueBatch = async () => {
+        try {
+          const { addToSyncQueue } = await import('../utils/localSyncManager');
+          for (const report of newReports) {
+            await addToSyncQueue('reports', 'create', report);
+          }
+          window.dispatchEvent(new Event('syncQueueUpdated'));
+        } catch (e) {
+          console.warn('Failed to queue batch sync:', e);
+        }
+      };
+      doQueueBatch();
+    }
+
     return newIds;
   };
 
   /**
-   * Move ALL reports for a date to trash (soft clear).
+   * Move ALL reports for a date to trash — instant local clear.
    * Returns array of new trashIds (for undo support).
    */
   const clearDayReports = async (date) => {
     if (!uid) throw new Error('Authentication required');
-    const q = query(
-      collection(db, 'reports'),
-      where('uid', '==', uid),
-      where('date', '==', date)
-    );
-    const snap = await getDocs(q);
-    if (snap.empty) return [];
 
-    const batch = writeBatch(db);
-    const trashCol = collection(db, 'trash');
+    // Get current reports from local state or IndexedDB
+    const currentReports = date === selectedDate
+      ? reports
+      : await idbGetReports(uid, date);
+
+    if (currentReports.length === 0) return [];
+
     const trashIds = [];
 
-    snap.docs.forEach((d) => {
-      const trashRef = doc(trashCol);
-      batch.set(trashRef, {
-        ...d.data(),
-        originalId: d.id,
-        deletedAt: serverTimestamp(),
-      });
-      batch.delete(d.ref);
-      trashIds.push(trashRef.id);
-    });
+    // 1. Clear state immediately
+    if (date === selectedDate) {
+      setReports([]);
+    }
 
-    await batch.commit();
+    // 2. Remove from IndexedDB
+    for (const report of currentReports) {
+      await idbDeleteReport(report.id);
+    }
+
+    // 3. Background Firestore: batch move to trash
+    const doBatchTrash = async () => {
+      try {
+        // Need to get actual Firestore docs for proper trash move
+        const q = query(
+          collection(db, 'reports'),
+          where('uid', '==', uid),
+          where('date', '==', date)
+        );
+        const snap = await getDocs(q);
+        if (snap.empty) return;
+
+        const batch = writeBatch(db);
+        const trashCol = collection(db, 'trash');
+
+        snap.docs.forEach((d) => {
+          const trashRef = doc(trashCol);
+          batch.set(trashRef, {
+            ...d.data(),
+            originalId: d.id,
+            deletedAt: serverTimestamp(),
+          });
+          batch.delete(d.ref);
+          trashIds.push(trashRef.id);
+        });
+
+        await batch.commit();
+      } catch (e) {
+        console.warn('Background batch trash failed:', e);
+      }
+    };
+    doBatchTrash();
+
     return trashIds;
   };
 

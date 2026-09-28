@@ -49,7 +49,16 @@ export const useJournals = (uid) => {
     setLoading(true);
     setError(null);
 
+    const cacheKey = `journals_cache_${uid}`;
     let currentSnapshotData = [];
+
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        currentSnapshotData = JSON.parse(cached);
+        fetchAndMergeJournals(currentSnapshotData);
+      }
+    } catch (e) {}
 
     const q = query(
       collection(db, 'journals'),
@@ -60,11 +69,13 @@ export const useJournals = (uid) => {
       q,
       (snapshot) => {
         currentSnapshotData = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        try { localStorage.setItem(cacheKey, JSON.stringify(currentSnapshotData)); } catch(e) {}
         fetchAndMergeJournals(currentSnapshotData);
       },
       (err) => {
         console.error('Firestore journals error:', err);
         setError(err);
+        fetchAndMergeJournals(currentSnapshotData);
         setLoading(false);
       }
     );

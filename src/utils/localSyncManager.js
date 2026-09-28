@@ -1,6 +1,6 @@
 // A lightweight Promise wrapper for IndexedDB to handle Local-First architecture
 const DB_NAME = '24HoursLocalDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_DATA = 'data';
 const STORE_SYNC_QUEUE = 'sync_queue';
 

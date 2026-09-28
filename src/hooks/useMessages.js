@@ -3,6 +3,7 @@ import {
   collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, arrayUnion, writeBatch
 } from 'firebase/firestore';
 import { db } from '../firebase/firebase';
+import { sendLocalNotification } from '../utils/notifications';
 
 export const useMessages = (uid, isAdmin = false, currentUser = null) => {
   const [messages, setMessages] = useState([]);
@@ -54,9 +55,7 @@ export const useMessages = (uid, isAdmin = false, currentUser = null) => {
             if (timeDiff < 10000) {
               const pushTitle = data.type === 'global_notice' ? '📢 Announcement' : `📬 Message from ${data.senderName}`;
               const pushBody = data.content.length > 50 ? data.content.substring(0, 50) + '...' : data.content;
-              if (Notification.permission === 'granted') {
-                new Notification(pushTitle, { body: pushBody, icon: '/logo192.png' });
-              }
+              sendLocalNotification(pushTitle, pushBody);
             }
           }
         }

@@ -1067,6 +1067,31 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   }
 }
 
+/* Sync badge glow animation */
+.header-sync-badge {
+  animation: syncBadgeGlow 2s ease-in-out infinite;
+}
+.header-sync-icon {
+  animation: syncIconBounce 1.5s ease-in-out infinite;
+}
+@keyframes syncBadgeGlow {
+  0%, 100% { box-shadow: 0 0 4px rgba(255,152,0,0.3); }
+  50% { box-shadow: 0 0 14px rgba(255,152,0,0.6), 0 0 4px rgba(255,215,0,0.4); }
+}
+@keyframes syncIconBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* Sync modal slide-in */
+.sync-modal-slide-in {
+  animation: syncModalSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+@keyframes syncModalSlideIn {
+  from { opacity: 0; transform: scale(0.85) translateY(30px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
   .admin-mobile-shell { min-height: 100vh; color: #fff; background: linear-gradient(135deg, #1e1e2f, #2a2a40); background-size: 200% 200%; animation: gradientFlow 10s ease infinite; }
   @keyframes gradientFlow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
   .admin-mobile-header { position: sticky; top: 0; z-index: 1020; display: flex; align-items: center; gap: .75rem; padding: .8rem 1rem; color: #fff; background: #111827; box-shadow: 0 .4rem 1.2rem rgba(15,23,42,.22); }

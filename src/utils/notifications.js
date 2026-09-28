@@ -34,6 +34,25 @@ export const onForegroundMessage = (callback) => {
 
 export const sendLocalNotification = (title, body) => {
   if (Notification.permission === 'granted') {
-    new Notification(title, { body, icon: '/logo192.png' });
+    if (localStorage.getItem('notifications_muted') === 'true') return;
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then((registration) => {
+        registration.showNotification(title, { body, icon: '/logo192.png' });
+      }).catch((err) => {
+        console.error('Service worker not ready for notification:', err);
+        // Fallback for some non-mobile browsers where new Notification still works
+        try {
+          new Notification(title, { body, icon: '/logo192.png' });
+        } catch (e) {
+          console.error('Notification fallback failed:', e);
+        }
+      });
+    } else {
+      try {
+        new Notification(title, { body, icon: '/logo192.png' });
+      } catch (e) {
+        console.error('Notification constructor failed:', e);
+      }
+    }
   }
 };

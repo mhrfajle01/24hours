@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { formatFriendlyDate, getCurrentTimeString, getCurrentHourAndAMPM, getIntervalTimes, formatTime12h, timeToMinutes, getTodayDateString } from '../utils/helpers';
+import { getSyncQueue } from '../utils/localSyncManager';
 import { AnimatedCounter } from './PointsAnimator';
+import SyncButton from './SyncButton';
 
 /**
  * Sticky Header — profile avatar opens ProfileModal, gear opens SettingsModal.
@@ -28,7 +30,21 @@ export default function Header({
   const [currentHourData, setCurrentHourData] = useState(getCurrentHourAndAMPM());
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [showSyncModal, setShowSyncModal] = useState(false);
   const moreMenuRef = useRef(null);
+
+  useEffect(() => {
+    const checkSync = async () => {
+      try {
+        const items = await getSyncQueue();
+        setPendingSyncCount(items.length);
+      } catch (e) {}
+    };
+    checkSync();
+    window.addEventListener('syncQueueUpdated', checkSync);
+    return () => window.removeEventListener('syncQueueUpdated', checkSync);
+  }, []);
 
   const prevPointsRef = useRef(userPoints);
   const isFirstLoadRef = useRef(true);
@@ -145,6 +161,7 @@ export default function Header({
   const displayTimeRange = activeSlotTime ? activeSlotTime : formatCurrentHourRange();
 
   return (
+    <>
     <header className="sticky-top shadow-sm text-white" style={{ backgroundColor: '#075E54', zIndex: 1020 }}>
       <div className="container-fluid max-width-container px-3 py-2 position-relative">
         <div className="d-flex align-items-center justify-content-between flex-nowrap gap-2" style={{ minHeight: '44px' }}>
@@ -243,6 +260,20 @@ export default function Header({
                 />
               </span>
             </button>
+
+            {/* Pending Sync Badge - visible on mobile */}
+            {pendingSyncCount > 0 && (
+              <button
+                type="button"
+                className="btn btn-sm rounded-pill px-2 py-0.5 d-flex align-items-center gap-1 border border-warning shadow-sm position-relative hover-scale header-sync-badge flex-shrink-0"
+                onClick={() => setShowSyncModal(true)}
+                title={`${pendingSyncCount} unsynced change${pendingSyncCount > 1 ? 's' : ''}`}
+                style={{ backgroundColor: 'rgba(255,152,0,0.2)', fontSize: '0.8rem', lineHeight: '1.2' }}
+              >
+                <i className="bi bi-cloud-arrow-up-fill text-warning header-sync-icon" style={{ fontSize: '0.9rem' }} />
+                <span className="fw-bold text-warning">{pendingSyncCount}</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -394,5 +425,32 @@ export default function Header({
         </div>
       </div>
     </header>
+
+    {/* Sync Modal Overlay */}
+    {showSyncModal && (
+      <div
+        className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center"
+        style={{ zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+        onClick={(e) => { if (e.target === e.currentTarget) setShowSyncModal(false); }}
+      >
+        <div
+          className="position-relative mx-3 w-100 sync-modal-slide-in"
+          style={{ maxWidth: '420px' }}
+        >
+          {/* Close button */}
+          <button
+            type="button"
+            className="btn btn-sm btn-light rounded-circle position-absolute shadow"
+            style={{ top: '-12px', right: '-6px', zIndex: 10, width: '32px', height: '32px' }}
+            onClick={() => setShowSyncModal(false)}
+            aria-label="Close sync"
+          >
+            <i className="bi bi-x-lg" style={{ fontSize: '0.75rem' }} />
+          </button>
+          <SyncButton uid={currentUser?.uid} onSyncComplete={() => setShowSyncModal(false)} />
+        </div>
+      </div>
+    )}
+    </>
   );
 }

@@ -65,5 +65,13 @@ export const useNotifications = (user) => {
     return () => unsubscribe();
   }, []);
 
-  return { permission, requestPermission, fcmToken };
+  const [isMuted, setIsMuted] = useState(() => localStorage.getItem('notifications_muted') === 'true');
+
+  const toggleMute = () => {
+    const newState = !isMuted;
+    setIsMuted(newState);
+    localStorage.setItem('notifications_muted', String(newState));
+  };
+
+  return { permission, requestPermission, fcmToken, isMuted, toggleMute };
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useProducts } from '../hooks/useProducts';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -21,6 +21,9 @@ const MILESTONES = [
   { days: 730, label: '2y', emoji: '👑', color: '#ff6b6b' }
 ];
 
+import SyncButton from '../components/SyncButton';
+import { getSyncQueue } from '../utils/localSyncManager';
+
 export default function ProductLifePage({ currentUser, onBack }) {
   const { products, loading, addProduct, updateProduct, logRelapse, destroyProduct, deleteProduct } = useProducts(currentUser?.uid);
   
@@ -38,6 +41,21 @@ export default function ProductLifePage({ currentUser, onBack }) {
   const [editName, setEditName] = useState('');
   const [editEmoji, setEditEmoji] = useState('');
   const [editStartDate, setEditStartDate] = useState('');
+
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
+  const [showSyncModal, setShowSyncModal] = useState(false);
+
+  useEffect(() => {
+    const checkSync = async () => {
+      try {
+        const items = await getSyncQueue();
+        setPendingSyncCount(items.length);
+      } catch (e) {}
+    };
+    checkSync();
+    window.addEventListener('syncQueueUpdated', checkSync);
+    return () => window.removeEventListener('syncQueueUpdated', checkSync);
+  }, []);
 
   const activeProducts = products.filter(p => p.status === 'active');
   const fallenProducts = products.filter(p => p.status === 'destroyed');
@@ -129,16 +147,48 @@ export default function ProductLifePage({ currentUser, onBack }) {
             <i className="bi bi-box-seam text-info" /> Product Life
           </h4>
         </div>
-        {activeView === 'list' && (
-          <button 
-            className="btn btn-sm text-black fw-bold rounded-pill px-3"
-            style={{ background: '#00d4ff', boxShadow: '0 0 10px rgba(0,212,255,0.4)' }}
-            onClick={() => setActiveView('add')}
-          >
-            <i className="bi bi-plus-lg" /> Add
-          </button>
-        )}
+        <div className="d-flex align-items-center gap-2">
+          {pendingSyncCount > 0 && (
+            <button
+              type="button"
+              className="btn btn-sm rounded-pill px-2 py-1 d-flex align-items-center gap-1 border border-warning shadow-sm hover-scale flex-shrink-0"
+              onClick={() => setShowSyncModal(true)}
+              style={{ backgroundColor: 'rgba(255,152,0,0.2)', fontSize: '0.8rem' }}
+            >
+              <i className="bi bi-cloud-arrow-up-fill text-warning" />
+              <span className="fw-bold text-warning">{pendingSyncCount}</span>
+            </button>
+          )}
+          {activeView === 'list' && (
+            <button 
+              className="btn btn-sm text-black fw-bold rounded-pill px-3 flex-shrink-0"
+              style={{ background: '#00d4ff', boxShadow: '0 0 10px rgba(0,212,255,0.4)' }}
+              onClick={() => setActiveView('add')}
+            >
+              <i className="bi bi-plus-lg" /> Add
+            </button>
+          )}
+        </div>
       </header>
+
+      {/* SYNC MODAL */}
+      {showSyncModal && (
+        <div 
+          className="modal-overlay position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center z-3" 
+          style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(15px)', zIndex: 1100 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowSyncModal(false); }}
+        >
+          <div className="position-relative" style={{ width: '90%', maxWidth: '350px' }}>
+            <button 
+              className="btn btn-link text-white position-absolute top-0 end-0 mt-2 me-2 p-1 hover-scale z-3"
+              onClick={() => setShowSyncModal(false)}
+            >
+              <i className="bi bi-x-lg fs-5"></i>
+            </button>
+            <SyncButton uid={currentUser?.uid} onSyncComplete={() => setShowSyncModal(false)} />
+          </div>
+        </div>
+      )}
 
       {/* MAIN CONTENT */}
       <main className="flex-grow-1 overflow-auto p-3 pb-5">

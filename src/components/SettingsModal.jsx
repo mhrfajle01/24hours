@@ -6,7 +6,6 @@ import { useSound, DEFAULT_SOUNDS } from '../contexts/SoundContext';
 import TagDropdown from './TagDropdown';
 import { useNotifications } from '../hooks/useNotifications';
 import TodoAppModal from './TodoAppModal';
-import SyncButton from './SyncButton';
 
 /**
  * SettingsModal — handles app-level configuration only.
@@ -37,7 +36,7 @@ export default function SettingsModal({
 }) {
   const fileInputRef = useRef(null);
   const { soundSettings, updateSoundSetting, playSound } = useSound();
-  const { permission, requestPermission } = useNotifications(currentUser);
+  const { permission, requestPermission, isMuted, toggleMute } = useNotifications(currentUser);
 
   // Unlock modal confirmation state: null | { featureKey, name, cost, onSuccess }
   const [unlockModal, setUnlockModal] = useState(null);
@@ -806,14 +805,24 @@ export default function SettingsModal({
                 <div className="d-flex flex-column gap-3">
                   <div className="d-flex justify-content-between align-items-center">
                     <div>
-                      <h6 className="mb-1 text-dark small fw-bold">Allow Push Notifications</h6>
+                      <h6 className="mb-1 text-dark small fw-bold">Push Notifications</h6>
                       <p className="text-secondary mb-0" style={{ fontSize: '0.75rem' }}>
                         Get reminders and daily check-in alerts on your device.
                       </p>
                     </div>
                     <div>
                       {permission === 'granted' ? (
-                        <span className="badge bg-success">Enabled</span>
+                        <div className="form-check form-switch m-0">
+                          <input
+                            className="form-check-input shadow-none"
+                            type="checkbox"
+                            role="switch"
+                            checked={!isMuted}
+                            onChange={toggleMute}
+                            id="notificationToggle"
+                            style={{ cursor: 'pointer' }}
+                          />
+                        </div>
                       ) : permission === 'denied' ? (
                         <span className="badge bg-danger">Blocked in Browser</span>
                       ) : (
@@ -1791,11 +1800,14 @@ export default function SettingsModal({
 
               {/* Offline Sync Queue */}
               <div style={settingStyle('data')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
-                <h6 className="fw-bold text-dark mb-3 d-flex align-items-center gap-2">
-                  <i className="bi bi-magic" style={{ color: '#075E54' }} />
+                <h6 className="fw-bold text-dark mb-2 d-flex align-items-center gap-2">
+                  <i className="bi bi-cloud-arrow-up-fill" style={{ color: '#075E54' }} />
                   Pending Sync Data
                 </h6>
-                <SyncButton uid={currentUser?.uid} />
+                <p className="text-muted small mb-0">
+                  <i className="bi bi-info-circle me-1" />
+                  Unsynced changes now appear as a <span className="fw-bold text-warning">cloud badge with count</span> in the top header bar. Tap it to sync your data.
+                </p>
               </div>
 
               {/* Browser Storage Management */}

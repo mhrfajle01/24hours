@@ -40,14 +40,30 @@ export function useProducts(userId) {
       return;
     }
     
+    const cacheKey = `products_cache_${userId}`;
     let currentSnapshotData = [];
+    
+    // Attempt to load from cache immediately
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        currentSnapshotData = JSON.parse(cached);
+        fetchAndMergeProducts(currentSnapshotData);
+      }
+    } catch (e) {}
+
     const q = query(
       collection(db, 'products'),
       where('userId', '==', userId)
     );
     const unsub = onSnapshot(q, (snap) => {
       currentSnapshotData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      try { localStorage.setItem(cacheKey, JSON.stringify(currentSnapshotData)); } catch(e) {}
       fetchAndMergeProducts(currentSnapshotData);
+    }, (error) => {
+      console.error('Products snapshot error:', error);
+      fetchAndMergeProducts(currentSnapshotData);
+      setLoading(false);
     });
 
     const handleLocalSync = () => fetchAndMergeProducts(currentSnapshotData);
