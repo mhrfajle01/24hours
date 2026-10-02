@@ -138,5 +138,11 @@ service cloud.firestore {
     match /wallets/{userId} {
       allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
     }
+
+    // Rules for stories
+    match /stories/{storyId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
   }
 }

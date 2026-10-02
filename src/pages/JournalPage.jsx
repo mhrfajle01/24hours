@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useJournals } from '../hooks/useJournals';
+import { useFirestore } from '../hooks/useFirestore';
 import { getTodayDateString } from '../utils/helpers';
 
 // Emojis and descriptions for moods
@@ -70,6 +71,7 @@ const STYLES_AND_THEMES = {
 
 export default function JournalPage({ currentUser, onBack, initialDate }) {
   const { entries, loading, addJournalEntry, updateJournalEntry, deleteJournalEntry } = useJournals(currentUser?.uid);
+  const { pointsData, updatePoints } = useFirestore(currentUser?.uid);
   const [selectedTheme, setSelectedTheme] = useState(() => localStorage.getItem('journal-theme') || 'midnight');
   
   // Editor state
@@ -292,6 +294,14 @@ export default function JournalPage({ currentUser, onBack, initialDate }) {
         await updateJournalEntry(editId, data);
       } else {
         await addJournalEntry(data);
+        // Story Token Logic on new journal entry
+        const currentBlocks = pointsData?.timeBlocksForStory || 0;
+        if (currentBlocks + 1 >= 3) {
+           await updatePoints(0, 'Earned 1 Story Token!', 'earn', { timeBlocksForStory: 0, storyTokens: (pointsData?.storyTokens || 0) + 1 }, `story-token-journal-${Date.now()}`);
+           alert('You earned 1 Story Token for journaling!');
+        } else {
+           await updatePoints(0, '', 'earn', { timeBlocksForStory: currentBlocks + 1 }, `story-progress-journal-${Date.now()}`);
+        }
       }
       localStorage.removeItem(draftKey); // Clear draft after save
       resetForm();

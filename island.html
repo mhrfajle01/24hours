@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinite Island</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #0f172a;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+        canvas:active {
+            cursor: grabbing;
+        }
+        .ui-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        button {
+            border: none;
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+            color: #fff;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.2);
+        }
+        button:active {
+            transform: translateY(1px);
+        }
+        #btn-todo { background: linear-gradient(135deg, #ef4444, #b91c1c); box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); }
+        #btn-journal { background: linear-gradient(135deg, #3b82f6, #1d4ed8); box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4); }
+        #btn-wallet { background: linear-gradient(135deg, #eab308, #a16207); box-shadow: 0 4px 15px rgba(234, 179, 8, 0.4); }
+        
+        .stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 15px;
+            border-radius: 15px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="islandCanvas"></canvas>
+        <div class="stats">
+            <h2 style="margin:0 0 5px 0; font-size: 18px;">Total Trees: <span id="tree-count">0</span></h2>
+            <p style="margin:0; font-size: 12px; opacity: 0.8;">Drag to pan around your infinite island</p>
+        </div>
+        <div class="ui-panel">
+            <button id="btn-todo" onclick="plantTree('todo')">Complete Todo</button>
+            <button id="btn-journal" onclick="plantTree('journal')">Write Journal</button>
+            <button id="btn-wallet" onclick="plantTree('wallet')">Update Wallet</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('islandCanvas');
+        const ctx = canvas.getContext('2d');
+        const countDisplay = document.getElementById('tree-count');
+
+        let width = canvas.width = window.innerWidth;
+        let height = canvas.height = window.innerHeight;
+
+        let trees = [];
+        let cameraX = 0;
+        let cameraY = 0;
+        let isDragging = false;
+        let dragStartX, dragStartY;
+
+        // Colors based on actions
+        const themes = {
+            todo: { leaf: 'rgba(239, 68, 68, 0.8)', glow: '#ef4444' },
+            journal: { leaf: 'rgba(59, 130, 246, 0.8)', glow: '#3b82f6' },
+            wallet: { leaf: 'rgba(234, 179, 8, 0.8)', glow: '#eab308' }
+        };
+
+        window.addEventListener('resize', () => {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            draw();
+        });
+
+        // Panning mechanics
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragStartX = e.clientX - cameraX;
+            dragStartY = e.clientY - cameraY;
+        });
+
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            cameraX = e.clientX - dragStartX;
+            cameraY = e.clientY - dragStartY;
+            draw();
+        });
+
+        function plantTree(action) {
+            // Spawn near the center but expand infinitely outward as more trees appear
+            const spread = 50 + (trees.length * 3);
+            const x = (Math.random() - 0.5) * spread;
+            const y = (Math.random() - 0.5) * spread;
+            const size = 30 + Math.random() * 40;
+            
+            trees.push({ x, y, size, action, seed: Math.random() * 9999 });
+            
+            countDisplay.innerText = trees.length;
+            
+            // Auto-pan slightly towards the new tree
+            cameraX = -x + width/2;
+            cameraY = -y + height/2 + 100;
+            
+            draw();
+        }
+
+        // Procedural fractal tree generation
+        function drawFractalTree(x, y, len, angle, branchWidth, color1, color2, depth) {
+            ctx.beginPath();
+            ctx.save();
+            ctx.strokeStyle = depth > 2 ? color1 : '#451a03'; // Trunk vs Leaves
+            ctx.fillStyle = color1;
+            ctx.shadowBlur = depth > 4 ? 15 : 0;
+            ctx.shadowColor = color2;
+            ctx.lineWidth = branchWidth;
+            ctx.translate(x, y);
+            ctx.rotate(angle * Math.PI / 180);
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, -len);
+            ctx.stroke();
+
+            if (depth < 6) {
+                // Leaf circles at the end of branches
+                if(depth > 3) {
+                    ctx.beginPath();
+                    ctx.arc(0, -len, branchWidth * 3, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                
+                // Branch out
+                drawFractalTree(0, -len, len * 0.75, angle + 25, branchWidth * 0.7, color1, color2, depth + 1);
+                drawFractalTree(0, -len, len * 0.75, angle - 25, branchWidth * 0.7, color1, color2, depth + 1);
+            }
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw ground/grid dots for infinite feel
+            ctx.fillStyle = 'rgba(255,255,255,0.05)';
+            const gridSize = 50;
+            const offsetX = cameraX % gridSize;
+            const offsetY = cameraY % gridSize;
+            for(let i = -gridSize; i < width + gridSize; i += gridSize) {
+                for(let j = -gridSize; j < height + gridSize; j += gridSize) {
+                    ctx.beginPath();
+                    ctx.arc(i + offsetX, j + offsetY, 1, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            }
+
+            // Draw trees sorted by Y for fake 3D depth
+            trees.sort((a, b) => a.y - b.y).forEach(tree => {
+                const screenX = tree.x + cameraX;
+                const screenY = tree.y + cameraY;
+                
+                // Only draw if on screen (performance optimization for infinite growth)
+                if(screenX > -100 && screenX < width + 100 && screenY > -100 && screenY < height + 100) {
+                    const theme = themes[tree.action];
+                    drawFractalTree(screenX, screenY, tree.size, 0, tree.size / 6, theme.leaf, theme.glow, 0);
+                }
+            });
+        }
+
+        // Init
+        cameraX = width / 2;
+        cameraY = height / 2 + 100;
+        draw();
+    </script>
+</body>
+</html>

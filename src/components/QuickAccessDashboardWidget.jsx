@@ -11,8 +11,10 @@ const baseFeatures = [
   { id: 'wallet', title: 'Wallet', icon: 'bi-wallet2', color: '#075E54' },
   { id: 'insights', title: 'Insights', icon: 'bi-bar-chart-line-fill', color: '#0d6efd' },
   { id: 'feature-hub', title: 'Hub', icon: 'bi-grid-1x2-fill', color: '#20c997' },
+  { id: 'stories', title: 'Stories', icon: 'bi-book-half', color: '#ffc107' },
   { id: 'survey', title: 'Survey', icon: 'bi-clipboard2-check', color: '#e83e8c' },
-  { id: 'product-life', title: 'Products', icon: 'bi-box-seam', color: '#0dcaf0' }
+  { id: 'product-life', title: 'Products', icon: 'bi-box-seam', color: '#0dcaf0' },
+  { id: 'virtual-island', title: 'Island', icon: 'bi-tree', color: '#2eb82e' }
 ];
 
 export default function QuickAccessDashboardWidget({ 
@@ -24,8 +26,10 @@ export default function QuickAccessDashboardWidget({
   onOpenWalletDist,
   onOpenInsights,
   onOpenFeatureHub,
+  onOpenStories,
   onOpenSurvey,
-  onOpenProductLife
+  onOpenProductLife,
+  onOpenVirtualIsland
 }) {
   const [pinnedFeatures, setPinnedFeatures] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -160,8 +164,10 @@ export default function QuickAccessDashboardWidget({
     if (id === 'wallet') onOpenWallet?.();
     if (id === 'insights') onOpenInsights?.();
     if (id === 'feature-hub') onOpenFeatureHub?.();
+    if (id === 'stories') onOpenStories?.();
     if (id === 'survey') onOpenSurvey?.();
     if (id === 'product-life') onOpenProductLife?.();
+    if (id === 'virtual-island') onOpenVirtualIsland?.();
   };
 
   if (pinnedFeatures.length === 0) {

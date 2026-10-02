@@ -3,6 +3,7 @@ import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, query, runT
 import { db } from '../firebase/firebase';
 import { getStreakDays } from '../hooks/useStreaks';
 import CustomFeatureManager from '../components/CustomFeatureManager';
+import AdminStoriesTab from '../components/AdminStoriesTab';
 import { sendPushToUser, sendPushToAllUsers, getAllUserFCMTokens } from '../utils/pushNotifications';
 
 const MOOD_MAP = {
@@ -846,34 +847,41 @@ export default function AdminPage({
           <div className="admin-kpi kpi-green"><i className="bi bi-check-circle-fill" /><strong>{activeUsers}</strong><span>Active</span></div>
         </section>
 
-        <div className="admin-main-tabs" style={{ display: 'flex', gap: '1rem', padding: '0 1rem', marginBottom: '1rem', marginTop: '1rem' }}>
+        <div className="admin-main-tabs" style={{ display: 'flex', gap: '0.5rem', padding: '0 1rem', marginBottom: '1rem', marginTop: '1rem', overflowX: 'auto', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', flexWrap: 'nowrap' }}>
           <button 
             className={`admin-main-tab ${adminTab === 'users' ? 'active' : ''}`}
             onClick={() => setAdminTab('users')}
-            style={{ flex: 1, padding: '0.8rem', borderRadius: '0.5rem', border: 'none', background: adminTab === 'users' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}
+            style={{ minWidth: 'fit-content', padding: '0.6rem 1rem', borderRadius: '2rem', border: 'none', background: adminTab === 'users' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}
           >
-            Users Directory
+            <i className="bi bi-people-fill" style={{ marginRight: '0.3rem' }} />Users
           </button>
           <button 
             className={`admin-main-tab ${adminTab === 'creator' ? 'active' : ''}`}
             onClick={() => setAdminTab('creator')}
-            style={{ flex: 1, padding: '0.8rem', borderRadius: '0.5rem', border: 'none', background: adminTab === 'creator' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}
+            style={{ minWidth: 'fit-content', padding: '0.6rem 1rem', borderRadius: '2rem', border: 'none', background: adminTab === 'creator' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}
           >
-            My Creator Profile
+            <i className="bi bi-person-badge" style={{ marginRight: '0.3rem' }} />Creator
           </button>
           <button 
             className={`admin-main-tab ${adminTab === 'features' ? 'active' : ''}`}
             onClick={() => setAdminTab('features')}
-            style={{ flex: 1, padding: '0.8rem', borderRadius: '0.5rem', border: 'none', background: adminTab === 'features' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}
+            style={{ minWidth: 'fit-content', padding: '0.6rem 1rem', borderRadius: '2rem', border: 'none', background: adminTab === 'features' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}
           >
-            Features
+            <i className="bi bi-gear" style={{ marginRight: '0.3rem' }} />Features
           </button>
           <button 
             className={`admin-main-tab ${adminTab === 'push' ? 'active' : ''}`}
             onClick={() => { setAdminTab('push'); loadPushUsers(); }}
-            style={{ flex: 1, padding: '0.8rem', borderRadius: '0.5rem', border: 'none', background: adminTab === 'push' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer' }}
+            style={{ minWidth: 'fit-content', padding: '0.6rem 1rem', borderRadius: '2rem', border: 'none', background: adminTab === 'push' ? '#8a2be2' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}
           >
             <i className="bi bi-bell-fill" style={{ marginRight: '0.3rem' }} />Push
+          </button>
+          <button 
+            className={`admin-main-tab ${adminTab === 'stories' ? 'active' : ''}`}
+            onClick={() => setAdminTab('stories')}
+            style={{ minWidth: 'fit-content', padding: '0.6rem 1rem', borderRadius: '2rem', border: 'none', background: adminTab === 'stories' ? '#f59e0b' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            <i className="bi bi-book" style={{ marginRight: '0.3rem' }} />Stories
           </button>
         </div>
 
@@ -896,6 +904,12 @@ export default function AdminPage({
            <div className="px-3 pb-5">
              <CustomFeatureManager />
            </div>
+        )}
+
+        {adminTab === 'stories' && (
+          <div className="px-3 pb-5">
+            <AdminStoriesTab currentUser={currentUser} notify={notify} audit={audit} />
+          </div>
         )}
 
         {adminTab === 'push' && (

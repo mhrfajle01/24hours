@@ -22,11 +22,13 @@ import PointsModal from '../components/PointsModal';
 import IslamicPage from './IslamicPage';
 import JournalPage from './JournalPage';
 import StreaksPage from './StreaksPage';
+import StoriesPage from './StoriesPage';
 import FeatureHubPage from './FeatureHubPage';
 import WalletPage from './WalletPage';
 import AdminPage from './AdminPage';
 import SurveyPage from './SurveyPage';
 import ProductLifePage from './ProductLifePage';
+import VirtualIslandPage from './VirtualIslandPage';
 import NewUserTutorial from '../components/NewUserTutorial';
 import GlobalSearch from '../components/GlobalSearch';
 import PomodoroModal from '../components/PomodoroModal';
@@ -198,6 +200,7 @@ export default function Home() {
 
   // ── Streaks Page State ─────────────────────────────────────────────────
   const [isStreaksOpen, setIsStreaksOpen] = useState(false);
+  const [isStoriesOpen, setIsStoriesOpen] = useState(false);
   const [openHabitScannerOnStreaks, setOpenHabitScannerOnStreaks] = useState(false);
   const [isFeatureHubOpen, setIsFeatureHubOpen] = useState(false);
   const [isWalletOpen, setIsWalletOpen] = useState(false);
@@ -206,6 +209,7 @@ export default function Home() {
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   const [isSurveyOpen, setIsSurveyOpen] = useState(false);
   const [isProductsLifeOpen, setIsProductsLifeOpen] = useState(false);
+  const [isVirtualIslandOpen, setIsVirtualIslandOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
     try {
       return localStorage.getItem('24hours-tutorial-complete') ? -1 : 0;
@@ -227,11 +231,13 @@ export default function Home() {
       const path = window.location.pathname.replace(/\/+$/, '') || '/';
       setIsJournalOpen(path === '/journal');
       setIsStreaksOpen(path === '/streaks');
+      setIsStoriesOpen(path === '/stories');
       setIsWalletOpen(path === '/wallet');
       if (path !== '/wallet') setWalletInitialDist(null);
       setIsFeatureHubOpen(path === '/productivity-hub');
       setIsAdminOpen(path === '/admin');
       setIsProductsLifeOpen(path === '/product-life');
+      setIsVirtualIslandOpen(path === '/virtual-island');
       if (path === '/islamic') setTheme('islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
@@ -403,7 +409,9 @@ export default function Home() {
         setIsFeatureHubOpen(false);
         setIsJournalOpen(false);
         setIsStreaksOpen(false);
+        setIsStoriesOpen(false);
         setIsWalletOpen(false);
+        setIsVirtualIslandOpen(false);
         setIsInsightsOpen(false);
         setActiveModal(null);
       }
@@ -1111,6 +1119,20 @@ export default function Home() {
       if (playFeedback && newStatus === 'Completed') playSound('points');
       if (playFeedback && newStatus === 'Missed') playSound('missed');
       await reconcileBlockPoints(reportObj, newStatus);
+      
+      if (newStatus === 'Completed') {
+        await updatePoints(0, 'Earned 1 Story Token!', 'earn', { storyTokens: (pointsData?.storyTokens || 0) + 1 }, `story-token-${reportObj.id}`);
+        if (playFeedback) showToast('Epic! You earned 1 Story Token for completing a Time Block!', 'success');
+      } else if (oldStatus === 'Completed' && newStatus !== 'Completed') {
+        let newTokens = pointsData?.storyTokens || 0;
+        
+        if (newTokens > 0) {
+          newTokens -= 1;
+          if (playFeedback) showToast('Reverted: Lost 1 Story Token.', 'warning');
+        }
+        
+        await updatePoints(0, '', 'spend', { storyTokens: newTokens }, `story-revert-${reportObj.id}`);
+      }
     }
   };
 
@@ -1752,6 +1774,32 @@ export default function Home() {
     );
   }
 
+  // ── Virtual Island Page ────────────────────────────────────────────────
+  if (isVirtualIslandOpen) {
+    return (
+      <VirtualIslandPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsVirtualIslandOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
+  // ── Stories Page ────────────────────────────────────────────────
+  if (isStoriesOpen) {
+    return (
+      <StoriesPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsStoriesOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
   // ── Streaks Page: Full separate page ──────────────────────────────────
   if (isStreaksOpen) {
     return (
@@ -1858,6 +1906,11 @@ export default function Home() {
             setIsSurveyOpen(true);
             navigateTo('/survey');
           }}
+          onOpenVirtualIsland={() => {
+            setIsFeatureHubOpen(true);
+            setIsVirtualIslandOpen(true);
+            navigateTo('/virtual-island');
+          }}
           fullPage={window.location.pathname === '/productivity-hub'}
         />
       )}
@@ -1958,6 +2011,10 @@ export default function Home() {
                 setIsWalletOpen(true);
                 navigateTo('/wallet');
               }}
+              onOpenStories={() => {
+                setIsStoriesOpen(true);
+                navigateTo('/stories');
+              }}
               onOpenInsights={() => setIsInsightsOpen(true)}
               onOpenFeatureHub={handleOpenFeatureHub}
               onOpenSurvey={() => {
@@ -1967,6 +2024,10 @@ export default function Home() {
               onOpenProductLife={() => {
                 setIsProductsLifeOpen(true);
                 navigateTo('/product-life');
+              }}
+              onOpenVirtualIsland={() => {
+                setIsVirtualIslandOpen(true);
+                navigateTo('/virtual-island');
               }}
             />
             <TodoDashboardWidget 

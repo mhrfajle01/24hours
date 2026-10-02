@@ -11,6 +11,8 @@ const sections = [
   { id: 'insights', label: 'Insights', icon: 'bi-bar-chart-line-fill' },
   { id: 'community', label: 'Custom', icon: 'bi-stars' },
   { id: 'survey', label: 'Survey', icon: 'bi-clipboard2-check' },
+  { id: 'virtual-island', label: 'Island', icon: 'bi-tree' },
+  { id: 'story-books', label: 'Stories', icon: 'bi-book' },
 ];
 
 const cards = [
@@ -20,6 +22,8 @@ const cards = [
   { id: 'wallet', title: 'Wallet', text: 'Manage total balance and distribution categories.', icon: 'bi-wallet2', color: '#075E54' },
   { id: 'insights', title: 'Insights', text: 'Review consistency, goals, and productivity trends.', icon: 'bi-bar-chart-line-fill', color: '#0d6efd' },
   { id: 'survey', title: 'Survey', text: 'Create and run daily habit surveys with animations.', icon: 'bi-clipboard2-check', color: '#e83e8c' },
+  { id: 'virtual-island', title: 'Virtual Island', text: 'Grow your endless island by completing habits.', icon: 'bi-tree', color: '#2eb82e' },
+  { id: 'story-books', title: 'Story Books', text: 'Read exclusive productivity stories and unlock chapters.', icon: 'bi-book', color: '#f59e0b' },
 ];
 
 export default function FeatureHubPage({
@@ -32,6 +36,8 @@ export default function FeatureHubPage({
   onOpenWallet,
   onOpenInsights,
   onOpenSurvey,
+  onOpenVirtualIsland,
+  onOpenStoryBooks,
   fullPage = false,
 }) {
   const [activeSection, setActiveSection] = useState('overview');
@@ -46,6 +52,8 @@ export default function FeatureHubPage({
     if (id === 'wallet') onOpenWallet?.();
     if (id === 'insights') onOpenInsights?.();
     if (id === 'survey') onOpenSurvey?.();
+    if (id === 'virtual-island') onOpenVirtualIsland?.();
+    if (id === 'story-books') onOpenStoryBooks?.();
   };
 
   return (
@@ -186,12 +194,32 @@ export default function FeatureHubPage({
           </div>
         )}
 
-        {activeSection === 'survey' && (
+        { activeSection === 'survey' && (
           <div className="card border-0 shadow-sm rounded-4 p-3">
             <h5 className="fw-bold text-dark mb-1"><i className="bi bi-clipboard2-check me-2" style={{ color: '#e83e8c' }} />Survey</h5>
             <p className="text-secondary small">Create custom daily surveys, run them with animations, and track previous results.</p>
             <button className="btn rounded-pill fw-bold text-white" style={{ background: '#e83e8c' }} onClick={onOpenSurvey}>
               <i className="bi bi-arrow-right-circle me-1" />Open Survey
+            </button>
+          </div>
+        )}
+
+        {activeSection === 'virtual-island' && (
+          <div className="card border-0 shadow-sm rounded-4 p-3">
+            <h5 className="fw-bold text-dark mb-1"><i className="bi bi-tree me-2" style={{ color: '#2eb82e' }} />Virtual Island</h5>
+            <p className="text-secondary small">Visit your endless island that grows procedurally based on your habits.</p>
+            <button className="btn rounded-pill fw-bold text-white" style={{ background: '#2eb82e' }} onClick={onOpenVirtualIsland}>
+              <i className="bi bi-tree me-1" />Open Island
+            </button>
+          </div>
+        )}
+
+        {activeSection === 'story-books' && (
+          <div className="card border-0 shadow-sm rounded-4 p-3">
+            <h5 className="fw-bold text-dark mb-1"><i className="bi bi-book me-2" style={{ color: '#f59e0b' }} />Story Books</h5>
+            <p className="text-secondary small">Read exclusive productivity stories and unlock chapters.</p>
+            <button className="btn rounded-pill fw-bold text-white" style={{ background: '#f59e0b' }} onClick={onOpenStoryBooks}>
+              <i className="bi bi-book me-1" />Open Stories
             </button>
           </div>
         )}
