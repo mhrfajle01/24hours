@@ -23,6 +23,7 @@ import IslamicPage from './IslamicPage';
 import JournalPage from './JournalPage';
 import StreaksPage from './StreaksPage';
 import StoriesPage from './StoriesPage';
+import TaskPlannerPage from './TaskPlannerPage';
 import FeatureHubPage from './FeatureHubPage';
 import WalletPage from './WalletPage';
 import AdminPage from './AdminPage';
@@ -143,6 +144,7 @@ export default function Home() {
     streakData,
     streakLoaded,
     streakRequirements,
+    refreshStreak,
     weeklyStats,
     dailyGoal,
     updateDailyGoal,
@@ -210,6 +212,7 @@ export default function Home() {
   const [isSurveyOpen, setIsSurveyOpen] = useState(false);
   const [isProductsLifeOpen, setIsProductsLifeOpen] = useState(false);
   const [isVirtualIslandOpen, setIsVirtualIslandOpen] = useState(false);
+  const [isTaskPlannerOpen, setIsTaskPlannerOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
     try {
       return localStorage.getItem('24hours-tutorial-complete') ? -1 : 0;
@@ -238,6 +241,7 @@ export default function Home() {
       setIsAdminOpen(path === '/admin');
       setIsProductsLifeOpen(path === '/product-life');
       setIsVirtualIslandOpen(path === '/virtual-island');
+      setIsTaskPlannerOpen(path === '/task-planner');
       if (path === '/islamic') setTheme('islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
@@ -1817,6 +1821,19 @@ export default function Home() {
     );
   }
 
+  // ── Task Planner Page: Full separate page ──────────────────────────────
+  if (isTaskPlannerOpen) {
+    return (
+      <TaskPlannerPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsTaskPlannerOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
   // ── Wallet Page: Full separate page ──────────────────────────────────
   if (isWalletOpen) {
     return (
@@ -1978,6 +1995,7 @@ export default function Home() {
               onUpdateDailyGoal={updateDailyGoal}
               heatmapData={heatmapData}
               onExcuseDay={excuseDay}
+              onRefreshStreak={refreshStreak}
               onAddStreakFreeze={addStreakFreeze}
               onOpenPoints={handleOpenPoints}
               onOpenPlan={handleOpenAddPlan}
@@ -2014,6 +2032,10 @@ export default function Home() {
               onOpenStories={() => {
                 setIsStoriesOpen(true);
                 navigateTo('/stories');
+              }}
+              onOpenTaskPlanner={() => {
+                setIsTaskPlannerOpen(true);
+                navigateTo('/task-planner');
               }}
               onOpenInsights={() => setIsInsightsOpen(true)}
               onOpenFeatureHub={handleOpenFeatureHub}

@@ -1550,6 +1550,7 @@ export const useFirestore = (selectedDate, uid) => {
     streakData,
     streakLoaded,
     streakRequirements,
+    refreshStreak,
     weeklyStats,
     dailyGoal,
     updateDailyGoal,

@@ -66,12 +66,12 @@ service cloud.firestore {
         || (isAuthenticated() && request.auth.uid == userId);
     }
 
-    // Rules for user streaks tracking
+    // Rules for user streaks tracking (both global singleton and individual habit streaks)
     match /streaks/{streakId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
-      allow create: if isAuthenticated() && request.resource.data.uid == request.auth.uid;
-      allow update: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
-      allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || (isAdmin() && isOlderThan30Days());
+      allow read: if isAdmin() || (isAuthenticated() && (streakId == request.auth.uid || (resource != null && resource.data.uid == request.auth.uid)));
+      allow create: if isAuthenticated() && (streakId == request.auth.uid || request.resource.data.uid == request.auth.uid);
+      allow update: if isAdmin() || (isAuthenticated() && (streakId == request.auth.uid || resource.data.uid == request.auth.uid));
+      allow delete: if (isAuthenticated() && (streakId == request.auth.uid || resource.data.uid == request.auth.uid)) || (isAdmin() && isOlderThan30Days());
     }
 
     // Rules for user daily goals
