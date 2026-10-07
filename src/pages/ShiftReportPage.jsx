@@ -101,21 +101,31 @@ export default function ShiftReportPage({ currentUser, onBack }) {
       return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
     };
     
+    const div = '========================================';
+    
     // Summary rows
     const rows = [
-      ['Shift Tracker Report', filter.toUpperCase()],
-      [],
-      ['Total Produced', totalProduced],
-      ['Goal Completion', `${completionPct}%`],
-      ['Total Work Time', formatHrs(totalShiftTime)],
-      ['Total Break Time', formatHrs(totalBreakTime)],
-      [],
-      ['Date', 'Target', 'Actual Produced', 'Completion %', 'Work Time', 'Break Time', 'Blocks Detail']
+      [div],
+      ['🚀 SHIFT TRACKER REPORT', `PERIOD: ${filter.toUpperCase()}`],
+      [div],
+      [''],
+      ['--- SUMMARY METRICS ---'],
+      ['Total Produced:', totalProduced],
+      ['Overall Goal Completion:', `${completionPct}%`],
+      ['Total Work Time:', formatHrs(totalShiftTime)],
+      ['Total Break Time:', formatHrs(totalBreakTime)],
+      ['Days Tracked:', filteredData.length],
+      [''],
+      [div],
+      ['--- DAILY BREAKDOWN ---'],
+      ['Date', 'Target', 'Actual', 'Completion %', 'Work Time', 'Break Time', 'Efficiency', 'Blocks Detail']
     ];
     
     filteredData.forEach(day => {
       const blocksText = (day.blocks || []).map(b => `${b.start}-${b.end}: ${b.actual}/${Math.round(b.target)}`).join(' | ');
       const pct = day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0;
+      const efficiency = day.totalShiftSec > 0 ? ((day.actual / (day.totalShiftSec / 3600)).toFixed(1) + ' / hr') : 'N/A';
+      
       rows.push([
         day.date,
         day.target,
@@ -123,12 +133,13 @@ export default function ShiftReportPage({ currentUser, onBack }) {
         `${pct}%`,
         formatHrs(day.totalShiftSec || 0),
         formatHrs(day.totalBreakSec || 0),
+        efficiency,
         blocksText
       ]);
     });
     
     const csv = rows.map(r => r.map(escCSV).join(',')).join('\n');
-    const BOM = '\uFEFF'; // UTF-8 BOM for Excel compatibility
+    const BOM = '\uFEFF'; 
     const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -145,11 +156,11 @@ export default function ShiftReportPage({ currentUser, onBack }) {
     }
     
     try {
-      // Dynamically load SheetJS from CDN
-      if (!window.XLSX) {
+      // Dynamically load SheetJS with styling support from CDN
+      if (!window.XLSX || !window.XLSX.utils.book_new) {
         await new Promise((resolve, reject) => {
           const script = document.createElement('script');
-          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+          script.src = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
           script.onload = resolve;
           script.onerror = () => reject(new Error('Failed to load XLSX library'));
           document.head.appendChild(script);
@@ -159,54 +170,89 @@ export default function ShiftReportPage({ currentUser, onBack }) {
       const XLSX = window.XLSX;
       const wb = XLSX.utils.book_new();
       
-      // Summary sheet
+      const headerStyle = {
+        font: { bold: true, color: { rgb: "FFFFFF" }, sz: 12 },
+        fill: { fgColor: { rgb: "0EA5E9" } },
+        alignment: { horizontal: "center", vertical: "center" },
+        border: { top: { style: "thin", color: { rgb: "CCCCCC" } }, bottom: { style: "thin", color: { rgb: "CCCCCC" } }, left: { style: "thin", color: { rgb: "CCCCCC" } }, right: { style: "thin", color: { rgb: "CCCCCC" } } }
+      };
+      
+      const titleStyle = {
+        font: { bold: true, color: { rgb: "10B981" }, sz: 16 },
+        alignment: { horizontal: "left", vertical: "center" }
+      };
+
+      const dataStyle = {
+        alignment: { horizontal: "center", vertical: "center" },
+        border: { top: { style: "thin", color: { rgb: "EEEEEE" } }, bottom: { style: "thin", color: { rgb: "EEEEEE" } }, left: { style: "thin", color: { rgb: "EEEEEE" } }, right: { style: "thin", color: { rgb: "EEEEEE" } } }
+      };
+      
+      // -- SUMMARY SHEET --
       const summaryData = [
-        ['Shift Tracker Report', filter.toUpperCase()],
-        [],
-        ['Metric', 'Value'],
-        ['Total Produced', totalProduced],
-        ['Goal Completion', `${completionPct}%`],
-        ['Total Work Time', formatHrs(totalShiftTime)],
-        ['Total Break Time', formatHrs(totalBreakTime)],
-        ['Days Tracked', filteredData.length]
+        [{ v: '🚀 SHIFT TRACKER SUMMARY', s: titleStyle }, { v: '', s: titleStyle }],
+        [{ v: `Period: ${filter.toUpperCase()}`, s: { font: { italic: true, sz: 12 } } }, ''],
+        ['', ''],
+        [{ v: 'Metric', s: headerStyle }, { v: 'Value', s: headerStyle }],
+        [{ v: 'Total Produced', s: dataStyle }, { v: totalProduced, s: dataStyle }],
+        [{ v: 'Goal Completion', s: dataStyle }, { v: `${completionPct}%`, s: dataStyle }],
+        [{ v: 'Total Work Time', s: dataStyle }, { v: formatHrs(totalShiftTime), s: dataStyle }],
+        [{ v: 'Total Break Time', s: dataStyle }, { v: formatHrs(totalBreakTime), s: dataStyle }],
+        [{ v: 'Days Tracked', s: dataStyle }, { v: filteredData.length, s: dataStyle }]
       ];
       const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-      summarySheet['!cols'] = [{ wch: 20 }, { wch: 15 }];
+      summarySheet['!cols'] = [{ wch: 25 }, { wch: 20 }];
       XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
       
-      // Daily data sheet
-      const dailyHeaders = ['Date', 'Target', 'Actual', 'Completion %', 'Work Time', 'Break Time'];
-      const dailyRows = filteredData.map(day => [
-        day.date,
-        day.target,
-        day.actual,
-        day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0,
-        formatHrs(day.totalShiftSec || 0),
-        formatHrs(day.totalBreakSec || 0)
+      // -- DAILY SHEET --
+      const dailyHeaders = ['Date', 'Target', 'Actual', 'Completion %', 'Efficiency', 'Work Time', 'Break Time'].map(h => ({ v: h, s: headerStyle }));
+      const dailyRows = filteredData.map(day => {
+        const pct = day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0;
+        const efficiency = day.totalShiftSec > 0 ? ((day.actual / (day.totalShiftSec / 3600)).toFixed(1) + '/hr') : 'N/A';
+        return [
+          { v: day.date, s: dataStyle },
+          { v: day.target, s: dataStyle },
+          { v: day.actual, s: dataStyle },
+          { v: `${pct}%`, s: dataStyle },
+          { v: efficiency, s: dataStyle },
+          { v: formatHrs(day.totalShiftSec || 0), s: dataStyle },
+          { v: formatHrs(day.totalBreakSec || 0), s: dataStyle }
+        ];
+      });
+      const dailySheet = XLSX.utils.aoa_to_sheet([
+        [{ v: 'DAILY PRODUCTION REPORT', s: titleStyle }, '', '', '', '', '', ''],
+        ['', '', '', '', '', '', ''],
+        dailyHeaders, 
+        ...dailyRows
       ]);
-      const dailySheet = XLSX.utils.aoa_to_sheet([dailyHeaders, ...dailyRows]);
-      dailySheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+      dailySheet['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, dailySheet, 'Daily Report');
       
-      // Blocks detail sheet
-      const blockHeaders = ['Date', 'Block', 'Start', 'End', 'Target', 'Actual', 'Cumulative', 'Status'];
+      // -- BLOCKS SHEET --
+      const blockHeaders = ['Date', 'Block', 'Time Range', 'Target', 'Actual', 'Cumulative', 'Status'].map(h => ({ v: h, s: headerStyle }));
       const blockRows = [];
       filteredData.forEach(day => {
         (day.blocks || []).forEach((b, i) => {
+          const status = b.logged ? (b.actual >= b.target ? 'On Target' : 'Behind') : 'Not Logged';
+          const statusColor = status === 'On Target' ? "10B981" : status === 'Behind' ? "EF4444" : "94A3B8";
+          
           blockRows.push([
-            day.date,
-            `Block ${i + 1}`,
-            b.start,
-            b.end,
-            Math.round(b.target),
-            b.actual || 0,
-            b.cumulative || 0,
-            b.logged ? (b.actual >= b.target ? 'On Target' : 'Behind') : 'Not Logged'
+            { v: day.date, s: dataStyle },
+            { v: `Block ${i + 1}`, s: dataStyle },
+            { v: `${b.start} - ${b.end}`, s: dataStyle },
+            { v: Math.round(b.target), s: dataStyle },
+            { v: b.actual || 0, s: dataStyle },
+            { v: b.cumulative || 0, s: dataStyle },
+            { v: status, s: { ...dataStyle, font: { bold: true, color: { rgb: statusColor } } } }
           ]);
         });
       });
-      const blocksSheet = XLSX.utils.aoa_to_sheet([blockHeaders, ...blockRows]);
-      blocksSheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 12 }];
+      const blocksSheet = XLSX.utils.aoa_to_sheet([
+        [{ v: 'DETAILED BLOCK LOGS', s: titleStyle }, '', '', '', '', '', ''],
+        ['', '', '', '', '', '', ''],
+        blockHeaders, 
+        ...blockRows
+      ]);
+      blocksSheet['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 15 }];
       XLSX.utils.book_append_sheet(wb, blocksSheet, 'Block Details');
       
       XLSX.writeFile(wb, `Shift_Report_${filter}_${new Date().toISOString().split('T')[0]}.xlsx`);
