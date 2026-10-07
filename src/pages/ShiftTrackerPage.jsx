@@ -366,6 +366,16 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     save(nb, { earnedBreak: newEarnedBreak });
   };
 
+  const resetBlock = (id) => {
+    const nb = [...blocks];
+    nb[id].logged = false;
+    nb[id].actual = 0;
+    nb[id].cumulative = 0;
+    recalcTargets(nb, target);
+    setBlocks(nb);
+    save(nb);
+  };
+
   const currTimeStr = fmtTime(now);
   const currentBlockIdx = blocks.findIndex(b => currTimeStr >= b.start && currTimeStr < b.end);
   const totalProduced = blocks.reduce((s, b) => s + (b.logged ? b.actual : 0), 0);
@@ -511,9 +521,12 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                       {b.logged && <div style={{ fontSize: 12, color: '#888' }}>Block Prod: {b.actual}</div>}
                     </div>
                     {b.logged ? (
-                      <div style={{ textAlign: 'right' }}>
-                         <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', fontWeight: 700 }}>Total Run</div>
-                         <div style={{ fontSize: 18, fontWeight: 800, color: statusColor }}>{b.cumulative}</div>
+                      <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 12 }}>
+                         <button onClick={() => resetBlock(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: 4, color: '#888' }} title="Edit Block">✏️</button>
+                         <div>
+                           <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', fontWeight: 700 }}>Total Run</div>
+                           <div style={{ fontSize: 18, fontWeight: 800, color: statusColor }}>{b.cumulative}</div>
+                         </div>
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
@@ -539,6 +552,23 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                 onConfirm: null
               });
             }} style={{ width: '100%', padding: 14, background: 'linear-gradient(135deg, #10B981, #059669)', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 16, boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}>💾 Save to Report</button>
+            
+            <button onClick={() => {
+              setCustomAlert({
+                isOpen: true,
+                type: 'confirm',
+                title: 'Clear Data',
+                message: 'Are you sure you want to clear all entered data for this shift?',
+                onConfirm: () => {
+                  const nb = blocks.map(b => ({ ...b, logged: false, actual: 0, cumulative: 0 }));
+                  recalcTargets(nb, target);
+                  setBlocks(nb);
+                  save(nb);
+                  playSound('trash');
+                  setCustomAlert({ isOpen: false });
+                }
+              });
+            }} style={{ width: '100%', padding: 14, background: '#FFF4E5', color: '#FFB020', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 10 }}>Clear Entered Data</button>
             
             <button onClick={() => { 
               setCustomAlert({
