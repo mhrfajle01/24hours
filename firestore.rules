@@ -144,5 +144,20 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+
+    // Rules for Weekly Task Planner v2
+    match /taskPlannerV2/{userId}/weeks/{weekId} {
+      allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+    }
+
+    // Rules for Shift Tracker
+    match /shiftTracker/{userId} {
+      allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      
+      // Rules for Shift Report History
+      match /history/{docId} {
+        allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      }
+    }
   }
 }

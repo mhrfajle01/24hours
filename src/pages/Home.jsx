@@ -24,6 +24,8 @@ import JournalPage from './JournalPage';
 import StreaksPage from './StreaksPage';
 import StoriesPage from './StoriesPage';
 import TaskPlannerPage from './TaskPlannerPage';
+import ShiftTrackerPage from './ShiftTrackerPage';
+import ShiftReportPage from './ShiftReportPage';
 import FeatureHubPage from './FeatureHubPage';
 import WalletPage from './WalletPage';
 import AdminPage from './AdminPage';
@@ -213,6 +215,8 @@ export default function Home() {
   const [isProductsLifeOpen, setIsProductsLifeOpen] = useState(false);
   const [isVirtualIslandOpen, setIsVirtualIslandOpen] = useState(false);
   const [isTaskPlannerOpen, setIsTaskPlannerOpen] = useState(false);
+  const [isShiftTrackerOpen, setIsShiftTrackerOpen] = useState(false);
+  const [isShiftReportOpen, setIsShiftReportOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
     try {
       return localStorage.getItem('24hours-tutorial-complete') ? -1 : 0;
@@ -242,6 +246,8 @@ export default function Home() {
       setIsProductsLifeOpen(path === '/product-life');
       setIsVirtualIslandOpen(path === '/virtual-island');
       setIsTaskPlannerOpen(path === '/task-planner');
+      setIsShiftTrackerOpen(path === '/shift-tracker');
+      setIsShiftReportOpen(path === '/shift-report');
       if (path === '/islamic') setTheme('islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
@@ -1834,6 +1840,38 @@ export default function Home() {
     );
   }
 
+  // ── Shift Tracker Page: Full separate page ──────────────────────────────
+  if (isShiftTrackerOpen) {
+    return (
+      <ShiftTrackerPage
+        currentUser={currentUser}
+        onOpenReports={() => {
+          setIsShiftTrackerOpen(false);
+          setIsShiftReportOpen(true);
+          navigateTo('/shift-report');
+        }}
+        onBack={() => {
+          setIsShiftTrackerOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
+  // ── Shift Report Page ────────────────────────────────────────────────
+  if (isShiftReportOpen) {
+    return (
+      <ShiftReportPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsShiftReportOpen(false);
+          setIsShiftTrackerOpen(true);
+          navigateTo('/shift-tracker');
+        }}
+      />
+    );
+  }
+
   // ── Wallet Page: Full separate page ──────────────────────────────────
   if (isWalletOpen) {
     return (
@@ -2050,6 +2088,10 @@ export default function Home() {
               onOpenVirtualIsland={() => {
                 setIsVirtualIslandOpen(true);
                 navigateTo('/virtual-island');
+              }}
+              onOpenShiftTracker={() => {
+                setIsShiftTrackerOpen(true);
+                navigateTo('/shift-tracker');
               }}
             />
             <TodoDashboardWidget 
