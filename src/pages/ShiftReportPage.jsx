@@ -5,27 +5,40 @@ import { collection, query, getDocs, orderBy } from 'firebase/firestore';
 
 // Helper for pure SVG Bar Chart
 const BarChart = ({ data }) => {
-  const maxProd = Math.max(...data.map(d => Math.max(d.actual, d.target)), 1);
+  const chartData = [...data].reverse();
+  const maxProd = Math.max(...chartData.map(d => Math.max(d.actual || 0, d.target || 0)), 1);
+  
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', height: 200, gap: 8, padding: '20px 0', overflowX: 'auto' }}>
-      {data.map((day, i) => {
-        const heightPct = (day.actual / maxProd) * 100;
-        const targetPct = (day.target / maxProd) * 100;
-        const isSuccess = day.actual >= day.target;
+    <div style={{ display: 'flex', alignItems: 'flex-end', height: 220, gap: 12, paddingTop: 30, overflowX: 'auto', paddingBottom: 10, scrollbarWidth: 'none' }}>
+      {chartData.map((day, i) => {
+        const heightPct = Math.min(((day.actual || 0) / maxProd) * 100, 100);
+        const targetPct = Math.min(((day.target || 0) / maxProd) * 100, 100);
+        const isSuccess = (day.actual || 0) >= (day.target || 0);
+        
         return (
-          <div key={i} style={{ flex: '1 0 40px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <div style={{ position: 'relative', width: 24, height: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: 12, overflow: 'hidden' }}>
+          <div key={i} style={{ flex: '1 0 36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, height: '100%' }}>
+            
+            {/* Tooltip-like label above the bar */}
+            <div style={{ fontSize: 10, fontWeight: 700, color: isSuccess ? '#10B981' : '#0EA5E9', opacity: 0.8 }}>
+               {day.actual}
+            </div>
+
+            <div style={{ position: 'relative', width: 28, flex: 1, background: 'rgba(255,255,255,0.05)', borderRadius: 14, overflow: 'hidden' }}>
                {/* Target Indicator Line */}
-               <div style={{ position: 'absolute', bottom: `${targetPct}%`, left: 0, width: '100%', height: 2, background: 'rgba(255,255,255,0.3)', zIndex: 10 }} />
+               {day.target > 0 && (
+                 <div style={{ position: 'absolute', bottom: `${targetPct}%`, left: 0, width: '100%', height: 2, background: 'rgba(255,255,255,0.6)', zIndex: 10, boxShadow: '0 0 4px rgba(255,255,255,0.4)' }} />
+               )}
                {/* Actual Bar */}
                <motion.div 
                  initial={{ height: 0 }} 
                  animate={{ height: `${heightPct}%` }} 
-                 transition={{ delay: i * 0.05, type: 'spring', damping: 20 }}
-                 style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', background: isSuccess ? 'linear-gradient(180deg, #10B981, #059669)' : 'linear-gradient(180deg, #0EA5E9, #2563EB)', borderRadius: 12 }} 
+                 transition={{ delay: i * 0.03, type: 'spring', damping: 20 }}
+                 style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', background: isSuccess ? 'linear-gradient(180deg, #10B981, #059669)' : 'linear-gradient(180deg, #0EA5E9, #2563EB)', borderRadius: 14 }} 
                />
             </div>
-            <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>{day.date.split('-')[2]}</div>
+            
+            {/* Date Label */}
+            <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>{day.date.split('-')[2]}</div>
           </div>
         );
       })}
