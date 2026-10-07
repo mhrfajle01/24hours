@@ -90,76 +90,136 @@ export default function ShiftReportPage({ currentUser, onBack }) {
   const totalShiftTime = filteredData.reduce((s, d) => s + (d.totalShiftSec || 0), 0);
   const totalBreakTime = filteredData.reduce((s, d) => s + (d.totalBreakSec || 0), 0);
 
-  const handleExportExcel = () => {
+  const handleExportCSV = () => {
     if (filteredData.length === 0) {
-      setCustomAlert({
-        isOpen: true,
-        title: 'No Data',
-        message: 'There is no data available to export for this time range.'
-      });
+      setCustomAlert({ isOpen: true, title: 'No Data', message: 'There is no data available to export for this time range.' });
       return;
     }
     
-    let html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel">
-      <head>
-        <meta charset="utf-8">
-        <style>
-          table { border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; }
-          th { background-color: #0EA5E9; color: white; padding: 10px; border: 1px solid #ddd; font-weight: bold; text-align: left; }
-          td { padding: 8px; border: 1px solid #ddd; }
-          .summary-th { background-color: #10B981; }
-        </style>
-      </head>
-      <body>
-        <h2>Shift Tracker Report - ${filter.toUpperCase()}</h2>
-        <table>
-          <thead>
-            <tr>
-              <th colspan="2" class="summary-th">Summary</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td><b>Total Produced</b></td><td>${totalProduced}</td></tr>
-            <tr><td><b>Goal Completion</b></td><td>${completionPct}%</td></tr>
-            <tr><td><b>Total Work Time</b></td><td>${formatHrs(totalShiftTime)}</td></tr>
-            <tr><td><b>Total Break Time</b></td><td>${formatHrs(totalBreakTime)}</td></tr>
-          </tbody>
-        </table>
-        <br/>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Target</th>
-              <th>Actual Produced</th>
-              <th>Work Time</th>
-              <th>Break Time</th>
-              <th>Blocks Detail</th>
-            </tr>
-          </thead>
-          <tbody>`;
-          
+    const escCSV = (v) => {
+      const s = String(v ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    
+    // Summary rows
+    const rows = [
+      ['Shift Tracker Report', filter.toUpperCase()],
+      [],
+      ['Total Produced', totalProduced],
+      ['Goal Completion', `${completionPct}%`],
+      ['Total Work Time', formatHrs(totalShiftTime)],
+      ['Total Break Time', formatHrs(totalBreakTime)],
+      [],
+      ['Date', 'Target', 'Actual Produced', 'Completion %', 'Work Time', 'Break Time', 'Blocks Detail']
+    ];
+    
     filteredData.forEach(day => {
-      let blocksText = (day.blocks || []).map(b => `[${b.start}-${b.end}: ${b.actual}/${Math.round(b.target)}]`).join(', ');
-      html += `<tr>
-        <td>${day.date}</td>
-        <td>${day.target}</td>
-        <td>${day.actual}</td>
-        <td>${formatHrs(day.totalShiftSec)}</td>
-        <td>${formatHrs(day.totalBreakSec)}</td>
-        <td>${blocksText}</td>
-      </tr>`;
+      const blocksText = (day.blocks || []).map(b => `${b.start}-${b.end}: ${b.actual}/${Math.round(b.target)}`).join(' | ');
+      const pct = day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0;
+      rows.push([
+        day.date,
+        day.target,
+        day.actual,
+        `${pct}%`,
+        formatHrs(day.totalShiftSec || 0),
+        formatHrs(day.totalBreakSec || 0),
+        blocksText
+      ]);
     });
     
-    html += `</tbody></table></body></html>`;
-    
-    const blob = new Blob([html], { type: 'application/vnd.ms-excel' });
+    const csv = rows.map(r => r.map(escCSV).join(',')).join('\n');
+    const BOM = '\uFEFF'; // UTF-8 BOM for Excel compatibility
+    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Shift_Report_${filter}.xls`;
+    a.download = `Shift_Report_${filter}_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportXLSX = async () => {
+    if (filteredData.length === 0) {
+      setCustomAlert({ isOpen: true, title: 'No Data', message: 'There is no data available to export for this time range.' });
+      return;
+    }
+    
+    try {
+      // Dynamically load SheetJS from CDN
+      if (!window.XLSX) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Failed to load XLSX library'));
+          document.head.appendChild(script);
+        });
+      }
+      
+      const XLSX = window.XLSX;
+      const wb = XLSX.utils.book_new();
+      
+      // Summary sheet
+      const summaryData = [
+        ['Shift Tracker Report', filter.toUpperCase()],
+        [],
+        ['Metric', 'Value'],
+        ['Total Produced', totalProduced],
+        ['Goal Completion', `${completionPct}%`],
+        ['Total Work Time', formatHrs(totalShiftTime)],
+        ['Total Break Time', formatHrs(totalBreakTime)],
+        ['Days Tracked', filteredData.length]
+      ];
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      summarySheet['!cols'] = [{ wch: 20 }, { wch: 15 }];
+      XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
+      
+      // Daily data sheet
+      const dailyHeaders = ['Date', 'Target', 'Actual', 'Completion %', 'Work Time', 'Break Time'];
+      const dailyRows = filteredData.map(day => [
+        day.date,
+        day.target,
+        day.actual,
+        day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0,
+        formatHrs(day.totalShiftSec || 0),
+        formatHrs(day.totalBreakSec || 0)
+      ]);
+      const dailySheet = XLSX.utils.aoa_to_sheet([dailyHeaders, ...dailyRows]);
+      dailySheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, dailySheet, 'Daily Report');
+      
+      // Blocks detail sheet
+      const blockHeaders = ['Date', 'Block', 'Start', 'End', 'Target', 'Actual', 'Cumulative', 'Status'];
+      const blockRows = [];
+      filteredData.forEach(day => {
+        (day.blocks || []).forEach((b, i) => {
+          blockRows.push([
+            day.date,
+            `Block ${i + 1}`,
+            b.start,
+            b.end,
+            Math.round(b.target),
+            b.actual || 0,
+            b.cumulative || 0,
+            b.logged ? (b.actual >= b.target ? 'On Target' : 'Behind') : 'Not Logged'
+          ]);
+        });
+      });
+      const blocksSheet = XLSX.utils.aoa_to_sheet([blockHeaders, ...blockRows]);
+      blocksSheet['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 8 }, { wch: 12 }, { wch: 12 }];
+      XLSX.utils.book_append_sheet(wb, blocksSheet, 'Block Details');
+      
+      XLSX.writeFile(wb, `Shift_Report_${filter}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err) {
+      console.error('XLSX export failed:', err);
+      setCustomAlert({
+        isOpen: true,
+        title: 'Export Failed',
+        message: 'XLSX export failed. Falling back to CSV format...'
+      });
+      // Fallback to CSV
+      setTimeout(() => handleExportCSV(), 500);
+    }
   };
 
   return (
@@ -171,10 +231,15 @@ export default function ShiftReportPage({ currentUser, onBack }) {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
         </button>
         <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.5px' }}>Shift Reports</div>
-        <button onClick={handleExportExcel} style={{ marginLeft: 'auto', background: '#10B981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          Export Excel
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          <button onClick={handleExportCSV} style={{ background: '#0EA5E9', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(14,165,233,0.3)' }}>
+            CSV
+          </button>
+          <button onClick={handleExportXLSX} style={{ background: '#10B981', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            XLSX
+          </button>
+        </div>
       </motion.div>
 
       <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 24 }}>
