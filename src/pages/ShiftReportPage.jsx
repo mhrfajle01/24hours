@@ -240,16 +240,16 @@ export default function ShiftReportPage({ currentUser, onBack }) {
       dailySheet['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, dailySheet, 'Daily Report');
       
-      // -- BLOCKS SHEET --
-      const blockHeaders = ['Date', 'Block', 'Time Range', 'Target', 'Actual', 'Cumulative', 'Status'].map(h => ({ v: h, s: headerStyle }));
-      const blockRows = [];
-      filteredData.forEach(day => {
+      // -- INDIVIDUAL DAILY SHEETS --
+      const blockHeaders = ['Block', 'Time Range', 'Target', 'Actual', 'Cumulative', 'Status'].map(h => ({ v: h, s: headerStyle }));
+      
+      filteredData.forEach((day, index) => {
+        const blockRows = [];
         (day.blocks || []).forEach((b, i) => {
           const status = b.logged ? (b.actual >= b.target ? 'On Target' : 'Behind') : 'Not Logged';
           const statusColor = status === 'On Target' ? "10B981" : status === 'Behind' ? "EF4444" : "94A3B8";
           
           blockRows.push([
-            { v: day.date, s: dataStyle },
             { v: `Block ${i + 1}`, s: dataStyle },
             { v: `${b.start} - ${b.end}`, s: dataStyle },
             { v: Math.round(b.target), s: dataStyle },
@@ -258,15 +258,23 @@ export default function ShiftReportPage({ currentUser, onBack }) {
             { v: status, s: { ...dataStyle, font: { bold: true, color: { rgb: statusColor } } } }
           ]);
         });
+        
+        const pct = day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0;
+        const daySheet = XLSX.utils.aoa_to_sheet([
+          [{ v: `REPORT FOR: ${day.date}`, s: titleStyle }, '', '', '', '', ''],
+          [{ v: `Production: ${day.actual} / ${day.target} (${pct}%)`, s: { font: { italic: true, sz: 12 } } }, '', '', '', '', ''],
+          ['', '', '', '', '', ''],
+          blockHeaders, 
+          ...blockRows
+        ]);
+        daySheet['!cols'] = [{ wch: 10 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 15 }];
+        
+        // Ensure sheet names are unique and valid (max 31 chars, no special chars)
+        let sheetName = day.date.replace(/[^a-zA-Z0-9-]/g, '').substring(0, 31);
+        if (wb.SheetNames.includes(sheetName)) sheetName = `${sheetName} (${index})`;
+        
+        XLSX.utils.book_append_sheet(wb, daySheet, sheetName);
       });
-      const blocksSheet = XLSX.utils.aoa_to_sheet([
-        [{ v: 'DETAILED BLOCK LOGS', s: titleStyle }, '', '', '', '', '', ''],
-        ['', '', '', '', '', '', ''],
-        blockHeaders, 
-        ...blockRows
-      ]);
-      blocksSheet['!cols'] = [{ wch: 15 }, { wch: 10 }, { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 15 }];
-      XLSX.utils.book_append_sheet(wb, blocksSheet, 'Block Details');
       
       XLSX.writeFile(wb, `Shift_Report_${filter}_${new Date().toISOString().split('T')[0]}.xlsx`);
     } catch (err) {
