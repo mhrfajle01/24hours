@@ -192,6 +192,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
   const [shiftStart, setShiftStart] = useState('09:00');
   const [shiftEnd, setShiftEnd] = useState('17:00');
   const [blockLen, setBlockLen] = useState(60);
+  const [scheduledBreaks, setScheduledBreaks] = useState([]);
 
   const [setupMode, setSetupMode] = useState(true);
 
@@ -277,6 +278,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             setShiftStart(d.shiftStart || '09:00');
             setShiftEnd(d.shiftEnd || '17:00');
             setBlockLen(d.blockLen || 60);
+            if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
             setBlocks(d.blocks || []);
             if (d.blocks && d.blocks.length > 0) setSetupMode(false);
 
@@ -305,6 +307,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
           setShiftStart(d.shiftStart || '09:00');
           setShiftEnd(d.shiftEnd || '17:00');
           setBlockLen(d.blockLen || 60);
+          if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
           setBlocks(d.blocks || []);
           if (d.blocks && d.blocks.length > 0) setSetupMode(false);
           else setSetupMode(true);
@@ -330,6 +333,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     setShiftEnd('17:00');
     setBlockLen(60);
     setBlocks([]);
+    setScheduledBreaks([]);
     setSetupMode(true);
     setClockStatus('idle');
     setShiftStartMs(null);
@@ -352,7 +356,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
 
     if (isToday) {
       setDoc(docRef, {
-        date: todayStr, target, unit, shiftStart, shiftEnd, blockLen, blocks: currentBlocks,
+        date: todayStr, target, unit, shiftStart, shiftEnd, blockLen, scheduledBreaks, blocks: currentBlocks,
         clockStatus, shiftStartMs, totalAccumulatedMs, breakStartMs, breakDurationMs, earnedBreak,
         totalBreakAccumulatedMs: currentTotalBreakMs,
         breakHistory: currentBreakHistory,
@@ -371,6 +375,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
       shiftStart,
       shiftEnd,
       blockLen,
+      scheduledBreaks,
       unit,
       totalShiftSec: extraData.totalAccumulatedMs ? Math.floor((extraData.totalAccumulatedMs || totalAccumulatedMs) / 1000) : Math.floor(totalAccumulatedMs / 1000),
       totalBreakSec: Math.floor(currentTotalBreakMs / 1000),
@@ -511,24 +516,72 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
   const generateBlocks = () => {
     const s = new Date(`1970-01-01T${shiftStart}:00`);
     const e = new Date(`1970-01-01T${shiftEnd}:00`);
-    const mins = (e - s) / 60000;
-    const num = Math.ceil(mins / blockLen);
+
+    // Sort scheduled breaks by start time
+    const sortedBreaks = [...scheduledBreaks]
+      .filter(sb => sb.start && sb.end && timeToMinutes(sb.start) < timeToMinutes(sb.end))
+      .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
+
     const b = [];
     let cur = s;
-    for (let i = 0; i < num; i++) {
-      const bEnd = new Date(cur.getTime() + blockLen * 60000);
-      b.push({
-        id: i,
-        start: fmtTime(cur),
-        end: fmtTime(bEnd),
-        actual: 0,
-        cumulative: 0,
-        logged: false,
-        target: 0,
-        isBreak: false
+    let blockId = 0;
+
+    while (cur < e) {
+      const curTime = fmtTime(cur);
+      const curMin = timeToMinutes(curTime);
+
+      // Check if a scheduled break starts at or before current position
+      const nextBreak = sortedBreaks.find(sb => {
+        const sbStart = timeToMinutes(sb.start);
+        const sbEnd = timeToMinutes(sb.end);
+        return sbStart >= curMin && sbStart < timeToMinutes(fmtTime(e)) && sbEnd > curMin;
       });
-      cur = bEnd;
+
+      if (nextBreak) {
+        const brkStartMin = timeToMinutes(nextBreak.start);
+        const brkEndMin = timeToMinutes(nextBreak.end);
+
+        // If there's work time before this break, add a work block
+        if (curMin < brkStartMin) {
+          const workEnd = new Date(`1970-01-01T${nextBreak.start}:00`);
+          // Split into blockLen-sized chunks
+          let workCur = cur;
+          while (workCur < workEnd) {
+            const chunkEnd = new Date(Math.min(workCur.getTime() + blockLen * 60000, workEnd.getTime()));
+            b.push({
+              id: blockId++,
+              start: fmtTime(workCur),
+              end: fmtTime(chunkEnd),
+              actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
+            });
+            workCur = chunkEnd;
+          }
+        }
+
+        // Add the break block
+        b.push({
+          id: blockId++,
+          start: nextBreak.start,
+          end: nextBreak.end,
+          actual: 0, cumulative: 0, logged: false, target: 0,
+          isBreak: true,
+          breakLabel: nextBreak.label || 'Break'
+        });
+
+        cur = new Date(`1970-01-01T${nextBreak.end}:00`);
+      } else {
+        // No more breaks ahead, fill with work blocks
+        const bEnd = new Date(Math.min(cur.getTime() + blockLen * 60000, e.getTime()));
+        b.push({
+          id: blockId++,
+          start: fmtTime(cur),
+          end: fmtTime(bEnd),
+          actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
+        });
+        cur = bEnd;
+      }
     }
+
     recalcTargets(b, target, breakHistory);
     setBlocks(b);
     setSetupMode(false);
@@ -690,6 +743,46 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                 <option value={60}>60 mins</option>
               </select>
             </label>
+
+            {/* --- Scheduled Breaks Section --- */}
+            <div style={{ marginTop: 20, padding: 16, background: '#FFF8F0', borderRadius: 16, border: '1px solid #FFE0B2' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: '#E65100' }}>☕ Scheduled Breaks</span>
+                <button onClick={() => setScheduledBreaks(prev => [...prev, { start: '12:00', end: '12:30', label: 'Lunch' }])}
+                  style={{ padding: '6px 14px', background: '#FF9800', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>+ Add Break</button>
+              </div>
+
+              {scheduledBreaks.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '12px 0', color: '#aaa', fontSize: 13 }}>No breaks scheduled. Add one to auto-insert break blocks.</div>
+              )}
+
+              {scheduledBreaks.map((sb, idx) => (
+                <motion.div key={idx} initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                  style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, padding: 10, background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+
+                  <input type="text" value={sb.label} placeholder="Label"
+                    onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], label: e.target.value }; setScheduledBreaks(n); }}
+                    style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13, fontWeight: 600, minWidth: 0 }} />
+
+                  <input type="time" value={sb.start}
+                    onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], start: e.target.value }; setScheduledBreaks(n); }}
+                    style={{ padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13, width: 90 }} />
+
+                  <span style={{ color: '#999', fontSize: 13, fontWeight: 600 }}>to</span>
+
+                  <input type="time" value={sb.end}
+                    onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], end: e.target.value }; setScheduledBreaks(n); }}
+                    style={{ padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13, width: 90 }} />
+
+                  <button onClick={() => setScheduledBreaks(prev => prev.filter((_, i) => i !== idx))}
+                    style={{ padding: '6px 10px', background: '#FFEBEE', color: '#EF4444', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+                </motion.div>
+              ))}
+
+              {scheduledBreaks.length > 0 && (
+                <div style={{ fontSize: 11, color: '#999', marginTop: 4 }}>Break blocks will be auto-inserted into the timeline when you generate blocks.</div>
+              )}
+            </div>
 
             <button onClick={generateBlocks} style={{ width: '100%', padding: 14, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 20 }}>Generate Blocks</button>
           </motion.div>
@@ -1102,7 +1195,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                       <div style={{ fontSize: 28 }}>{bType?.icon || '☕'}</div>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontSize: 12, color: '#888', fontWeight: 700 }}>{fmt12h(b.start)} - {fmt12h(b.end)}</div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: bType?.color || '#FFB020' }}>{bType?.label || 'Break'} Block</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: bType?.color || '#FFB020' }}>{b.breakLabel || bType?.label || 'Break'} Block</div>
                       </div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: '#999', background: '#f0f0f0', padding: '4px 10px', borderRadius: 8 }}>{blockTotalMins}m</div>
                     </motion.div>

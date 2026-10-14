@@ -10,14 +10,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@google/genai": "^1.0.0",
+    "canvas-confetti": "^1.9.3",
     "firebase": "^12.15.0",
     "framer-motion": "^13.1.1",
-    "gemini": "^7.5.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7",
-    "react-quill-new": "^3.8.3"
+    "quill": "^2.0.3",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-hot-toast": "^2.5.2",
+    "react-quill-new": "^3.8.3",
+    "react-router-dom": "^7.6.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
