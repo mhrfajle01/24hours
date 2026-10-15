@@ -1,8 +1,52 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../firebase/firebase';
 import { doc, getDoc, setDoc, collection } from 'firebase/firestore';
 import { useSound } from '../contexts/SoundContext';
+
+// --- OFFLINE SUPPORT HELPERS ---
+const LS_KEY = 'shiftTracker_data';
+const LS_QUEUE_KEY = 'shiftTracker_syncQueue';
+
+const lsGet = (uid) => {
+  try { const d = JSON.parse(localStorage.getItem(`${LS_KEY}_${uid}`)); return d || {}; } catch { return {}; }
+};
+const lsSave = (uid, data) => {
+  try { localStorage.setItem(`${LS_KEY}_${uid}`, JSON.stringify(data)); } catch {}
+};
+const lsGetByDate = (uid, date) => {
+  try { const d = JSON.parse(localStorage.getItem(`${LS_KEY}_${uid}_${date}`)); return d || null; } catch { return null; }
+};
+const lsSaveByDate = (uid, date, data) => {
+  try { localStorage.setItem(`${LS_KEY}_${uid}_${date}`, JSON.stringify(data)); } catch {}
+};
+const queueSync = (uid, todayDoc, historyDoc, date) => {
+  try {
+    const queue = JSON.parse(localStorage.getItem(LS_QUEUE_KEY) || '[]');
+    // Replace existing entry for same uid+date
+    const filtered = queue.filter(q => !(q.uid === uid && q.date === date));
+    filtered.push({ uid, date, todayDoc, historyDoc, ts: Date.now() });
+    localStorage.setItem(LS_QUEUE_KEY, JSON.stringify(filtered));
+  } catch {}
+};
+const flushSyncQueue = async () => {
+  try {
+    const queue = JSON.parse(localStorage.getItem(LS_QUEUE_KEY) || '[]');
+    if (queue.length === 0) return;
+    const failed = [];
+    for (const item of queue) {
+      try {
+        if (item.todayDoc) {
+          await setDoc(doc(db, 'shiftTracker', item.uid), item.todayDoc, { merge: true });
+        }
+        if (item.historyDoc) {
+          await setDoc(doc(db, 'shiftTracker', item.uid, 'history', item.date), item.historyDoc, { merge: true });
+        }
+      } catch { failed.push(item); }
+    }
+    localStorage.setItem(LS_QUEUE_KEY, JSON.stringify(failed));
+  } catch {}
+};
 
 const SPRING = { type: 'spring', damping: 20, stiffness: 400 };
 
@@ -264,56 +308,125 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     return () => clearInterval(interval);
   }, [clockStatus]);
 
+  // --- ONLINE STATUS ---
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const syncingRef = useRef(false);
+
+  useEffect(() => {
+    const goOnline = async () => {
+      setIsOnline(true);
+      if (!syncingRef.current) {
+        syncingRef.current = true;
+        await flushSyncQueue();
+        syncingRef.current = false;
+      }
+    };
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    // Flush on mount if online
+    if (navigator.onLine) { flushSyncQueue(); }
+    return () => { window.removeEventListener('online', goOnline); window.removeEventListener('offline', goOffline); };
+  }, []);
+
+  const applyData = (d) => {
+    setTarget(d.target || 100);
+    setUnit(d.unit || 'pieces');
+    setShiftStart(d.shiftStart || '09:00');
+    setShiftEnd(d.shiftEnd || '17:00');
+    setBlockLen(d.blockLen || 60);
+    if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
+    setBlocks(d.blocks || []);
+    if (d.blocks && d.blocks.length > 0) setSetupMode(false);
+    if (d.clockStatus) setClockStatus(d.clockStatus);
+    if (d.shiftStartMs) setShiftStartMs(d.shiftStartMs);
+    if (d.totalAccumulatedMs) setTotalAccumulatedMs(d.totalAccumulatedMs);
+    if (d.breakStartMs) setBreakStartMs(d.breakStartMs);
+    if (d.breakDurationMs) setBreakDurationMs(d.breakDurationMs);
+    if (d.earnedBreak) setEarnedBreak(d.earnedBreak);
+    if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
+    if (d.breakHistory) setBreakHistory(d.breakHistory);
+    if (d.breakType) setBreakType(d.breakType);
+  };
+
   useEffect(() => {
     if (!currentUser?.uid) return;
 
     const loadData = async () => {
       if (isToday) {
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const d = snap.data();
-          if (d.date === todayStr) {
-            setTarget(d.target || 100);
-            setUnit(d.unit || 'pieces');
-            setShiftStart(d.shiftStart || '09:00');
-            setShiftEnd(d.shiftEnd || '17:00');
-            setBlockLen(d.blockLen || 60);
-            if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
-            setBlocks(d.blocks || []);
-            if (d.blocks && d.blocks.length > 0) setSetupMode(false);
-
-            if (d.clockStatus) setClockStatus(d.clockStatus);
-            if (d.shiftStartMs) setShiftStartMs(d.shiftStartMs);
-            if (d.totalAccumulatedMs) setTotalAccumulatedMs(d.totalAccumulatedMs);
-            if (d.breakStartMs) setBreakStartMs(d.breakStartMs);
-            if (d.breakDurationMs) setBreakDurationMs(d.breakDurationMs);
-            if (d.earnedBreak) setEarnedBreak(d.earnedBreak);
-            if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
-            if (d.breakHistory) setBreakHistory(d.breakHistory);
-            if (d.breakType) setBreakType(d.breakType);
-          } else {
-            resetState();
+        // 1. Load from localStorage FIRST (instant, offline-safe)
+        const local = lsGet(currentUser.uid);
+        if (local && local.date === todayStr) {
+          applyData(local);
+        }
+        // 2. Try Firestore in background if online
+        if (navigator.onLine) {
+          try {
+            const snap = await getDoc(docRef);
+            if (snap.exists()) {
+              const d = snap.data();
+              if (d.date === todayStr) {
+                // Only use Firestore if newer than local
+                if (!local || !local.updatedAt || (d.updatedAt && d.updatedAt > local.updatedAt)) {
+                  applyData(d);
+                  lsSave(currentUser.uid, d);
+                }
+              } else if (!local || local.date !== todayStr) {
+                resetState();
+              }
+            } else if (!local || local.date !== todayStr) {
+              resetState();
+            }
+          } catch {
+            // Offline or error - local data already loaded above
+            if (!local || local.date !== todayStr) resetState();
           }
-        } else {
+        } else if (!local || local.date !== todayStr) {
           resetState();
         }
       } else {
-        const histRef = doc(db, 'shiftTracker', currentUser.uid, 'history', selectedDate);
-        const snap = await getDoc(histRef);
-        if (snap.exists()) {
-          const d = snap.data();
-          setTarget(d.target || 100);
-          setUnit(d.unit || 'pieces');
-          setShiftStart(d.shiftStart || '09:00');
-          setShiftEnd(d.shiftEnd || '17:00');
-          setBlockLen(d.blockLen || 60);
-          if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
-          setBlocks(d.blocks || []);
-          if (d.blocks && d.blocks.length > 0) setSetupMode(false);
+        // Past date: try local first, then Firestore
+        const local = lsGetByDate(currentUser.uid, selectedDate);
+        if (local) {
+          setTarget(local.target || 100);
+          setUnit(local.unit || 'pieces');
+          setShiftStart(local.shiftStart || '09:00');
+          setShiftEnd(local.shiftEnd || '17:00');
+          setBlockLen(local.blockLen || 60);
+          if (local.scheduledBreaks) setScheduledBreaks(local.scheduledBreaks);
+          setBlocks(local.blocks || []);
+          if (local.blocks && local.blocks.length > 0) setSetupMode(false);
           else setSetupMode(true);
-          if (d.breakHistory) setBreakHistory(d.breakHistory);
-          if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
-        } else {
+          if (local.breakHistory) setBreakHistory(local.breakHistory);
+          if (local.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(local.totalBreakAccumulatedMs);
+        }
+        if (navigator.onLine) {
+          try {
+            const histRef = doc(db, 'shiftTracker', currentUser.uid, 'history', selectedDate);
+            const snap = await getDoc(histRef);
+            if (snap.exists()) {
+              const d = snap.data();
+              if (!local || !local.updatedAt || (d.updatedAt && d.updatedAt > local.updatedAt)) {
+                setTarget(d.target || 100);
+                setUnit(d.unit || 'pieces');
+                setShiftStart(d.shiftStart || '09:00');
+                setShiftEnd(d.shiftEnd || '17:00');
+                setBlockLen(d.blockLen || 60);
+                if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
+                setBlocks(d.blocks || []);
+                if (d.blocks && d.blocks.length > 0) setSetupMode(false);
+                else setSetupMode(true);
+                if (d.breakHistory) setBreakHistory(d.breakHistory);
+                if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
+                lsSaveByDate(currentUser.uid, selectedDate, d);
+              }
+            } else if (!local) {
+              resetState();
+            }
+          } catch {
+            if (!local) resetState();
+          }
+        } else if (!local) {
           resetState();
         }
         setClockStatus('idle');
@@ -353,21 +466,19 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
 
     const currentTotalBreakMs = extraData.totalBreakAccumulatedMs ?? totalBreakAccumulatedMs;
     const currentBreakHistory = extraData.breakHistory ?? breakHistory;
+    const nowTs = Date.now();
 
-    if (isToday) {
-      setDoc(docRef, {
-        date: todayStr, target, unit, shiftStart, shiftEnd, blockLen, scheduledBreaks, blocks: currentBlocks,
-        clockStatus, shiftStartMs, totalAccumulatedMs, breakStartMs, breakDurationMs, earnedBreak,
-        totalBreakAccumulatedMs: currentTotalBreakMs,
-        breakHistory: currentBreakHistory,
-        breakType,
-        ...extraData
-      }, { merge: true });
-    }
+    const todayDoc = isToday ? {
+      date: todayStr, target, unit, shiftStart, shiftEnd, blockLen, scheduledBreaks, blocks: currentBlocks,
+      clockStatus, shiftStartMs, totalAccumulatedMs, breakStartMs, breakDurationMs, earnedBreak,
+      totalBreakAccumulatedMs: currentTotalBreakMs,
+      breakHistory: currentBreakHistory,
+      breakType,
+      updatedAt: nowTs,
+      ...extraData
+    } : null;
 
-    // Always save/update history subcollection for reports
-    const histRef = doc(db, 'shiftTracker', currentUser.uid, 'history', selectedDate);
-    setDoc(histRef, {
+    const historyDoc = {
       date: selectedDate,
       target: Number(target),
       actual: totalProducedNow,
@@ -380,8 +491,23 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
       totalShiftSec: extraData.totalAccumulatedMs ? Math.floor((extraData.totalAccumulatedMs || totalAccumulatedMs) / 1000) : Math.floor(totalAccumulatedMs / 1000),
       totalBreakSec: Math.floor(currentTotalBreakMs / 1000),
       breakHistory: currentBreakHistory,
-      updatedAt: Date.now()
-    }, { merge: true });
+      updatedAt: nowTs
+    };
+
+    // 1. Always save to localStorage (instant, offline-safe)
+    if (isToday && todayDoc) {
+      lsSave(currentUser.uid, todayDoc);
+    }
+    lsSaveByDate(currentUser.uid, selectedDate, historyDoc);
+
+    // 2. Queue for Firestore sync
+    queueSync(currentUser.uid, todayDoc, historyDoc, selectedDate);
+
+    // 3. If online, flush immediately
+    if (navigator.onLine && !syncingRef.current) {
+      syncingRef.current = true;
+      flushSyncQueue().finally(() => { syncingRef.current = false; });
+    }
   };
 
   // Clock Ticker
@@ -674,6 +800,10 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
 
   const currTimeStr = fmtTime(now);
   const currentBlockIdx = blocks.findIndex(b => currTimeStr >= b.start && currTimeStr < b.end);
+  const currentBlock = currentBlockIdx >= 0 ? blocks[currentBlockIdx] : null;
+  const isInScheduledBreak = currentBlock?.isBreak && clockStatus === 'active';
+  const scheduledBreakEndMins = isInScheduledBreak ? timeToMinutes(currentBlock.end) : 0;
+  const scheduledBreakRemainingMins = isInScheduledBreak ? Math.max(0, scheduledBreakEndMins - (now.getHours() * 60 + now.getMinutes())) : 0;
   const totalProduced = blocks.reduce((s, b) => s + (b.logged ? b.actual : 0), 0);
   const isOverBreak = breakRemainingSec < 0;
 
@@ -702,6 +832,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer' }}>←</button>
           <div style={{ fontSize: 18, fontWeight: 700 }}>⏱️ Shift Tracker</div>
+          {!isOnline && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ padding: '3px 10px', background: '#FF4B4B', borderRadius: 10, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />Offline</motion.div>}
           <button onClick={onOpenReports} style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 12, fontWeight: 700, fontSize: 12 }}>Reports</button>
           {!setupMode && <button onClick={() => exportCSV({blocks}, selectedDate)} style={{ background: '#fff', color: '#1CB0F6', border: 'none', padding: '6px 12px', borderRadius: 12, fontWeight: 700, fontSize: 12 }}>Export</button>}
         </div>
@@ -793,14 +924,18 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             {isToday && <div style={{
               background: clockStatus === 'break'
                 ? 'linear-gradient(135deg, rgba(255,244,229,0.95), rgba(255,237,213,0.95))'
-                : '#fff',
+                : isInScheduledBreak
+                  ? 'linear-gradient(135deg, rgba(255,248,238,0.95), rgba(255,243,224,0.95))'
+                  : '#fff',
               padding: 20, borderRadius: 20,
               boxShadow: clockStatus === 'break'
                 ? `0 4px 20px rgba(${currentBreakType.color}, 0.15), 0 0 0 1px rgba(255,176,32,0.1)`
-                : '0 4px 12px rgba(0,0,0,0.05)',
+                : isInScheduledBreak
+                  ? '0 4px 20px rgba(255,152,0,0.12), 0 0 0 1px rgba(255,176,32,0.15)'
+                  : '0 4px 12px rgba(0,0,0,0.05)',
               marginBottom: 16, textAlign: 'center',
               position: 'relative', overflow: 'hidden',
-              border: isOverBreak ? '2px solid #FF4B4B' : 'none',
+              border: isOverBreak ? '2px solid #FF4B4B' : isInScheduledBreak ? '2px solid #FF9800' : 'none',
             }}>
 
               {/* Zen floating particles during break */}
@@ -838,7 +973,24 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                 </>
               ) : clockStatus === 'active' ? (
                 <>
-                  <div style={{ fontSize: 14, color: '#1CB0F6', fontWeight: 700, marginBottom: 4 }}>ACTIVE SHIFT</div>
+                  {isInScheduledBreak ? (
+                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+                      style={{ marginBottom: 12, padding: '12px 16px', background: 'linear-gradient(135deg, #FF9800, #F57C00)', borderRadius: 14, color: '#fff' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 6 }}>
+                        <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }} style={{ fontSize: 24 }}>☕</motion.div>
+                        <div style={{ fontSize: 16, fontWeight: 800 }}>SCHEDULED BREAK TIME</div>
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, opacity: 0.9 }}>
+                        {currentBlock.breakLabel || 'Break'} • {fmt12h(currentBlock.start)} – {fmt12h(currentBlock.end)} • {scheduledBreakRemainingMins}m left
+                      </div>
+                      <button onClick={() => { setSelectedBreakType(null); setShowBreakOptions(true); }}
+                        style={{ marginTop: 10, padding: '8px 20px', background: 'rgba(255,255,255,0.25)', color: '#fff', border: '2px solid rgba(255,255,255,0.5)', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
+                        ☕ Start Timed Break
+                      </button>
+                    </motion.div>
+                  ) : (
+                    <div style={{ fontSize: 14, color: '#1CB0F6', fontWeight: 700, marginBottom: 4 }}>ACTIVE SHIFT</div>
+                  )}
 
                   {/* Nudge ring */}
                   <div style={{ position: 'relative', display: 'inline-block' }}>

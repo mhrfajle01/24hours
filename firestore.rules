@@ -158,6 +158,11 @@ service cloud.firestore {
       match /history/{docId} {
         allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
       }
+
+      // Rules for Daily Shift Report
+      match /dailyShiftReport/{docId} {
+        allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      }
     }
   }
 }
