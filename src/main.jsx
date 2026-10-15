@@ -35,16 +35,10 @@ createRoot(document.getElementById('root')).render(
   </StrictMode>,
 )
 
-// Register Service Workers for PWA + Firebase Cloud Messaging
+// Register Firebase Cloud Messaging service worker for push notifications
+// (PWA service worker is auto-registered by vite-plugin-pwa)
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    // PWA caching service worker
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((reg) => console.log('PWA Service Worker registered:', reg.scope))
-      .catch((err) => console.error('PWA Service Worker registration failed:', err));
-
-    // Firebase Cloud Messaging service worker for push notifications
     navigator.serviceWorker
       .register('/firebase-messaging-sw.js')
       .then((reg) => console.log('FCM Service Worker registered:', reg.scope))

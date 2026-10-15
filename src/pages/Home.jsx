@@ -400,7 +400,18 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // Timeout to prevent infinite loading spinner when offline
+    // Firebase Auth will still resolve eventually via its persistence layer,
+    // but we don't block the UI longer than 3s
+    let authTimeout = null;
+    if (!navigator.onLine) {
+      authTimeout = setTimeout(() => {
+        setAuthLoading(false);
+      }, 3000);
+    }
+
     const unsub = onAuthStateChanged(auth, (user) => {
+      if (authTimeout) clearTimeout(authTimeout);
       if (user) {
         setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
@@ -432,7 +443,10 @@ export default function Home() {
       );
       setAuthLoading(false);
     });
-    return () => unsub();
+    return () => {
+      unsub();
+      if (authTimeout) clearTimeout(authTimeout);
+    };
   }, []);
 
   useEffect(() => {
