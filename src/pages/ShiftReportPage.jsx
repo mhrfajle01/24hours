@@ -36,7 +36,7 @@ const srFlushSyncQueue = async (uid) => {
       try {
         if (item.type === 'save') {
           const docRef = doc(db, 'shiftTracker', item.uid, 'dailyShiftReport', item.docId);
-          await setDoc(docRef, item.data);
+          await setDoc(docRef, item.data, { merge: true });
         } else if (item.type === 'delete') {
           await deleteDoc(doc(db, 'shiftTracker', item.uid, 'dailyShiftReport', item.docId));
         }
@@ -216,14 +216,16 @@ export default function ShiftReportPage({ currentUser, onBack }) {
 
   const handleSaveEntry = async () => {
     if (!currentUser?.uid || !entryForm.dayCount || !entryForm.date) return;
-    const docId = `${selectedMonth}-day${String(entryForm.dayCount).padStart(2, '0')}`;
+    // When editing, keep the original docId to update the correct Firestore document
+    const month = editingEntry?.month || selectedMonth;
+    const docId = editingEntry?.id || `${month}-day${String(entryForm.dayCount).padStart(2, '0')}`;
     const entryData = {
       dayCount: parseInt(entryForm.dayCount) || 0,
       date: entryForm.date,
       docsCount: parseInt(entryForm.docsCount) || 0,
       elementCount: parseInt(entryForm.elementCount) || 0,
       remarks: entryForm.remarks || '',
-      month: selectedMonth,
+      month,
       updatedAt: new Date().toISOString()
     };
 
@@ -243,7 +245,7 @@ export default function ShiftReportPage({ currentUser, onBack }) {
     if (navigator.onLine) {
       try {
         const docRef = doc(db, 'shiftTracker', currentUser.uid, 'dailyShiftReport', docId);
-        await setDoc(docRef, entryData);
+        await setDoc(docRef, entryData, { merge: true });
       } catch (err) {
         console.error('Firestore save failed, queued:', err);
         srQueueSync({ type: 'save', uid: currentUser.uid, docId, data: entryData });
@@ -280,6 +282,8 @@ export default function ShiftReportPage({ currentUser, onBack }) {
   };
 
   const handleEditEntry = (entry) => {
+    // Sync selectedMonth to the entry's month so docId is generated correctly
+    if (entry.month) setSelectedMonth(entry.month);
     setEntryForm({
       dayCount: String(entry.dayCount),
       date: entry.date,
@@ -834,7 +838,10 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                     <div style={{ color: '#94A3B8', fontSize: 11 }}>{filteredDailyEntries.length} days</div>
                     <div style={{ color: '#0EA5E9' }}>{totalDocsCount}</div>
                     <div style={{ color: '#10B981' }}>{totalElementCount}</div>
-                    <div style={{ color: '#F59E0B', fontSize: 12 }}>৳{(parseFloat(totalDocsAmount) + parseFloat(totalElemAmount)).toFixed(2)}</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div style={{ color: '#0EA5E9', fontSize: 11 }}>📄 ৳{totalDocsAmount}</div>
+                      <div style={{ color: '#10B981', fontSize: 11 }}>🔗 ৳{totalElemAmount}</div>
+                    </div>
                   </div>
                 </div>
               )}

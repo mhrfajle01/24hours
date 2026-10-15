@@ -69,7 +69,11 @@ const ZEN_QUOTES = [
   "Pause. Reflect. Continue stronger. 🚀",
 ];
 
-const fmtTime = (d) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+const fmtTime = (d) => {
+  const bd = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dhaka', hour12: false }).format(d);
+  return bd; // returns HH:MM
+};
+
 const fmt12h = (t24) => {
   if (!t24) return '';
   const [h, m] = t24.split(':');
@@ -227,6 +231,45 @@ const BreakTimeline = ({ shiftStartTime, shiftEndTime, breakHistory, currentTime
 };
 
 
+// --- Limited edit panel for running shift (preserves logged blocks) ---
+const ShiftQuickEdit = ({ target, unit, shiftEnd, onApply }) => {
+  const [open, setOpen] = React.useState(false);
+  const [t, setT] = React.useState(target);
+  const [u, setU] = React.useState(unit);
+  const [e, setE] = React.useState(shiftEnd);
+  React.useEffect(() => { setT(target); setU(unit); setE(shiftEnd); }, [target, unit, shiftEnd]);
+  const inp = { padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14, width: '100%', boxSizing: 'border-box' };
+  return (
+    <div style={{ marginTop: 10 }}>
+      <button onClick={() => setOpen(p => !p)}
+        style={{ width: '100%', padding: 12, background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+        ✏️ Quick Edit (Target / Unit / End Time)
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, padding: 14, background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>⚠️ Blocks & logged data are preserved</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Target
+              <input type="number" value={t} onChange={ev => setT(Number(ev.target.value))} style={{ ...inp, marginTop: 4 }} />
+            </label>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Unit
+              <input type="text" value={u} onChange={ev => setU(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
+            </label>
+          </div>
+          <label style={{ fontSize: 13, fontWeight: 600 }}>Shift End Time
+            <input type="time" value={e} onChange={ev => setE(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
+          </label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => setOpen(false)} style={{ flex: 1, padding: 10, background: '#f0f0f0', border: 'none', borderRadius: 10, fontWeight: 700, color: '#666', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={() => { onApply(t, u, e); setOpen(false); }}
+              style={{ flex: 2, padding: 10, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>Apply Changes</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports }) {
   const { playSound } = useSound();
 
@@ -277,9 +320,13 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
   const [customAlert, setCustomAlert] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null });
   // ----------------------------------------------
 
-  // Date selection
-  const todayStr = new Date().toISOString().split('T')[0];
-  const yesterdayStr = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0]; })();
+  // Date selection — fixed to BD/Dhaka timezone (UTC+6)
+  const getBDDateStr = (offsetDays = 0) => {
+    const d = new Date(Date.now() + 6 * 3600000 + offsetDays * 86400000);
+    return d.toISOString().split('T')[0];
+  };
+  const todayStr = getBDDateStr(0);
+  const yesterdayStr = getBDDateStr(-1);
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const isToday = selectedDate === todayStr;
 
@@ -483,12 +530,12 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
       target: Number(target),
       actual: totalProducedNow,
       blocks: currentBlocks,
-      shiftStart,
-      shiftEnd,
+      shiftStart: extraData.shiftStart || shiftStart,
+      shiftEnd: extraData.shiftEnd || shiftEnd,
       blockLen,
       scheduledBreaks,
       unit,
-      totalShiftSec: extraData.totalAccumulatedMs ? Math.floor((extraData.totalAccumulatedMs || totalAccumulatedMs) / 1000) : Math.floor(totalAccumulatedMs / 1000),
+      totalShiftSec: extraData.totalAccumulatedMs != null ? Math.floor(extraData.totalAccumulatedMs / 1000) : Math.floor(totalAccumulatedMs / 1000),
       totalBreakSec: Math.floor(currentTotalBreakMs / 1000),
       breakHistory: currentBreakHistory,
       updatedAt: nowTs
@@ -628,12 +675,24 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
       title: 'Clock Out',
       message: 'Are you sure you want to clock out and stop your shift timer?',
       onConfirm: () => {
+        // Capture actual end time and total work duration BEFORE resetting
+        const clockOutTime = new Date();
+        const actualShiftEnd = fmtTime(clockOutTime);
+        const finalAccumulatedMs = shiftStartMs
+          ? totalAccumulatedMs + (Date.now() - shiftStartMs)
+          : totalAccumulatedMs;
+
         setClockStatus('idle');
         setShiftStartMs(null);
         setTotalAccumulatedMs(0);
         setElapsedShiftSec(0);
         playSound('trash');
-        save(blocks, { clockStatus: 'idle', shiftStartMs: null, totalAccumulatedMs: 0 });
+        save(blocks, {
+          clockStatus: 'idle',
+          shiftStartMs: null,
+          totalAccumulatedMs: finalAccumulatedMs,
+          shiftEnd: actualShiftEnd
+        });
         setCustomAlert({ isOpen: false });
       }
     });
@@ -1205,7 +1264,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             </div>}
 
             {/* --- BREAK BUDGET BAR --- */}
-            {isToday && clockStatus !== 'idle' && !setupMode && (
+            {isToday && clockStatus !== 'idle' && !setupMode && completedBreaks.length > 0 && (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                 style={{ background: '#fff', padding: 16, borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -1230,7 +1289,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             )}
 
             {/* --- BREAK TIMELINE --- */}
-            {isToday && clockStatus !== 'idle' && breakHistory.length > 0 && !setupMode && (
+            {isToday && clockStatus !== 'idle' && completedBreaks.length > 0 && !setupMode && (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                 style={{ background: '#fff', padding: 16, borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 16 }}>
                 <BreakTimeline shiftStartTime={shiftStart} shiftEndTime={shiftEnd} breakHistory={breakHistory} currentTime={now} />
@@ -1238,7 +1297,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             )}
 
             {/* --- BREAK INSIGHTS --- */}
-            {completedBreaks.length > 0 && !setupMode && (
+            {isToday && completedBreaks.length > 0 && !setupMode && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 style={{ background: '#fff', borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 16, overflow: 'hidden' }}>
                 <button onClick={() => setShowBreakInsights(!showBreakInsights)}
@@ -1286,7 +1345,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                                 <div style={{ flex: 1 }}>
                                   <div style={{ fontSize: 13, fontWeight: 600, color: '#333' }}>{bt.label}</div>
                                   <div style={{ fontSize: 11, color: '#999' }}>
-                                    {new Date(brk.startMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} – {new Date(brk.endMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    {new Date(brk.startMs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dhaka' })} – {new Date(brk.endMs).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Dhaka' })}
                                   </div>
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
@@ -1416,19 +1475,36 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
               });
             }} style={{ width: '100%', padding: 14, background: '#FFF4E5', color: '#FFB020', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 10 }}>Clear Entered Data</button>
 
-            <button onClick={() => {
-              setCustomAlert({
-                isOpen: true,
-                type: 'confirm',
-                title: 'Reset Setup',
-                message: 'Are you sure you want to edit your setup? This might clear your current shift blocks.',
-                onConfirm: () => {
-                  setSetupMode(true);
-                  playSound('trash');
-                  setCustomAlert({ isOpen: false });
-                }
-              });
-            }} style={{ width: '100%', padding: 14, background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 10 }}>Edit Shift Setup</button>
+            {/* Limited edit during running shift — preserves blocks */}
+            {isToday && clockStatus !== 'idle' ? (
+              <ShiftQuickEdit
+                target={target} unit={unit} shiftEnd={shiftEnd}
+                onApply={(newTarget, newUnit, newEnd) => {
+                  setTarget(newTarget);
+                  setUnit(newUnit);
+                  setShiftEnd(newEnd);
+                  // Recalc targets with new total, keep blocks
+                  const nb = [...blocks];
+                  recalcTargets(nb, newTarget, breakHistory);
+                  setBlocks(nb);
+                  save(nb, { target: newTarget, unit: newUnit, shiftEnd: newEnd });
+                }}
+              />
+            ) : (
+              <button onClick={() => {
+                setCustomAlert({
+                  isOpen: true,
+                  type: 'confirm',
+                  title: 'Reset Setup',
+                  message: 'This will clear your current shift blocks and logged data. Continue?',
+                  onConfirm: () => {
+                    setSetupMode(true);
+                    playSound('trash');
+                    setCustomAlert({ isOpen: false });
+                  }
+                });
+              }} style={{ width: '100%', padding: 14, background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 10 }}>Edit Shift Setup</button>
+            )}
           </div>
         )}
       </div>
