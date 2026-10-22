@@ -3,16 +3,26 @@ import { getToken, onMessage } from 'firebase/messaging';
 import { messaging, db } from '../firebase/firebase';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
 
+const getNotificationPermission = () => {
+  if (typeof window !== 'undefined' && 'Notification' in window) {
+    return Notification.permission;
+  }
+  return 'default';
+};
+
 export const useNotifications = (user) => {
-  const [permission, setPermission] = useState(Notification.permission);
+  const [permission, setPermission] = useState(getNotificationPermission);
   const [fcmToken, setFcmToken] = useState(null);
 
   useEffect(() => {
-    setPermission(Notification.permission);
+    setPermission(getNotificationPermission());
   }, []);
 
   const requestPermission = async () => {
     try {
+      if (typeof window === 'undefined' || !('Notification' in window)) {
+        return null;
+      }
       const currentPermission = await Notification.requestPermission();
       setPermission(currentPermission);
       

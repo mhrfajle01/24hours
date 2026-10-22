@@ -137,6 +137,277 @@ function exportCSV(data, date) {
   a.click();
 }
 
+// --- Realistic StarMaker-Style Emote Animation (Narrow Snake Tour + 2s Transparent Character + Auto-Fade) ---
+const StarMakerEmote = ({ type, onComplete }) => {
+  const isSuccess = type === 'achieved';
+  const [stage, setStage] = useState('snake'); // 'snake' (0 - 400ms) -> 'character' (400ms - 2000ms) -> 'hidden'
+
+  useEffect(() => {
+    // Stage 1: Quick energetic perimeter snake loop (400ms)
+    const t1 = setTimeout(() => {
+      setStage('character');
+    }, 400);
+
+    // Stage 2: Character stays visible for 1.6s (total exactly 2.0s from start)
+    const t2 = setTimeout(() => {
+      setStage('hidden');
+      onComplete();
+    }, 2000);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
+
+  if (stage === 'hidden') return null;
+
+  return (
+    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, pointerEvents: 'none', zIndex: 40, overflow: 'visible', borderRadius: 16 }}>
+      {/* STAGE 1: Narrow Neon Glowing Snake Orbit (0.4s fast tour) */}
+      {stage === 'snake' && (
+        <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'visible' }}>
+          <defs>
+            <linearGradient id={isSuccess ? "snakeBeamGlowOk" : "snakeBeamGlowMiss"} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor={isSuccess ? "#22C55E" : "#EF4444"} stopOpacity="0" />
+              <stop offset="70%" stopColor={isSuccess ? "#4ADE80" : "#F87171"} stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#FFFFFF" stopOpacity="1" />
+            </linearGradient>
+            <filter id="laserGlowBlur" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="3.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+          <rect
+            x="1.5" y="1.5" width="calc(100% - 3px)" height="calc(100% - 3px)" rx="15" ry="15"
+            fill="none"
+            stroke={`url(#${isSuccess ? "snakeBeamGlowOk" : "snakeBeamGlowMiss"})`}
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeDasharray="90 700"
+            filter="url(#laserGlowBlur)"
+            style={{ animation: 'snakeTourOnce 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards' }}
+          />
+        </svg>
+      )}
+
+      {/* STAGE 2: 3D Transparent Floating Badge (Positioned at TOP RIGHT above card so target numbers stay 100% visible) */}
+      <AnimatePresence>
+        {stage === 'character' && (
+          <motion.div
+            initial={{ scale: 0.1, y: 10, opacity: 0 }}
+            animate={{ scale: [0.1, 1.15, 1], y: -26, opacity: 1 }}
+            exit={{ scale: 0.4, y: -40, opacity: 0, transition: { duration: 0.2 } }}
+            transition={{ type: 'spring', damping: 12, stiffness: 300 }}
+            style={{
+              position: 'absolute',
+              right: 12,
+              top: 0,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              background: 'rgba(255, 255, 255, 0.92)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              padding: '4px 10px 4px 6px',
+              borderRadius: 24,
+              boxShadow: isSuccess
+                ? '0 8px 24px rgba(34, 197, 94, 0.35), 0 2px 6px rgba(0,0,0,0.08)'
+                : '0 8px 24px rgba(239, 68, 68, 0.35), 0 2px 6px rgba(0,0,0,0.08)',
+              border: `1.5px solid ${isSuccess ? '#22C55E' : '#EF4444'}`,
+            }}
+          >
+            <BlockFeedbackCharacter isSuccess={isSuccess} size={36} />
+            <div style={{ textAlign: 'left', lineHeight: 1.1 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 900, letterSpacing: 0.4,
+                color: isSuccess ? '#15803D' : '#991B1B'
+              }}>
+                {isSuccess ? 'TARGET HIT! 🌟' : 'MISSED 💔'}
+              </div>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: '#64748B' }}>
+                {isSuccess ? 'Bravo! 👏' : 'Keep going! 💪'}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <style>{`
+        @keyframes snakeTourOnce {
+          0% { stroke-dashoffset: 0; }
+          100% { stroke-dashoffset: -790; }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// --- 3D Cartoon Feedback Character (High-Fidelity Realistic StarMaker Clap & Cry) ---
+const BlockFeedbackCharacter = ({ isSuccess, size = 44 }) => {
+  return (
+    <motion.div
+      initial={{ scale: 0, rotate: isSuccess ? -15 : 15 }}
+      animate={{ scale: 1, rotate: 0 }}
+      transition={{ type: 'spring', damping: 10, stiffness: 280 }}
+      style={{
+        position: 'relative',
+        width: size,
+        height: size,
+        flexShrink: 0,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        filter: isSuccess
+          ? 'drop-shadow(0 4px 10px rgba(34,197,94,0.5))'
+          : 'drop-shadow(0 4px 10px rgba(239,68,68,0.5))'
+      }}
+      title={isSuccess ? "Target Achieved! 🎉" : "Target Missed 😢"}
+    >
+      {isSuccess ? (
+        // 3D Cartoon Clapping Character with realistic hand-meeting claps, sound waves & particle bursts
+        <motion.svg
+          width={size}
+          height={size}
+          viewBox="0 0 64 64"
+          animate={{ y: [0, -5, 0] }}
+          transition={{ duration: 0.45, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <defs>
+            <radialGradient id="gradHappyHead" cx="30%" cy="25%" r="75%">
+              <stop offset="0%" stopColor="#BBF7D0" />
+              <stop offset="45%" stopColor="#22C55E" />
+              <stop offset="100%" stopColor="#14532D" />
+            </radialGradient>
+            <radialGradient id="gradHand" cx="35%" cy="30%" r="70%">
+              <stop offset="0%" stopColor="#DCFCE7" />
+              <stop offset="100%" stopColor="#16A34A" />
+            </radialGradient>
+            <linearGradient id="gradCrown" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#FEF08A" />
+              <stop offset="50%" stopColor="#EAB308" />
+              <stop offset="100%" stopColor="#CA8A04" />
+            </linearGradient>
+          </defs>
+
+          {/* Golden Star Headband */}
+          <polygon points="32,5 35,12 42,13 37,18 39,24 32,20 25,24 27,18 22,13 29,12" fill="url(#gradCrown)" />
+
+          {/* 3D Head Sphere */}
+          <circle cx="32" cy="34" r="21" fill="url(#gradHappyHead)" />
+          {/* Specular Highlight */}
+          <ellipse cx="25" cy="22" rx="6" ry="3" fill="#FFFFFF" opacity="0.65" transform="rotate(-30 25 22)" />
+
+          {/* Expressive Arch Eyes (Joyful) */}
+          <path d="M 21 30 Q 25 22 29 30" fill="none" stroke="#052E16" strokeWidth="3" strokeLinecap="round" />
+          <path d="M 35 30 Q 39 22 43 30" fill="none" stroke="#052E16" strokeWidth="3" strokeLinecap="round" />
+
+          {/* Rosy Cheeks */}
+          <ellipse cx="19" cy="35" rx="3.5" ry="2" fill="#F472B6" opacity="0.85" />
+          <ellipse cx="45" cy="35" rx="3.5" ry="2" fill="#F472B6" opacity="0.85" />
+
+          {/* Open Joyful Smile */}
+          <path d="M 26 36 Q 32 46 38 36 Z" fill="#7F1D1D" />
+          <path d="M 29 41 Q 32 46 35 41 Z" fill="#FB7185" />
+
+          {/* Clap Impact Sparkle (flashes when hands meet) */}
+          <motion.polygon
+            points="32,44 34,48 38,49 35,52 36,56 32,53 28,56 29,52 26,49 30,48"
+            fill="#FACC15"
+            animate={{ scale: [0, 1.3, 0], opacity: [0, 1, 0] }}
+            transition={{ duration: 0.35, repeat: Infinity, ease: 'easeOut' }}
+          />
+
+          {/* Realistic Clapping Hands (Left & Right meeting in center) */}
+          <motion.g
+            animate={{ x: [0, 8, 0], rotate: [-18, 8, -18] }}
+            transition={{ duration: 0.35, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <ellipse cx="18" cy="49" rx="6.5" ry="5" fill="url(#gradHand)" stroke="#15803D" strokeWidth="1.2" />
+            <circle cx="16" cy="46" r="2.2" fill="url(#gradHand)" />
+          </motion.g>
+          <motion.g
+            animate={{ x: [0, -8, 0], rotate: [18, -8, 18] }}
+            transition={{ duration: 0.35, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <ellipse cx="46" cy="49" rx="6.5" ry="5" fill="url(#gradHand)" stroke="#15803D" strokeWidth="1.2" />
+            <circle cx="48" cy="46" r="2.2" fill="url(#gradHand)" />
+          </motion.g>
+        </motion.svg>
+      ) : (
+        // 3D Cartoon Crying Character with high-speed shivering, streaming tears & animated water splash
+        <motion.svg
+          width={size}
+          height={size}
+          viewBox="0 0 64 64"
+          animate={{ x: [-2, 2, -1, 1, 0] }}
+          transition={{ duration: 0.18, repeat: Infinity }}
+        >
+          <defs>
+            <radialGradient id="gradSadHead" cx="30%" cy="25%" r="75%">
+              <stop offset="0%" stopColor="#FECACA" />
+              <stop offset="45%" stopColor="#EF4444" />
+              <stop offset="100%" stopColor="#7F1D1D" />
+            </radialGradient>
+            <linearGradient id="gradTearStream" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#A5F3FC" />
+              <stop offset="50%" stopColor="#38BDF8" />
+              <stop offset="100%" stopColor="#0284C7" />
+            </linearGradient>
+          </defs>
+
+          {/* 3D Sad Head Sphere */}
+          <circle cx="32" cy="34" r="21" fill="url(#gradSadHead)" />
+          {/* Specular Highlight */}
+          <ellipse cx="25" cy="22" rx="5.5" ry="2.8" fill="#FFFFFF" opacity="0.6" transform="rotate(-30 25 22)" />
+
+          {/* Slanted Sad Eyebrows */}
+          <path d="M 20 23 Q 24 28 28 26" fill="none" stroke="#450A0A" strokeWidth="2.5" strokeLinecap="round" />
+          <path d="M 44 23 Q 40 28 36 26" fill="none" stroke="#450A0A" strokeWidth="2.5" strokeLinecap="round" />
+
+          {/* Big Teary Eyes */}
+          <circle cx="24" cy="31" r="5" fill="#0F172A" />
+          <circle cx="40" cy="31" r="5" fill="#0F172A" />
+          <circle cx="22.5" cy="29.5" r="2" fill="#FFFFFF" />
+          <circle cx="38.5" cy="29.5" r="2" fill="#FFFFFF" />
+
+          {/* Trembling Wavy Downward Frown */}
+          <path d="M 25 43 Q 32 38 39 43" fill="none" stroke="#450A0A" strokeWidth="2.8" strokeLinecap="round" />
+
+          {/* Gushing Falling Animated Teardrops (Continuous streaming fountain) */}
+          <motion.path
+            d="M 21 34 Q 19 44 18 50 Q 23 50 23 42 Z"
+            fill="url(#gradTearStream)"
+            animate={{ y: [0, 8, 16], opacity: [1, 1, 0], scaleY: [0.7, 1.3, 0.4] }}
+            transition={{ duration: 0.45, repeat: Infinity, ease: 'easeIn' }}
+          />
+          <motion.path
+            d="M 43 34 Q 45 44 46 50 Q 41 50 41 42 Z"
+            fill="url(#gradTearStream)"
+            animate={{ y: [0, 8, 16], opacity: [1, 1, 0], scaleY: [0.7, 1.3, 0.4] }}
+            transition={{ duration: 0.45, repeat: Infinity, ease: 'easeIn', delay: 0.15 }}
+          />
+
+          {/* Water Splash Droplets on Bottom */}
+          <motion.circle
+            cx="17" cy="54" r="2" fill="#38BDF8"
+            animate={{ scale: [0.5, 1.5, 0], y: [0, -3, 2] }}
+            transition={{ duration: 0.45, repeat: Infinity }}
+          />
+          <motion.circle
+            cx="47" cy="54" r="2" fill="#38BDF8"
+            animate={{ scale: [0.5, 1.5, 0], y: [0, -3, 2] }}
+            transition={{ duration: 0.45, repeat: Infinity, delay: 0.15 }}
+          />
+        </motion.svg>
+      )}
+    </motion.div>
+  );
+};
+
 // --- Confetti Celebration Component ---
 const BreakCelebration = ({ breakTypeId, durationMins, onComplete }) => {
   const type = BREAK_TYPES.find(t => t.id === breakTypeId) || BREAK_TYPES[0];
@@ -278,6 +549,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
   const [unit, setUnit] = useState('pieces');
   const [shiftStart, setShiftStart] = useState('09:00');
   const [shiftEnd, setShiftEnd] = useState('17:00');
+  const [shiftSlots, setShiftSlots] = useState([]);
   const [blockLen, setBlockLen] = useState(60);
   const [scheduledBreaks, setScheduledBreaks] = useState([]);
 
@@ -287,7 +559,12 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
   const [blocks, setBlocks] = useState([]);
   const [now, setNow] = useState(new Date());
 
+  const currTimeStr = fmtTime(now);
+  const currentBlockIdx = blocks.findIndex(b => currTimeStr >= b.start && currTimeStr < b.end);
+  const currentBlock = currentBlockIdx >= 0 ? blocks[currentBlockIdx] : null;
+
   const [earnedBreak, setEarnedBreak] = useState(0);
+  const [earnedBreakReason, setEarnedBreakReason] = useState('');
 
   // --- DIGITAL CLOCK & BREAK SYSTEM STATE ---
   const [clockStatus, setClockStatus] = useState('idle'); // idle, active, break
@@ -303,6 +580,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
 
   const [showBreakOptions, setShowBreakOptions] = useState(false);
   const [customBreakMins, setCustomBreakMins] = useState(30);
+  const [scheduledBreakPrompt, setScheduledBreakPrompt] = useState(null); // prompt when scheduled break ends: { blockId, label, end }
 
   // --- ENHANCED BREAK STATE ---
   const [breakType, setBreakType] = useState(null); // current break type id
@@ -316,9 +594,131 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
   const [showBreakInsights, setShowBreakInsights] = useState(false);
   const [zenQuoteIdx, setZenQuoteIdx] = useState(0);
 
+  // Active StarMaker emote trigger state: { blockId, type: 'achieved' | 'missed' }
+  const [activeEmote, setActiveEmote] = useState(null);
+
   // Custom Modal State
   const [customAlert, setCustomAlert] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null });
+  const shiftEndPromptedRef = useRef(false);
   // ----------------------------------------------
+
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('shortcuts'); // 'shortcuts' | 'defaults' | 'nudge'
+  const [autoAdvance, setAutoAdvance] = useState(() => {
+    return localStorage.getItem('shiftTracker_autoAdvance') !== 'false';
+  });
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    return localStorage.getItem('shiftTracker_sound') !== 'false';
+  });
+
+  // Default shift templates
+  const [defaultShiftTarget, setDefaultShiftTarget] = useState(() => {
+    return Number(localStorage.getItem('shiftTracker_defaultTarget')) || 100;
+  });
+  const [defaultShiftStart, setDefaultShiftStart] = useState(() => {
+    return localStorage.getItem('shiftTracker_defaultStart') || '09:00';
+  });
+  const [defaultShiftEnd, setDefaultShiftEnd] = useState(() => {
+    return localStorage.getItem('shiftTracker_defaultEnd') || '17:00';
+  });
+
+  // Keyboard shortcut configuration state (locally configurable)
+  const DEFAULT_KEYBINDINGS = {
+    takeBreak: 'b',
+    endBreak: 'e',
+    focusBlock: 'f',
+    toggleClock: 'c',
+    openSettings: 's'
+  };
+  const [keybindings, setKeybindings] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('shiftTracker_keybindings'));
+      return saved || DEFAULT_KEYBINDINGS;
+    } catch {
+      return DEFAULT_KEYBINDINGS;
+    }
+  });
+
+  const blockInputRefs = useRef({});
+
+  // Global Keyboard Listener (mouse-free production workflow)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const activeTag = document.activeElement?.tagName?.toLowerCase();
+      const isInputFocused = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+
+      // 1. Enter key navigation inside block input
+      if (e.key === 'Enter' && isInputFocused) {
+        const activeName = document.activeElement?.getAttribute('data-block-idx');
+        if (activeName !== null && activeName !== undefined) {
+          const idx = parseInt(activeName, 10);
+          const val = document.activeElement.value;
+          if (val) {
+            logCumulative(idx, val);
+          }
+          // Automatically advance focus to the next available unlogged work block
+          const nextBlock = blocks.find((blk, i) => i > idx && !blk.isBreak && !blk.logged);
+          if (nextBlock && blockInputRefs.current[nextBlock.id]) {
+            blockInputRefs.current[nextBlock.id].focus();
+          } else {
+            document.activeElement.blur();
+          }
+        }
+        return;
+      }
+
+      // Do not trigger general single-letter shortcuts when user is typing into any form field
+      if (isInputFocused) return;
+
+      const key = e.key.toLowerCase();
+
+      // Focus active / first unlogged block input
+      if (key === keybindings.focusBlock?.toLowerCase()) {
+        e.preventDefault();
+        const targetBlock = blocks.find((blk, i) => (i === currentBlockIdx || (!blk.isBreak && !blk.logged)));
+        if (targetBlock && blockInputRefs.current[targetBlock.id]) {
+          blockInputRefs.current[targetBlock.id].focus();
+        }
+        return;
+      }
+
+      // Take Break shortcut
+      if (key === keybindings.takeBreak?.toLowerCase()) {
+        if (clockStatus === 'active') {
+          e.preventDefault();
+          setShowBreakOptions(prev => !prev);
+        }
+        return;
+      }
+
+      // End Break shortcut
+      if (key === keybindings.endBreak?.toLowerCase()) {
+        if (clockStatus === 'break') {
+          e.preventDefault();
+          handleEndBreak();
+        }
+        return;
+      }
+
+      // Clock In / Clock Out
+      if (key === keybindings.toggleClock?.toLowerCase()) {
+        e.preventDefault();
+        if (clockStatus === 'idle') handleClockIn();
+        else if (clockStatus === 'active') handleClockOut();
+        return;
+      }
+
+      // Open Shift Settings
+      if (key === keybindings.openSettings?.toLowerCase()) {
+        e.preventDefault();
+        setShowSettingsModal(prev => !prev);
+        return;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [keybindings, clockStatus, blocks, currentBlockIdx]);
 
   // Date selection — fixed to BD/Dhaka timezone (UTC+6)
   const getBDDateStr = (offsetDays = 0) => {
@@ -333,7 +733,20 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
   const docRef = currentUser?.uid ? doc(db, 'shiftTracker', currentUser.uid) : null;
 
   // --- Break budget calculations ---
+  const activeSlots = shiftSlots && shiftSlots.length > 0 
+    ? shiftSlots.filter(s => s.start && s.end && timeToMinutes(s.start) < timeToMinutes(s.end))
+    : [{ start: shiftStart, end: shiftEnd }];
+
+  const effectiveShiftStart = activeSlots.length > 0 ? activeSlots[0].start : shiftStart;
+  const effectiveShiftEnd = activeSlots.length > 0 ? activeSlots[activeSlots.length - 1].end : shiftEnd;
+
   const getShiftDurationHrs = () => {
+    if (activeSlots.length > 1) {
+      const totalMins = activeSlots.reduce((acc, slot) => {
+        return acc + Math.max(0, timeToMinutes(slot.end) - timeToMinutes(slot.start));
+      }, 0);
+      return totalMins / 60;
+    }
     const s = new Date(`1970-01-01T${shiftStart}:00`);
     const e = new Date(`1970-01-01T${shiftEnd}:00`);
     return (e - s) / 3600000;
@@ -381,6 +794,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     setUnit(d.unit || 'pieces');
     setShiftStart(d.shiftStart || '09:00');
     setShiftEnd(d.shiftEnd || '17:00');
+    if (d.shiftSlots) setShiftSlots(d.shiftSlots);
     setBlockLen(d.blockLen || 60);
     if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
     setBlocks(d.blocks || []);
@@ -391,6 +805,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     if (d.breakStartMs) setBreakStartMs(d.breakStartMs);
     if (d.breakDurationMs) setBreakDurationMs(d.breakDurationMs);
     if (d.earnedBreak) setEarnedBreak(d.earnedBreak);
+    if (d.earnedBreakReason) setEarnedBreakReason(d.earnedBreakReason);
     if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
     if (d.breakHistory) setBreakHistory(d.breakHistory);
     if (d.breakType) setBreakType(d.breakType);
@@ -439,6 +854,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
           setUnit(local.unit || 'pieces');
           setShiftStart(local.shiftStart || '09:00');
           setShiftEnd(local.shiftEnd || '17:00');
+          if (local.shiftSlots) setShiftSlots(local.shiftSlots);
           setBlockLen(local.blockLen || 60);
           if (local.scheduledBreaks) setScheduledBreaks(local.scheduledBreaks);
           setBlocks(local.blocks || []);
@@ -458,6 +874,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                 setUnit(d.unit || 'pieces');
                 setShiftStart(d.shiftStart || '09:00');
                 setShiftEnd(d.shiftEnd || '17:00');
+                if (d.shiftSlots) setShiftSlots(d.shiftSlots);
                 setBlockLen(d.blockLen || 60);
                 if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
                 setBlocks(d.blocks || []);
@@ -491,6 +908,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     setUnit('pieces');
     setShiftStart('09:00');
     setShiftEnd('17:00');
+    setShiftSlots([]);
     setBlockLen(60);
     setBlocks([]);
     setScheduledBreaks([]);
@@ -500,6 +918,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     setTotalAccumulatedMs(0);
     setElapsedShiftSec(0);
     setEarnedBreak(0);
+    setEarnedBreakReason('');
     setTotalBreakAccumulatedMs(0);
     setBreakHistory([]);
     setBreakType(null);
@@ -516,8 +935,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     const nowTs = Date.now();
 
     const todayDoc = isToday ? {
-      date: todayStr, target, unit, shiftStart, shiftEnd, blockLen, scheduledBreaks, blocks: currentBlocks,
-      clockStatus, shiftStartMs, totalAccumulatedMs, breakStartMs, breakDurationMs, earnedBreak,
+      date: todayStr, target, unit, shiftStart, shiftEnd, shiftSlots, blockLen, scheduledBreaks, blocks: currentBlocks,
+      clockStatus, shiftStartMs, totalAccumulatedMs, breakStartMs, breakDurationMs, earnedBreak, earnedBreakReason,
       totalBreakAccumulatedMs: currentTotalBreakMs,
       breakHistory: currentBreakHistory,
       breakType,
@@ -532,6 +951,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
       blocks: currentBlocks,
       shiftStart: extraData.shiftStart || shiftStart,
       shiftEnd: extraData.shiftEnd || shiftEnd,
+      shiftSlots,
       blockLen,
       scheduledBreaks,
       unit,
@@ -587,23 +1007,122 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     return () => clearInterval(interval);
   }, [clockStatus, shiftStartMs, breakStartMs, breakDurationMs, totalAccumulatedMs]);
 
+  // Check when scheduled break block ends to prompt user for action
+  const dismissedScheduledBreakRef = useRef(null);
+  useEffect(() => {
+    if (clockStatus !== 'active' || !blocks || blocks.length === 0) return;
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const currStr = fmtTime(now);
+
+    // Auto-alert when all shift slots have ended
+    const endMinutes = timeToMinutes(effectiveShiftEnd);
+    if (endMinutes > 0 && nowMin >= endMinutes && !shiftEndPromptedRef.current && !customAlert.isOpen) {
+      shiftEndPromptedRef.current = true;
+      playSound('missed');
+      setCustomAlert({
+        isOpen: true,
+        type: 'confirm',
+        title: '🏁 Shift Time Ended',
+        message: `Your shift scheduled end time (${fmt12h(effectiveShiftEnd)}) has passed. Would you like to clock out and complete your shift now?`,
+        onConfirm: () => {
+          handleClockOutConfirm();
+        }
+      });
+      return;
+    }
+
+    // Find any scheduled break block that just finished within the last 15 minutes
+    const finishedScheduledBlock = blocks.find(b => {
+      if (!b.isBreak) return false;
+      const endMin = timeToMinutes(b.end);
+      return endMin <= nowMin && nowMin < endMin + 15;
+    });
+
+    if (finishedScheduledBlock) {
+      if (dismissedScheduledBreakRef.current !== finishedScheduledBlock.id && !scheduledBreakPrompt) {
+        setScheduledBreakPrompt({
+          blockId: finishedScheduledBlock.id,
+          label: finishedScheduledBlock.breakLabel || 'Scheduled Break',
+          end: finishedScheduledBlock.end
+        });
+      }
+    } else {
+      if (scheduledBreakPrompt) setScheduledBreakPrompt(null);
+    }
+  }, [now, clockStatus, blocks, scheduledBreakPrompt, effectiveShiftEnd, customAlert.isOpen]);
+
+  // Quick adjust / extend scheduled break block
+  const adjustScheduledBreak = (blockId, deltaMinutes) => {
+    const updated = blocks.map(b => {
+      if (b.id !== blockId) return b;
+      const currentEndMin = timeToMinutes(b.end);
+      const newEndMin = Math.max(timeToMinutes(b.start) + 5, currentEndMin + deltaMinutes);
+      const h = String(Math.floor(newEndMin / 60)).padStart(2, '0');
+      const m = String(newEndMin % 60).padStart(2, '0');
+      return { ...b, end: `${h}:${m}` };
+    });
+    recalcTargets(updated, target, breakHistory);
+    setBlocks(updated);
+    save(updated);
+    playSound('points');
+  };
+
 
   // --- SHIFT TRACKER FUNCTIONS ---
-  const handleClockIn = () => {
+  const performClockIn = () => {
     setClockStatus('active');
     setShiftStartMs(Date.now());
-    setTotalAccumulatedMs(0);
-    setTotalBreakAccumulatedMs(0);
-    setBreakHistory([]);
-    setElapsedShiftSec(0);
-    setBreakNudgeLevel(0);
+    shiftEndPromptedRef.current = false;
     playSound('success');
-    save(blocks, { clockStatus: 'active', shiftStartMs: Date.now(), totalAccumulatedMs: 0, totalBreakAccumulatedMs: 0, breakHistory: [] });
+    save(blocks, { clockStatus: 'active', shiftStartMs: Date.now() });
+  };
+
+  const handleClockIn = () => {
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const startMinutes = timeToMinutes(effectiveShiftStart);
+    const endMinutes = timeToMinutes(effectiveShiftEnd);
+
+    // If shift hasn't started yet (e.g. shift is 9:00 AM but it's 8:30 AM)
+    if (startMinutes > 0 && nowMin < startMinutes) {
+      const waitMins = startMinutes - nowMin;
+      const waitHrs = Math.floor(waitMins / 60);
+      const waitRemMins = waitMins % 60;
+      const waitStr = waitHrs > 0 ? `${waitHrs}h ${waitRemMins}m` : `${waitRemMins} mins`;
+
+      setCustomAlert({
+        isOpen: true,
+        type: 'confirm',
+        title: '⏳ Shift Not Started Yet',
+        message: `Your shift is scheduled to start at ${fmt12h(effectiveShiftStart)} (in ${waitStr}). Do you want to clock in early anyway?`,
+        onConfirm: () => {
+          performClockIn();
+          setCustomAlert({ isOpen: false });
+        }
+      });
+      return;
+    }
+
+    // If scheduled shift has already passed
+    if (endMinutes > 0 && nowMin > endMinutes) {
+      setCustomAlert({
+        isOpen: true,
+        type: 'confirm',
+        title: '⚠️ Shift Schedule Ended',
+        message: `Your scheduled shift ended at ${fmt12h(effectiveShiftEnd)}. Do you still want to clock in now?`,
+        onConfirm: () => {
+          performClockIn();
+          setCustomAlert({ isOpen: false });
+        }
+      });
+      return;
+    }
+
+    performClockIn();
   };
 
   const startBreak = (mins, typeId) => {
     const currentMs = Date.now();
-    const newTotal = totalAccumulatedMs + (currentMs - shiftStartMs);
+    const newTotal = totalAccumulatedMs + (currentMs - (shiftStartMs || currentMs));
     setTotalAccumulatedMs(newTotal);
     setBreakDurationMs(mins * 60000);
     setBreakStartMs(currentMs);
@@ -617,15 +1136,20 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     const newHistory = [...breakHistory, newBreakEntry];
     setBreakHistory(newHistory);
 
-    // Deduct earned break if used
+    // Deduct only the used amount from earned break (so excess is saved)
+    let remainingEarned = earnedBreak;
+    let nextReason = earnedBreakReason;
     if (earnedBreak > 0) {
-      setEarnedBreak(0);
+      remainingEarned = Math.max(0, earnedBreak - mins);
+      if (remainingEarned === 0) nextReason = '';
+      setEarnedBreak(remainingEarned);
+      setEarnedBreakReason(nextReason);
     }
 
     playSound('points');
     save(blocks, {
       clockStatus: 'break', totalAccumulatedMs: newTotal, breakDurationMs: mins * 60000,
-      breakStartMs: currentMs, earnedBreak: 0, breakType: typeId || 'tea',
+      breakStartMs: currentMs, earnedBreak: remainingEarned, earnedBreakReason: nextReason, breakType: typeId || 'tea',
       breakHistory: newHistory
     });
   };
@@ -668,6 +1192,28 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     });
   };
 
+  const handleClockOutConfirm = () => {
+    const clockOutTime = new Date();
+    const actualShiftEnd = fmtTime(clockOutTime);
+    const finalAccumulatedMs = shiftStartMs
+      ? totalAccumulatedMs + (Date.now() - shiftStartMs)
+      : totalAccumulatedMs;
+
+    setClockStatus('idle');
+    setShiftStartMs(null);
+    setTotalAccumulatedMs(0);
+    setElapsedShiftSec(0);
+    shiftEndPromptedRef.current = false;
+    playSound('trash');
+    save(blocks, {
+      clockStatus: 'idle',
+      shiftStartMs: null,
+      totalAccumulatedMs: finalAccumulatedMs,
+      shiftEnd: actualShiftEnd
+    });
+    setCustomAlert({ isOpen: false });
+  };
+
   const handleClockOut = () => {
     setCustomAlert({
       isOpen: true,
@@ -675,32 +1221,20 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
       title: 'Clock Out',
       message: 'Are you sure you want to clock out and stop your shift timer?',
       onConfirm: () => {
-        // Capture actual end time and total work duration BEFORE resetting
-        const clockOutTime = new Date();
-        const actualShiftEnd = fmtTime(clockOutTime);
-        const finalAccumulatedMs = shiftStartMs
-          ? totalAccumulatedMs + (Date.now() - shiftStartMs)
-          : totalAccumulatedMs;
-
-        setClockStatus('idle');
-        setShiftStartMs(null);
-        setTotalAccumulatedMs(0);
-        setElapsedShiftSec(0);
-        playSound('trash');
-        save(blocks, {
-          clockStatus: 'idle',
-          shiftStartMs: null,
-          totalAccumulatedMs: finalAccumulatedMs,
-          shiftEnd: actualShiftEnd
-        });
-        setCustomAlert({ isOpen: false });
+        handleClockOutConfirm();
       }
     });
   };
 
   const generateBlocks = () => {
-    const s = new Date(`1970-01-01T${shiftStart}:00`);
-    const e = new Date(`1970-01-01T${shiftEnd}:00`);
+    const slotsToUse = shiftSlots && shiftSlots.length > 0
+      ? [...shiftSlots].filter(s => s.start && s.end && timeToMinutes(s.start) < timeToMinutes(s.end))
+      : [{ label: 'Shift', start: shiftStart, end: shiftEnd }];
+
+    if (slotsToUse.length === 0) return;
+
+    // Sort shift slots chronologically
+    slotsToUse.sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
 
     // Sort scheduled breaks by start time
     const sortedBreaks = [...scheduledBreaks]
@@ -708,63 +1242,76 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
       .sort((a, b) => timeToMinutes(a.start) - timeToMinutes(b.start));
 
     const b = [];
-    let cur = s;
     let blockId = 0;
 
-    while (cur < e) {
-      const curTime = fmtTime(cur);
-      const curMin = timeToMinutes(curTime);
+    slotsToUse.forEach(slot => {
+      const s = new Date(`1970-01-01T${slot.start}:00`);
+      const e = new Date(`1970-01-01T${slot.end}:00`);
+      let cur = s;
 
-      // Check if a scheduled break starts at or before current position
-      const nextBreak = sortedBreaks.find(sb => {
-        const sbStart = timeToMinutes(sb.start);
-        const sbEnd = timeToMinutes(sb.end);
-        return sbStart >= curMin && sbStart < timeToMinutes(fmtTime(e)) && sbEnd > curMin;
-      });
+      while (cur < e) {
+        const curTime = fmtTime(cur);
+        const curMin = timeToMinutes(curTime);
 
-      if (nextBreak) {
-        const brkStartMin = timeToMinutes(nextBreak.start);
-        const brkEndMin = timeToMinutes(nextBreak.end);
+        // Check if a scheduled break starts at or before current position within this slot
+        const nextBreak = sortedBreaks.find(sb => {
+          const sbStart = timeToMinutes(sb.start);
+          const sbEnd = timeToMinutes(sb.end);
+          return sbStart >= curMin && sbStart < timeToMinutes(fmtTime(e)) && sbEnd > curMin;
+        });
 
-        // If there's work time before this break, add a work block
-        if (curMin < brkStartMin) {
-          const workEnd = new Date(`1970-01-01T${nextBreak.start}:00`);
-          // Split into blockLen-sized chunks
-          let workCur = cur;
-          while (workCur < workEnd) {
-            const chunkEnd = new Date(Math.min(workCur.getTime() + blockLen * 60000, workEnd.getTime()));
-            b.push({
-              id: blockId++,
-              start: fmtTime(workCur),
-              end: fmtTime(chunkEnd),
-              actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
-            });
-            workCur = chunkEnd;
+        if (nextBreak) {
+          const brkStartMin = timeToMinutes(nextBreak.start);
+          const brkEndMin = timeToMinutes(nextBreak.end);
+
+          // If there's work time before this break, add work block(s)
+          if (curMin < brkStartMin) {
+            const workEnd = new Date(`1970-01-01T${nextBreak.start}:00`);
+            let workCur = cur;
+            while (workCur < workEnd) {
+              const chunkEnd = new Date(Math.min(workCur.getTime() + blockLen * 60000, workEnd.getTime()));
+              b.push({
+                id: blockId++,
+                start: fmtTime(workCur),
+                end: fmtTime(chunkEnd),
+                shiftLabel: slot.label,
+                actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
+              });
+              workCur = chunkEnd;
+            }
           }
+
+          // Add the break block
+          b.push({
+            id: blockId++,
+            start: nextBreak.start,
+            end: nextBreak.end,
+            shiftLabel: slot.label,
+            actual: 0, cumulative: 0, logged: false, target: 0,
+            isBreak: true,
+            breakLabel: nextBreak.label || 'Break'
+          });
+
+          cur = new Date(`1970-01-01T${nextBreak.end}:00`);
+        } else {
+          // No more breaks ahead in this slot, fill with work blocks
+          const bEnd = new Date(Math.min(cur.getTime() + blockLen * 60000, e.getTime()));
+          b.push({
+            id: blockId++,
+            start: fmtTime(cur),
+            end: fmtTime(bEnd),
+            shiftLabel: slot.label,
+            actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
+          });
+          cur = bEnd;
         }
-
-        // Add the break block
-        b.push({
-          id: blockId++,
-          start: nextBreak.start,
-          end: nextBreak.end,
-          actual: 0, cumulative: 0, logged: false, target: 0,
-          isBreak: true,
-          breakLabel: nextBreak.label || 'Break'
-        });
-
-        cur = new Date(`1970-01-01T${nextBreak.end}:00`);
-      } else {
-        // No more breaks ahead, fill with work blocks
-        const bEnd = new Date(Math.min(cur.getTime() + blockLen * 60000, e.getTime()));
-        b.push({
-          id: blockId++,
-          start: fmtTime(cur),
-          end: fmtTime(bEnd),
-          actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
-        });
-        cur = bEnd;
       }
+    });
+
+    // Update global shiftStart & shiftEnd to the extremes
+    if (slotsToUse.length > 0) {
+      setShiftStart(slotsToUse[0].start);
+      setShiftEnd(slotsToUse[slotsToUse.length - 1].end);
     }
 
     recalcTargets(b, target, breakHistory);
@@ -830,21 +1377,39 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     b.actual = actualProd;
     b.logged = true;
 
-    let newEarnedBreak = earnedBreak;
-    if (actualProd > b.target) {
-      const extraRate = (actualProd - b.target) / b.target;
-      if (extraRate > 0) {
-        newEarnedBreak += Math.floor(extraRate * 5);
-        setEarnedBreak(newEarnedBreak);
-        playSound('success');
-      }
+    // Trigger StarMaker Emote animation + Sound for 3 seconds
+    const isTargetAchieved = actualProd >= b.target;
+    setActiveEmote({ blockId: b.id, type: isTargetAchieved ? 'achieved' : 'missed' });
+    if (isTargetAchieved) {
+      playSound('success');
     } else {
-      playSound('points');
+      playSound('missed');
+    }
+
+    let newEarnedBreak = earnedBreak;
+    let newReason = earnedBreakReason;
+    if (b.target > 0 && actualProd > b.target) {
+      // 1 minute of earned break bonus for every 10% exceeding the target
+      const percentOver = ((actualProd - b.target) / b.target) * 100;
+      const bonusMinutes = Math.max(1, Math.floor(percentOver / 10));
+      newEarnedBreak += bonusMinutes;
+      const surplus = (actualProd - b.target).toFixed(0);
+      newReason = `Exceeded target by +${surplus} ${unit} (+${percentOver.toFixed(0)}%) in ${fmt12h(b.start)} - ${fmt12h(b.end)}`;
+      setEarnedBreak(newEarnedBreak);
+      setEarnedBreakReason(newReason);
+    } else if (actualProd <= b.target) {
+      // If user lowered or didn't exceed target, do not grant earned break
+      if (!blocks.some((otherB, oIdx) => oIdx !== id && otherB.logged && otherB.actual > otherB.target)) {
+        newEarnedBreak = 0;
+        newReason = '';
+        setEarnedBreak(0);
+        setEarnedBreakReason('');
+      }
     }
 
     recalcTargets(nb, target, breakHistory);
     setBlocks(nb);
-    save(nb, { earnedBreak: newEarnedBreak });
+    save(nb, { earnedBreak: newEarnedBreak, earnedBreakReason: newReason });
   };
 
   const resetBlock = (id) => {
@@ -852,14 +1417,17 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     nb[id].logged = false;
     nb[id].actual = 0;
     nb[id].cumulative = 0;
+    // Check if any other blocks earned break
+    const hasOtherOverTarget = nb.some((blk, idx) => idx !== id && blk.logged && !blk.isBreak && blk.actual > blk.target);
+    if (!hasOtherOverTarget) {
+      setEarnedBreak(0);
+      setEarnedBreakReason('');
+    }
     recalcTargets(nb, target, breakHistory);
     setBlocks(nb);
-    save(nb);
+    save(nb, hasOtherOverTarget ? {} : { earnedBreak: 0, earnedBreakReason: '' });
   };
 
-  const currTimeStr = fmtTime(now);
-  const currentBlockIdx = blocks.findIndex(b => currTimeStr >= b.start && currTimeStr < b.end);
-  const currentBlock = currentBlockIdx >= 0 ? blocks[currentBlockIdx] : null;
   const isInScheduledBreak = currentBlock?.isBreak && clockStatus === 'active';
   const scheduledBreakEndMins = isInScheduledBreak ? timeToMinutes(currentBlock.end) : 0;
   const scheduledBreakRemainingMins = isInScheduledBreak ? Math.max(0, scheduledBreakEndMins - (now.getHours() * 60 + now.getMinutes())) : 0;
@@ -887,27 +1455,114 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
       </AnimatePresence>
 
       {/* Header */}
-      <motion.div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'linear-gradient(135deg, #1CB0F6, #1480B3)', padding: '14px 16px', color: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.1)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer' }}>←</button>
-          <div style={{ fontSize: 18, fontWeight: 700 }}>⏱️ Shift Tracker</div>
-          {!isOnline && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ padding: '3px 10px', background: '#FF4B4B', borderRadius: 10, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />Offline</motion.div>}
-          <button onClick={onOpenReports} style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: 12, fontWeight: 700, fontSize: 12 }}>Reports</button>
-          {!setupMode && <button onClick={() => exportCSV({blocks}, selectedDate)} style={{ background: '#fff', color: '#1CB0F6', border: 'none', padding: '6px 12px', borderRadius: 12, fontWeight: 700, fontSize: 12 }}>Export</button>}
+      <motion.div
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+        style={{
+          position: 'sticky', top: 0, zIndex: 100,
+          background: 'linear-gradient(135deg, rgba(28,176,246,0.95), rgba(20,128,179,0.95))',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          padding: '10px 14px',
+          color: '#fff',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+          borderBottom: '1px solid rgba(255,255,255,0.15)'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, maxWidth: 1200, margin: '0 auto' }}>
+          
+          {/* Left: Back button + Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <motion.button
+              whileTap={{ scale: 0.88 }}
+              onClick={onBack}
+              style={{
+                background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
+                width: 32, height: 32, borderRadius: '50%', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 14, flexShrink: 0
+              }}
+            >
+              ←
+            </motion.button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <span style={{ fontSize: 16 }}>⏱️</span>
+              <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                Shift Tracker
+              </span>
+            </div>
+          </div>
+
+          {/* Right: Offline Indicator + Compact Action Pill Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {!isOnline && (
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ padding: '2px 8px', background: '#FF4B4B', borderRadius: 10, fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff' }} />
+                Offline
+              </motion.div>
+            )}
+
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              onClick={() => setShowSettingsModal(true)}
+              title="Settings"
+              style={{
+                background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none',
+                height: 32, padding: '0 10px', borderRadius: 16, fontWeight: 700, fontSize: 12,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+              }}
+            >
+              <span>⚙️</span>
+              <span style={{ display: 'none', '@media (min-width: 480px)': { display: 'inline' } }}>Settings</span>
+            </motion.button>
+
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              onClick={onOpenReports}
+              title="Reports"
+              style={{
+                background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none',
+                height: 32, padding: '0 10px', borderRadius: 16, fontWeight: 700, fontSize: 12,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+              }}
+            >
+              <span>📊</span>
+              <span>Reports</span>
+            </motion.button>
+
+            {!setupMode && (
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={() => exportCSV({blocks}, selectedDate)}
+                title="Export CSV"
+                style={{
+                  background: '#fff', color: '#1CB0F6', border: 'none',
+                  height: 32, padding: '0 10px', borderRadius: 16, fontWeight: 800, fontSize: 12,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                }}
+              >
+                <span>📥</span>
+                <span>Export</span>
+              </motion.button>
+            )}
+          </div>
+
         </div>
       </motion.div>
 
       {/* Date Selector */}
-      <div style={{ display: 'flex', gap: 8, padding: '12px 16px', background: '#fff', borderBottom: '1px solid #eee', overflowX: 'auto' }}>
-        <button onClick={() => setSelectedDate(yesterdayStr)} style={{ flexShrink: 0, padding: '8px 16px', background: selectedDate === yesterdayStr ? '#FF9500' : '#f5f5f5', color: selectedDate === yesterdayStr ? '#fff' : '#555', border: 'none', borderRadius: 20, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>📅 Yesterday</button>
-        <button onClick={() => setSelectedDate(todayStr)} style={{ flexShrink: 0, padding: '8px 16px', background: selectedDate === todayStr ? '#1CB0F6' : '#f5f5f5', color: selectedDate === todayStr ? '#fff' : '#555', border: 'none', borderRadius: 20, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>📍 Today</button>
-        <input type="date" value={selectedDate} max={todayStr} onChange={e => setSelectedDate(e.target.value)} style={{ flexShrink: 0, padding: '8px 12px', border: '1px solid #e0e0e0', borderRadius: 20, fontSize: 13, fontWeight: 600, color: '#333', outline: 'none' }} />
-        {!isToday && <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 8px', color: '#FF9500', fontSize: 12, fontWeight: 700 }}>⚠️ Past Date Mode</div>}
+      <div style={{ display: 'flex', gap: 6, padding: '8px 14px', background: '#fff', borderBottom: '1px solid #edf2f7', overflowX: 'auto', alignItems: 'center' }}>
+        <motion.button whileTap={{ scale: 0.95 }} onClick={() => setSelectedDate(yesterdayStr)} style={{ flexShrink: 0, padding: '6px 12px', background: selectedDate === yesterdayStr ? '#FF9500' : '#f1f5f9', color: selectedDate === yesterdayStr ? '#fff' : '#475569', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>📅 Yesterday</motion.button>
+        <motion.button whileTap={{ scale: 0.95 }} onClick={() => setSelectedDate(todayStr)} style={{ flexShrink: 0, padding: '6px 12px', background: selectedDate === todayStr ? '#1CB0F6' : '#f1f5f9', color: selectedDate === todayStr ? '#fff' : '#475569', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>📍 Today</motion.button>
+        <input type="date" value={selectedDate} max={todayStr} onChange={e => setSelectedDate(e.target.value)} style={{ flexShrink: 0, padding: '5px 10px', border: '1px solid #cbd5e1', borderRadius: 16, fontSize: 12, fontWeight: 600, color: '#334155', outline: 'none' }} />
+        {!isToday && <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 4px', color: '#FF9500', fontSize: 11, fontWeight: 700 }}>⚠️ Past Date</div>}
       </div>
 
-      <div style={{ padding: 16 }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px' }}>
         {setupMode ? (
-          <motion.div initial={{ y: 20 }} animate={{ y: 0 }} style={{ background: '#fff', padding: 20, borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+          <motion.div initial={{ y: 20 }} animate={{ y: 0 }} style={{ maxWidth: 640, margin: '0 auto', background: '#fff', padding: 24, borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
             <h3 style={{ marginTop: 0 }}>⚙️ Setup Shift</h3>
 
             <label style={{ display: 'block', marginBottom: 10, fontSize: 14, fontWeight: 600 }}>Daily Target
@@ -918,13 +1573,134 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
               <input type="text" value={unit} onChange={e => setUnit(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #ccc', boxSizing: 'border-box' }} />
             </label>
 
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <label style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Shift Start
-                <input type="time" value={shiftStart} onChange={e => setShiftStart(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #ccc', boxSizing: 'border-box' }} />
-              </label>
-              <label style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>Shift End
-                <input type="time" value={shiftEnd} onChange={e => setShiftEnd(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #ccc', boxSizing: 'border-box' }} />
-              </label>
+            {/* --- Shift Timings / Multi-Shift Slots --- */}
+            <div style={{ marginBottom: 14, padding: 16, background: '#F0F9FF', borderRadius: 16, border: '1px solid #BAE6FD' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: '#0369A1' }}>⏱️ Shift Schedule</span>
+                  <div style={{ fontSize: 11, color: '#0284C7', fontWeight: 600 }}>Configure one or multiple shift slots per day</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (shiftSlots.length === 0) {
+                      setShiftSlots([
+                        { label: '1st Shift', start: shiftStart || '09:00', end: '13:00' },
+                        { label: '2nd Shift', start: '15:00', end: shiftEnd || '19:00' }
+                      ]);
+                    } else {
+                      const nextNum = shiftSlots.length + 1;
+                      setShiftSlots(prev => [...prev, { label: `${nextNum}${nextNum === 2 ? 'nd' : nextNum === 3 ? 'rd' : 'th'} Shift`, start: '14:00', end: '18:00' }]);
+                    }
+                  }}
+                  style={{ padding: '6px 12px', background: '#0284C7', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  + Add Shift
+                </button>
+              </div>
+
+              {shiftSlots.length === 0 ? (
+                <div>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <label style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#0369A1' }}>Shift Start
+                      <input type="time" value={shiftStart} onChange={e => setShiftStart(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #B9E6FE', background: '#fff', boxSizing: 'border-box' }} />
+                    </label>
+                    <label style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#0369A1' }}>Shift End
+                      <input type="time" value={shiftEnd} onChange={e => setShiftEnd(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #B9E6FE', background: '#fff', boxSizing: 'border-box' }} />
+                    </label>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 6 }}>Single shift mode. Tap "+ Add Shift" above for split/multiple shifts (e.g. 9AM-11AM & 3PM-9PM).</div>
+                </div>
+              ) : (
+                <div>
+                  {shiftSlots.map((slot, idx) => (
+                    <motion.div key={idx} initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                      style={{ marginBottom: 10, padding: 12, background: '#fff', borderRadius: 12, border: '1px solid #E0F2FE', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                        <input
+                          type="text"
+                          value={slot.label}
+                          placeholder="Shift Name (e.g. 1st Shift)"
+                          onChange={e => {
+                            const n = [...shiftSlots];
+                            n[idx] = { ...n[idx], label: e.target.value };
+                            setShiftSlots(n);
+                          }}
+                          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13, fontWeight: 700, color: '#0369A1', minWidth: 0 }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomAlert({
+                              isOpen: true,
+                              type: 'confirm',
+                              title: 'Delete Shift Slot',
+                              message: `Remove "${slot.label || 'Shift'}" (${slot.start} - ${slot.end})?`,
+                              onConfirm: () => {
+                                const remaining = shiftSlots.filter((_, i) => i !== idx);
+                                setShiftSlots(remaining);
+                                if (remaining.length === 1) {
+                                  // Revert back to standard start & end if user clears down to 1
+                                  setShiftStart(remaining[0].start);
+                                  setShiftEnd(remaining[0].end);
+                                }
+                                playSound('trash');
+                                setCustomAlert({ isOpen: false });
+                              }
+                            });
+                          }}
+                          style={{ padding: '6px 10px', background: '#FEE2E2', color: '#EF4444', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer', lineHeight: 1 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <input
+                          type="time"
+                          value={slot.start}
+                          onChange={e => {
+                            const n = [...shiftSlots];
+                            n[idx] = { ...n[idx], start: e.target.value };
+                            setShiftSlots(n);
+                          }}
+                          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                        />
+                        <span style={{ color: '#94A3B8', fontSize: 13, fontWeight: 600 }}>to</span>
+                        <input
+                          type="time"
+                          value={slot.end}
+                          onChange={e => {
+                            const n = [...shiftSlots];
+                            n[idx] = { ...n[idx], end: e.target.value };
+                            setShiftSlots(n);
+                          }}
+                          style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13 }}
+                        />
+                      </div>
+                    </motion.div>
+                  ))}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                    <div style={{ fontSize: 11, color: '#0369A1', fontWeight: 600 }}>
+                      Total {shiftSlots.length} shifts scheduled
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (shiftSlots.length > 0) {
+                          setShiftStart(shiftSlots[0].start);
+                          setShiftEnd(shiftSlots[shiftSlots.length - 1].end);
+                        }
+                        setShiftSlots([]);
+                      }}
+                      style={{ background: 'none', border: 'none', color: '#64748B', fontSize: 11, textDecoration: 'underline', cursor: 'pointer', padding: 0 }}
+                    >
+                      Reset to single shift
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <label style={{ display: 'block', marginTop: 10, fontSize: 14, fontWeight: 600 }}>Block Length
@@ -948,24 +1724,46 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
 
               {scheduledBreaks.map((sb, idx) => (
                 <motion.div key={idx} initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-                  style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, padding: 10, background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                  style={{ marginBottom: 8, padding: 10, background: '#fff', borderRadius: 12, boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
 
-                  <input type="text" value={sb.label} placeholder="Label"
-                    onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], label: e.target.value }; setScheduledBreaks(n); }}
-                    style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13, fontWeight: 600, minWidth: 0 }} />
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+                    <input type="text" value={sb.label} placeholder="Break Name"
+                      onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], label: e.target.value }; setScheduledBreaks(n); }}
+                      style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #ddd', fontSize: 14, fontWeight: 600, minWidth: 0 }} />
 
-                  <input type="time" value={sb.start}
-                    onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], start: e.target.value }; setScheduledBreaks(n); }}
-                    style={{ padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13, width: 90 }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomAlert({
+                          isOpen: true,
+                          type: 'confirm',
+                          title: 'Delete Scheduled Break',
+                          message: `Remove scheduled break "${sb.label || 'Break'}" (${sb.start} - ${sb.end})?`,
+                          onConfirm: () => {
+                            setScheduledBreaks(prev => prev.filter((_, i) => i !== idx));
+                            playSound('trash');
+                            setCustomAlert({ isOpen: false });
+                          }
+                        });
+                      }}
+                      style={{ padding: '6px 10px', background: '#FFEBEE', color: '#EF4444', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', lineHeight: 1, flexShrink: 0 }}
+                    >
+                      ✕
+                    </button>
+                  </div>
 
-                  <span style={{ color: '#999', fontSize: 13, fontWeight: 600 }}>to</span>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input type="time" value={sb.start}
+                      onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], start: e.target.value }; setScheduledBreaks(n); }}
+                      style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }} />
 
-                  <input type="time" value={sb.end}
-                    onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], end: e.target.value }; setScheduledBreaks(n); }}
-                    style={{ padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13, width: 90 }} />
+                    <span style={{ color: '#999', fontSize: 13, fontWeight: 600, flexShrink: 0 }}>to</span>
 
-                  <button onClick={() => setScheduledBreaks(prev => prev.filter((_, i) => i !== idx))}
-                    style={{ padding: '6px 10px', background: '#FFEBEE', color: '#EF4444', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+                    <input type="time" value={sb.end}
+                      onChange={e => { const n = [...scheduledBreaks]; n[idx] = { ...n[idx], end: e.target.value }; setScheduledBreaks(n); }}
+                      style={{ flex: 1, padding: 8, borderRadius: 8, border: '1px solid #ddd', fontSize: 13 }} />
+                  </div>
+
                 </motion.div>
               ))}
 
@@ -977,7 +1775,10 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             <button onClick={generateBlocks} style={{ width: '100%', padding: 14, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 20 }}>Generate Blocks</button>
           </motion.div>
         ) : (
-          <div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 16, alignItems: 'start' }}>
+            
+            {/* LEFT COLUMN: Clocks, Break Controls, Budget & Break Insights */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
             {/* DIGITAL CLOCK & BREAK CONTROLS - Only show for today */}
             {isToday && <div style={{
@@ -1032,6 +1833,45 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                 </>
               ) : clockStatus === 'active' ? (
                 <>
+                  {/* Scheduled Break Post-Ending Action Banner */}
+                  {scheduledBreakPrompt && (
+                    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                      style={{ marginBottom: 14, padding: 14, background: '#FFF3E0', border: '2px solid #FF9800', borderRadius: 14, textAlign: 'left' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: '#E65100' }}>⏰ {scheduledBreakPrompt.label} Ended ({fmt12h(scheduledBreakPrompt.end)})</span>
+                        <button onClick={() => { dismissedScheduledBreakRef.current = scheduledBreakPrompt.blockId; setScheduledBreakPrompt(null); }}
+                          style={{ border: 'none', background: 'none', color: '#999', fontSize: 16, cursor: 'pointer', padding: 2 }}>✕</button>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>
+                        Scheduled time completed! Would you like to resume shift work, extend schedule, or adjust into main break?
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        <button onClick={() => { dismissedScheduledBreakRef.current = scheduledBreakPrompt.blockId; setScheduledBreakPrompt(null); playSound('success'); }}
+                          style={{ flex: '1 1 auto', padding: '8px 12px', background: '#58CC02', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                          ✅ Resume Work
+                        </button>
+                        <button onClick={() => { adjustScheduledBreak(scheduledBreakPrompt.blockId, 5); }}
+                          style={{ padding: '8px 10px', background: '#FF9800', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                          +5m Extend
+                        </button>
+                        <button onClick={() => { adjustScheduledBreak(scheduledBreakPrompt.blockId, 10); }}
+                          style={{ padding: '8px 10px', background: '#FF9800', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                          +10m Extend
+                        </button>
+                        <button onClick={() => {
+                          dismissedScheduledBreakRef.current = scheduledBreakPrompt.blockId;
+                          setScheduledBreakPrompt(null);
+                          setSelectedBreakType('lunch');
+                          setSelectedBreakMins(15);
+                          setShowBreakOptions(true);
+                        }}
+                          style={{ flex: '1 1 100%', padding: '8px 12px', background: '#fff', color: '#E65100', border: '1px solid #FF9800', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                          ☕ Start Main Break
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
                   {isInScheduledBreak ? (
                     <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                       style={{ marginBottom: 12, padding: '12px 16px', background: 'linear-gradient(135deg, #FF9800, #F57C00)', borderRadius: 14, color: '#fff' }}>
@@ -1042,30 +1882,45 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                       <div style={{ fontSize: 13, fontWeight: 600, opacity: 0.9 }}>
                         {currentBlock.breakLabel || 'Break'} • {fmt12h(currentBlock.start)} – {fmt12h(currentBlock.end)} • {scheduledBreakRemainingMins}m left
                       </div>
-                      <button onClick={() => { setSelectedBreakType(null); setShowBreakOptions(true); }}
-                        style={{ marginTop: 10, padding: '8px 20px', background: 'rgba(255,255,255,0.25)', color: '#fff', border: '2px solid rgba(255,255,255,0.5)', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', backdropFilter: 'blur(4px)' }}>
-                        ☕ Start Timed Break
-                      </button>
+                      {/* Live Quick Adjust Stepper for Scheduled Break */}
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'center', alignItems: 'center', marginTop: 10 }}>
+                        <button onClick={() => adjustScheduledBreak(currentBlock.id, -5)}
+                          style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                          −5m
+                        </button>
+                        <button onClick={() => adjustScheduledBreak(currentBlock.id, 5)}
+                          style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                          +5m
+                        </button>
+                        <button onClick={() => adjustScheduledBreak(currentBlock.id, 10)}
+                          style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                          +10m
+                        </button>
+                        <button onClick={() => { setSelectedBreakType(null); setShowBreakOptions(true); }}
+                          style={{ padding: '4px 12px', background: '#fff', color: '#F57C00', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+                          Switch to Main Break
+                        </button>
+                      </div>
                     </motion.div>
                   ) : (
                     <div style={{ fontSize: 14, color: '#1CB0F6', fontWeight: 700, marginBottom: 4 }}>ACTIVE SHIFT</div>
                   )}
 
                   {/* Nudge ring */}
-                  <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <div style={{ position: 'relative', display: 'inline-block', width: '100%' }}>
                     {breakNudgeLevel > 0 && (
                       <motion.div
-                        animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.7, 0.3] }}
+                        animate={{ scale: [1, 1.05, 1], opacity: [0.3, 0.7, 0.3] }}
                         transition={{ duration: 2, repeat: Infinity }}
                         style={{
-                          position: 'absolute', top: -12, left: -12, right: -12, bottom: -12,
+                          position: 'absolute', top: -6, left: -6, right: -6, bottom: -6,
                           borderRadius: 16,
                           border: `2px solid ${breakNudgeLevel >= 3 ? '#EF4444' : breakNudgeLevel >= 2 ? '#F97316' : '#F59E0B'}`,
                           pointerEvents: 'none',
                         }}
                       />
                     )}
-                    <div style={{ fontSize: 48, fontWeight: 800, color: '#333', fontVariantNumeric: 'tabular-nums' }}>{formatStopwatch(elapsedShiftSec)}</div>
+                    <div style={{ fontSize: 'clamp(32px, 8vw, 44px)', fontWeight: 800, color: '#333', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.5px' }}>{formatStopwatch(elapsedShiftSec)}</div>
                   </div>
 
                   {/* Nudge messages */}
@@ -1161,16 +2016,73 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                                 </div>
 
                                 {/* Quick presets */}
-                                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginBottom: 16 }}>
-                                  {[5, 10, 15, 30, 45, 60].map(m => (
+                                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 12 }}>
+                                  {[5, 10, 15, 20, 25, 30, 45, 60].map(m => (
                                     <button key={m} onClick={() => setSelectedBreakMins(m)}
                                       style={{
-                                        padding: '6px 12px', borderRadius: 20, border: 'none',
+                                        padding: '6px 10px', borderRadius: 16, border: 'none',
                                         background: selectedBreakMins === m ? bt.color : '#f0f0f0',
                                         color: selectedBreakMins === m ? '#fff' : '#666',
                                         fontWeight: 600, fontSize: 12, cursor: 'pointer',
                                       }}>{m}m</button>
                                   ))}
+                                </div>
+
+                                {/* Custom Exact Time Input & 5-min Range Sub-options */}
+                                <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 12, marginBottom: 16 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>Custom Select Time:</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        max={180}
+                                        value={selectedBreakMins}
+                                        onChange={(e) => {
+                                          const v = parseInt(e.target.value, 10);
+                                          if (!isNaN(v)) setSelectedBreakMins(Math.max(1, Math.min(180, v)));
+                                        }}
+                                        style={{
+                                          width: 60, padding: '6px 8px', borderRadius: 8,
+                                          border: `2px solid ${bt.color}`, fontSize: 14, fontWeight: 700,
+                                          textAlign: 'center', color: bt.color, outline: 'none'
+                                        }}
+                                      />
+                                      <span style={{ fontSize: 13, fontWeight: 600, color: '#64748B' }}>mins</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Every 1-min options within the current 5-min interval bracket (e.g. 35 to 40 -> 35, 36, 37, 38, 39, 40) */}
+                                  <div style={{ marginTop: 10 }}>
+                                    <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, marginBottom: 6 }}>
+                                      Interval Range ({Math.floor(selectedBreakMins / 5) * 5} – {Math.floor(selectedBreakMins / 5) * 5 + 5}m):
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 6, justifyContent: 'center' }}>
+                                      {(() => {
+                                        const base = Math.floor(selectedBreakMins / 5) * 5;
+                                        return [0, 1, 2, 3, 4, 5].map(offset => {
+                                          const val = Math.max(1, base + offset);
+                                          const isActive = selectedBreakMins === val;
+                                          return (
+                                            <button
+                                              key={val}
+                                              type="button"
+                                              onClick={() => setSelectedBreakMins(val)}
+                                              style={{
+                                                flex: 1, padding: '5px 0', borderRadius: 6,
+                                                border: isActive ? `2px solid ${bt.color}` : '1px solid #E2E8F0',
+                                                background: isActive ? bt.color : '#F8FAFC',
+                                                color: isActive ? '#fff' : '#475569',
+                                                fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                                              }}
+                                            >
+                                              {val}
+                                            </button>
+                                          );
+                                        });
+                                      })()}
+                                    </div>
+                                  </div>
                                 </div>
 
                                 <motion.button whileTap={{ scale: 0.97 }}
@@ -1203,9 +2115,9 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                   </div>
 
                   {/* Breathing Circle Timer */}
-                  <div style={{ position: 'relative', width: 200, height: 200, margin: '0 auto 16px' }}>
+                  <div style={{ position: 'relative', width: 'min(180px, 60vw)', height: 'min(180px, 60vw)', margin: '0 auto 16px' }}>
                     {/* Background circle */}
-                    <svg width="200" height="200" style={{ transform: 'rotate(-90deg)' }}>
+                    <svg viewBox="0 0 200 200" style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
                       <circle cx="100" cy="100" r="88" fill="none" stroke="rgba(0,0,0,0.05)" strokeWidth="8" />
                       <motion.circle cx="100" cy="100" r="88" fill="none"
                         stroke={isOverBreak ? '#FF4B4B' : currentBreakType.color}
@@ -1222,8 +2134,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                       <motion.div
                         animate={{ scale: isOverBreak ? [1, 1.15, 1] : [1, 1.1, 1] }}
                         transition={{ duration: isOverBreak ? 0.5 : 4, repeat: Infinity }}
-                        style={{ fontSize: 36, marginBottom: 4 }}>{currentBreakType.icon}</motion.div>
-                      <div style={{ fontSize: 28, fontWeight: 800, color: isOverBreak ? '#FF4B4B' : '#333', fontVariantNumeric: 'tabular-nums' }}>
+                        style={{ fontSize: 32, marginBottom: 2 }}>{currentBreakType.icon}</motion.div>
+                      <div style={{ fontSize: 'clamp(20px, 6vw, 26px)', fontWeight: 800, color: isOverBreak ? '#FF4B4B' : '#333', fontVariantNumeric: 'tabular-nums' }}>
                         {formatStopwatch(breakRemainingSec)}
                       </div>
                     </div>
@@ -1292,7 +2204,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             {isToday && clockStatus !== 'idle' && completedBreaks.length > 0 && !setupMode && (
               <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
                 style={{ background: '#fff', padding: 16, borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', marginBottom: 16 }}>
-                <BreakTimeline shiftStartTime={shiftStart} shiftEndTime={shiftEnd} breakHistory={breakHistory} currentTime={now} />
+                <BreakTimeline shiftStartTime={effectiveShiftStart} shiftEndTime={effectiveShiftEnd} breakHistory={breakHistory} currentTime={now} />
               </motion.div>
             )}
 
@@ -1366,15 +2278,30 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             {/* Earned Break Banner */}
             <AnimatePresence>
               {earnedBreak > 0 && clockStatus === 'active' && (
-                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} style={{ marginBottom: 16, padding: 16, background: '#CE82FF', borderRadius: 16, color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>🎉 <b>Earned Break:</b> {earnedBreak} mins</div>
-                  <button onClick={() => startBreak(earnedBreak, 'rest')} style={{ background: '#fff', color: '#CE82FF', border: 'none', padding: '6px 12px', borderRadius: 12, fontWeight: 700 }}>Start</button>
+                <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}
+                  style={{ marginBottom: 16, padding: 16, background: 'linear-gradient(135deg, #A855F7, #7E22CE)', borderRadius: 16, color: '#fff', boxShadow: '0 4px 14px rgba(168,85,247,0.3)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 800 }}>🎉 Earned Break: +{earnedBreak} mins</div>
+                      {earnedBreakReason && (
+                        <div style={{ fontSize: 12, opacity: 0.92, marginTop: 3, fontWeight: 500, color: '#F3E8FF' }}>
+                          💡 <b>Why:</b> {earnedBreakReason}
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => startBreak(earnedBreak, 'rest')} style={{ background: '#fff', color: '#7E22CE', border: 'none', padding: '8px 16px', borderRadius: 12, fontWeight: 800, fontSize: 13, cursor: 'pointer', flexShrink: 0, boxShadow: '0 2px 6px rgba(0,0,0,0.1)' }}>Start Break</button>
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
+            </div>{/* END OF LEFT COLUMN */}
+
+            {/* RIGHT COLUMN: Production Stats, Timeline Blocks, Actions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
             {/* Stats */}
-            <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 10 }}>
               <div style={{ flex: 1, background: '#fff', padding: 16, borderRadius: 16, textAlign: 'center', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
                 <div style={{ fontSize: 12, color: '#888', fontWeight: 600 }}>TOTAL PRODUCED</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: '#1CB0F6' }}>{totalProduced}</div>
@@ -1414,9 +2341,20 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                 }
 
                 return (
-                  <motion.div key={i} layout style={{ background: clockStatus === 'break' && isActiveTime ? '#FFF4E5' : '#fff', padding: 16, borderRadius: 16, borderLeft: `6px solid ${clockStatus === 'break' && isActiveTime ? currentBreakType.color : statusColor}`, boxShadow: isActiveTime ? '0 4px 12px rgba(28,176,246,0.1)' : '0 1px 4px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: 10, opacity: (clockStatus === 'break' && isActiveTime) ? 0.8 : 1 }}>
+                  <motion.div key={i} layout style={{ position: 'relative', background: clockStatus === 'break' && isActiveTime ? '#FFF4E5' : '#fff', padding: 16, borderRadius: 16, borderLeft: `6px solid ${clockStatus === 'break' && isActiveTime ? currentBreakType.color : statusColor}`, boxShadow: isActiveTime ? '0 4px 12px rgba(28,176,246,0.1)' : '0 1px 4px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: 10, opacity: (clockStatus === 'break' && isActiveTime) ? 0.8 : 1 }}>
+                    {/* StarMaker Snake Beam & 3s Emote Overlay */}
+                    <AnimatePresence>
+                      {activeEmote?.blockId === b.id && (
+                        <StarMakerEmote
+                          type={activeEmote.type}
+                          onComplete={() => setActiveEmote(null)}
+                        />
+                      )}
+                    </AnimatePresence>
+
                     <div style={{ flex: 1 }}>
                       <div style={{ fontSize: 12, color: '#888', fontWeight: 700 }}>
+                        {b.shiftLabel && <span style={{ color: '#0284C7', background: '#E0F2FE', padding: '1px 6px', borderRadius: 4, marginRight: 6, fontSize: 11 }}>{b.shiftLabel}</span>}
                         {fmt12h(b.start)} - {fmt12h(b.end)}
                         {isActiveTime && clockStatus === 'active' && <span style={{ color: '#1CB0F6' }}> • Active</span>}
                         {isActiveTime && clockStatus === 'break' && <span style={{ color: currentBreakType.color }}> • {currentBreakType.icon} {currentBreakType.label}</span>}
@@ -1426,7 +2364,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                       {b.logged && <div style={{ fontSize: 12, color: '#888' }}>Block Prod: {b.actual}</div>}
                     </div>
                     {b.logged ? (
-                      <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 10 }}>
                          <button onClick={() => resetBlock(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: 4, color: '#888' }} title="Edit Block">✏️</button>
                          <div>
                            <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', fontWeight: 700 }}>Total Run</div>
@@ -1435,8 +2373,17 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                        <div style={{ fontSize: 10, color: '#888', fontWeight: 600 }}>ENTER TOTAL SO FAR</div>
-                        <input type="number" placeholder="Total" onBlur={(e) => { if(e.target.value) logCumulative(i, e.target.value) }} style={{ width: 80, padding: 8, borderRadius: 8, border: '2px solid #e0e0e0', textAlign: 'center', fontSize: 16, fontWeight: 700, outline: 'none' }} onFocus={(e) => e.target.style.borderColor = '#1CB0F6'} onMouseLeave={(e) => { if(document.activeElement !== e.target) e.target.style.borderColor = '#e0e0e0' }}/>
+                        <div style={{ fontSize: 10, color: '#888', fontWeight: 600 }}>ENTER TOTAL (↵ NEXT)</div>
+                        <input
+                          ref={el => { if (el) blockInputRefs.current[b.id] = el; }}
+                          data-block-idx={i}
+                          type="number"
+                          placeholder="Total"
+                          onBlur={(e) => { if(e.target.value) logCumulative(i, e.target.value) }}
+                          style={{ width: 80, padding: 8, borderRadius: 8, border: '2px solid #e0e0e0', textAlign: 'center', fontSize: 16, fontWeight: 700, outline: 'none' }}
+                          onFocus={(e) => e.target.style.borderColor = '#1CB0F6'}
+                          onMouseLeave={(e) => { if(document.activeElement !== e.target) e.target.style.borderColor = '#e0e0e0' }}
+                        />
                       </div>
                     )}
                   </motion.div>
@@ -1468,7 +2415,26 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                   const nb = blocks.map(b => ({ ...b, logged: false, actual: 0, cumulative: 0 }));
                   recalcTargets(nb, target, breakHistory);
                   setBlocks(nb);
-                  save(nb);
+                  setEarnedBreak(0);
+                  setEarnedBreakReason('');
+                  save(nb, {
+                    clockStatus: 'idle',
+                    shiftStartMs: null,
+                    totalAccumulatedMs: 0,
+                    elapsedShiftSec: 0,
+                    earnedBreak: 0,
+                    earnedBreakReason: '',
+                    totalBreakAccumulatedMs: 0,
+                    breakHistory: [],
+                    breakStartMs: null,
+                    breakDurationMs: 0
+                  });
+                  setClockStatus('idle');
+                  setShiftStartMs(null);
+                  setTotalAccumulatedMs(0);
+                  setElapsedShiftSec(0);
+                  setTotalBreakAccumulatedMs(0);
+                  setBreakHistory([]);
                   playSound('trash');
                   setCustomAlert({ isOpen: false });
                 }
@@ -1499,15 +2465,249 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
                   message: 'This will clear your current shift blocks and logged data. Continue?',
                   onConfirm: () => {
                     setSetupMode(true);
+                    setBlocks([]);
+                    setClockStatus('idle');
+                    setShiftStartMs(null);
+                    setTotalAccumulatedMs(0);
+                    setElapsedShiftSec(0);
+                    setEarnedBreak(0);
+                    setEarnedBreakReason('');
+                    setTotalBreakAccumulatedMs(0);
+                    setBreakHistory([]);
+                    // Persist empty blocks to storage & Firestore so refresh won't restore deleted blocks
+                    save([], {
+                      blocks: [],
+                      setupMode: true,
+                      clockStatus: 'idle',
+                      shiftStartMs: null,
+                      totalAccumulatedMs: 0,
+                      earnedBreak: 0,
+                      earnedBreakReason: '',
+                      totalBreakAccumulatedMs: 0,
+                      breakHistory: []
+                    });
                     playSound('trash');
                     setCustomAlert({ isOpen: false });
                   }
                 });
               }} style={{ width: '100%', padding: 14, background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 10 }}>Edit Shift Setup</button>
             )}
+            </div>{/* END OF RIGHT COLUMN */}
           </div>
         )}
       </div>
+
+      {/* SHIFT SETTINGS & KEYBINDINGS MODAL */}
+      <AnimatePresence>
+        {showSettingsModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
+              style={{ background: '#fff', padding: 24, borderRadius: 24, width: '100%', maxWidth: 440, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: 18, color: '#1E293B', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  ⚙️ Shift Tracker Settings
+                </h3>
+                <button onClick={() => setShowSettingsModal(false)}
+                  style={{ background: '#F1F5F9', border: 'none', borderRadius: '50%', width: 32, height: 32, cursor: 'pointer', fontWeight: 700, color: '#64748B' }}>✕</button>
+              </div>
+
+              {/* Navigation Tabs */}
+              <div style={{ display: 'flex', gap: 6, marginBottom: 16, background: '#F1F5F9', padding: 4, borderRadius: 12 }}>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('shortcuts')}
+                  style={{
+                    flex: 1, padding: '8px 10px', borderRadius: 8, border: 'none',
+                    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                    background: settingsTab === 'shortcuts' ? '#fff' : 'none',
+                    color: settingsTab === 'shortcuts' ? '#0284C7' : '#64748B',
+                    boxShadow: settingsTab === 'shortcuts' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                  }}
+                >
+                  ⌨️ Hotkeys
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('defaults')}
+                  style={{
+                    flex: 1, padding: '8px 10px', borderRadius: 8, border: 'none',
+                    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                    background: settingsTab === 'defaults' ? '#fff' : 'none',
+                    color: settingsTab === 'defaults' ? '#0284C7' : '#64748B',
+                    boxShadow: settingsTab === 'defaults' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                  }}
+                >
+                  📋 Defaults
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('preferences')}
+                  style={{
+                    flex: 1, padding: '8px 10px', borderRadius: 8, border: 'none',
+                    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                    background: settingsTab === 'preferences' ? '#fff' : 'none',
+                    color: settingsTab === 'preferences' ? '#0284C7' : '#64748B',
+                    boxShadow: settingsTab === 'preferences' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                  }}
+                >
+                  ⚡ Preferences
+                </button>
+              </div>
+
+              {settingsTab === 'shortcuts' && (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                    Keyboard Shortcuts
+                  </div>
+                  <p style={{ fontSize: 12, color: '#64748B', marginTop: 0, marginBottom: 14 }}>
+                    Type total & hit <b>Enter (↵)</b> to save and advance automatically. Customize triggers:
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+                    {[
+                      { id: 'focusBlock', label: 'Focus Active Block Input', desc: 'Jumps directly into block input' },
+                      { id: 'takeBreak', label: 'Take / Toggle Break Sheet', desc: 'Opens break type menu during active shift' },
+                      { id: 'endBreak', label: 'End Break & Resume', desc: 'Resumes work when on break' },
+                      { id: 'toggleClock', label: 'Clock In / Clock Out', desc: 'Toggles your shift status' },
+                      { id: 'openSettings', label: 'Open Shift Settings', desc: 'Opens this settings panel' },
+                    ].map(kb => (
+                      <div key={kb.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0' }}>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{kb.label}</div>
+                          <div style={{ fontSize: 11, color: '#94A3B8' }}>{kb.desc}</div>
+                        </div>
+                        <input
+                          type="text"
+                          maxLength={1}
+                          value={keybindings[kb.id] || ''}
+                          onChange={(e) => {
+                            const newKey = e.target.value.toLowerCase();
+                            const updated = { ...keybindings, [kb.id]: newKey };
+                            setKeybindings(updated);
+                            localStorage.setItem('shiftTracker_keybindings', JSON.stringify(updated));
+                          }}
+                          style={{
+                            width: 40, height: 36, textAlign: 'center', borderRadius: 8,
+                            border: '2px solid #CBD5E1', background: '#fff', fontSize: 14,
+                            fontWeight: 800, textTransform: 'uppercase', color: '#0284C7', outline: 'none'
+                          }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {settingsTab === 'defaults' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Preset Shift Values
+                  </div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                    Default Daily Target:
+                    <input
+                      type="number"
+                      value={defaultShiftTarget}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setDefaultShiftTarget(val);
+                        localStorage.setItem('shiftTracker_defaultTarget', String(val));
+                      }}
+                      style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14 }}
+                    />
+                  </label>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <label style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                      Default Start:
+                      <input
+                        type="time"
+                        value={defaultShiftStart}
+                        onChange={(e) => {
+                          setDefaultShiftStart(e.target.value);
+                          localStorage.setItem('shiftTracker_defaultStart', e.target.value);
+                        }}
+                        style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14 }}
+                      />
+                    </label>
+                    <label style={{ flex: 1, fontSize: 13, fontWeight: 600, color: '#334155' }}>
+                      Default End:
+                      <input
+                        type="time"
+                        value={defaultShiftEnd}
+                        onChange={(e) => {
+                          setDefaultShiftEnd(e.target.value);
+                          localStorage.setItem('shiftTracker_defaultEnd', e.target.value);
+                        }}
+                        style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14 }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'preferences' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Workflow Behaviors
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0', cursor: 'pointer' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Auto-Advance Cursor (↵)</div>
+                      <div style={{ fontSize: 11, color: '#94A3B8' }}>Jump to next block on enter key</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={autoAdvance}
+                      onChange={(e) => {
+                        setAutoAdvance(e.target.checked);
+                        localStorage.setItem('shiftTracker_autoAdvance', String(e.target.checked));
+                      }}
+                      style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    />
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 12, background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0', cursor: 'pointer' }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Sound Audio Cues</div>
+                      <div style={{ fontSize: 11, color: '#94A3B8' }}>Play chime on clock in, breaks & saves</div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={soundEnabled}
+                      onChange={(e) => {
+                        setSoundEnabled(e.target.checked);
+                        localStorage.setItem('shiftTracker_sound', String(e.target.checked));
+                      }}
+                      style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    />
+                  </label>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={() => {
+                    setKeybindings(DEFAULT_KEYBINDINGS);
+                    localStorage.setItem('shiftTracker_keybindings', JSON.stringify(DEFAULT_KEYBINDINGS));
+                    playSound('points');
+                  }}
+                  style={{ flex: 1, padding: 12, background: '#F1F5F9', color: '#475569', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                >
+                  Reset Defaults
+                </button>
+                <button
+                  onClick={() => setShowSettingsModal(false)}
+                  style={{ flex: 1, padding: 12, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                >
+                  Done
+                </button>
+              </div>
+
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* CUSTOM MODAL OVERLAY */}
       <AnimatePresence>

@@ -5,7 +5,7 @@ import { db, messaging } from '../firebase/firebase';
 const VAPID_KEY = 'BAfkqUVQqhxiV2Bt34JRFv_FbGhAAAaGHtvSLzUjzwxm4OeHWXdLxoZzuX1Q0tvogyluVUUCPh1jpF1NQaQBQQY';
 
 export const requestNotificationPermission = async (userId) => {
-  if (!messaging) return;
+  if (!messaging || typeof window === 'undefined' || !('Notification' in window)) return;
 
   try {
     const permission = await Notification.requestPermission();
@@ -33,6 +33,7 @@ export const onForegroundMessage = (callback) => {
 };
 
 export const sendLocalNotification = (title, body) => {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission === 'granted') {
     if (localStorage.getItem('notifications_muted') === 'true') return;
     if ('serviceWorker' in navigator) {

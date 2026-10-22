@@ -50,38 +50,42 @@ const srFlushSyncQueue = async (uid) => {
 const BarChart = ({ data }) => {
   const chartData = [...data].reverse();
   const maxProd = Math.max(...chartData.map(d => Math.max(d.actual || 0, d.target || 0)), 1);
+  const barWidth = chartData.length > 14 ? 20 : 28;
+  const colMinWidth = chartData.length > 14 ? 26 : 36;
   
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', height: 220, gap: 12, paddingTop: 30, overflowX: 'auto', paddingBottom: 10, scrollbarWidth: 'none' }}>
+    <div style={{ display: 'flex', alignItems: 'flex-end', height: 200, gap: chartData.length > 14 ? 6 : 10, paddingTop: 26, overflowX: 'auto', paddingBottom: 6 }}>
       {chartData.map((day, i) => {
         const heightPct = Math.min(((day.actual || 0) / maxProd) * 100, 100);
         const targetPct = Math.min(((day.target || 0) / maxProd) * 100, 100);
         const isSuccess = (day.actual || 0) >= (day.target || 0);
+        const dateParts = day.date ? day.date.split('-') : [];
+        const dateNum = dateParts[2] || '';
         
         return (
-          <div key={i} style={{ flex: '1 0 36px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, height: '100%' }}>
+          <div key={i} style={{ flex: `0 0 ${colMinWidth}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, height: '100%' }}>
             
             {/* Tooltip-like label above the bar */}
-            <div style={{ fontSize: 10, fontWeight: 700, color: isSuccess ? '#10B981' : '#0EA5E9', opacity: 0.8 }}>
+            <div style={{ fontSize: 9.5, fontWeight: 700, color: isSuccess ? '#10B981' : '#0EA5E9', whiteSpace: 'nowrap' }}>
                {day.actual}
             </div>
 
-            <div style={{ position: 'relative', width: 28, flex: 1, background: 'rgba(255,255,255,0.05)', borderRadius: 14, overflow: 'hidden' }}>
+            <div style={{ position: 'relative', width: barWidth, flex: 1, background: 'rgba(255,255,255,0.05)', borderRadius: 10, overflow: 'hidden' }}>
                {/* Target Indicator Line */}
                {day.target > 0 && (
-                 <div style={{ position: 'absolute', bottom: `${targetPct}%`, left: 0, width: '100%', height: 2, background: 'rgba(255,255,255,0.6)', zIndex: 10, boxShadow: '0 0 4px rgba(255,255,255,0.4)' }} />
+                 <div style={{ position: 'absolute', bottom: `${targetPct}%`, left: 0, width: '100%', height: 2, background: 'rgba(255,255,255,0.7)', zIndex: 10, boxShadow: '0 0 4px rgba(255,255,255,0.4)' }} />
                )}
                {/* Actual Bar */}
                <motion.div 
                  initial={{ height: 0 }} 
                  animate={{ height: `${heightPct}%` }} 
-                 transition={{ delay: i * 0.03, type: 'spring', damping: 20 }}
-                 style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', background: isSuccess ? 'linear-gradient(180deg, #10B981, #059669)' : 'linear-gradient(180deg, #0EA5E9, #2563EB)', borderRadius: 14 }} 
+                 transition={{ delay: i * 0.02, type: 'spring', damping: 20 }}
+                 style={{ position: 'absolute', bottom: 0, left: 0, width: '100%', background: isSuccess ? 'linear-gradient(180deg, #10B981, #059669)' : 'linear-gradient(180deg, #0EA5E9, #2563EB)', borderRadius: 10 }} 
                />
             </div>
             
             {/* Date Label */}
-            <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>{day.date.split('-')[2]}</div>
+            <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 600 }}>{dateNum}</div>
           </div>
         );
       })}
@@ -304,15 +308,40 @@ export default function ShiftReportPage({ currentUser, onBack }) {
   const totalElemAmount = (totalElementCount * elemRate).toFixed(2);
 
   // Custom Alert State
-  const [customAlert, setCustomAlert] = useState({ isOpen: false, title: '', message: '' });
+  const [customAlert, setCustomAlert] = useState({ isOpen: false, type: 'alert', title: '', message: '', onConfirm: null });
 
   useEffect(() => {
     if (!currentUser?.uid) return;
     const fetchHistory = async () => {
       // 1. Load from localStorage FIRST (instant, offline-safe)
       const localHistory = srGetHistory(currentUser.uid);
-      if (localHistory.length > 0) {
-        setHistory(localHistory);
+      let combinedHistory = [...localHistory];
+
+      // Check shift tracker today's localStorage entry to ensure current shift is included
+      try {
+        const todayStr = getTodayDateStr();
+        const liveToday = JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}_${todayStr}`)) ||
+                          JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
+        if (liveToday && (liveToday.date === todayStr || !liveToday.date)) {
+          const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0);
+          const liveEntry = {
+            date: todayStr,
+            target: Number(liveToday.target) || 0,
+            actual: totalProducedNow,
+            blocks: liveToday.blocks || [],
+            shiftStart: liveToday.shiftStart,
+            shiftEnd: liveToday.shiftEnd,
+            unit: liveToday.unit || 'pieces',
+            totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : 0,
+            totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : 0,
+            breakHistory: liveToday.breakHistory || []
+          };
+          combinedHistory = [liveEntry, ...combinedHistory.filter(h => h.date !== todayStr)];
+        }
+      } catch {}
+
+      if (combinedHistory.length > 0) {
+        setHistory(combinedHistory);
       }
 
       // 2. Try Firestore if online
@@ -323,8 +352,31 @@ export default function ShiftReportPage({ currentUser, onBack }) {
           const data = snap.docs.map(doc => doc.data());
           
           if (data.length > 0) {
-            setHistory(data);
-            srSaveHistory(currentUser.uid, data); // Cache locally
+            // Also merge any today's live entry if not yet committed to history collection
+            const todayStr = getTodayDateStr();
+            const hasTodayInRemote = data.some(d => d.date === todayStr);
+            let mergedData = [...data];
+            if (!hasTodayInRemote) {
+              const liveToday = JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}_${todayStr}`)) ||
+                                JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
+              if (liveToday) {
+                const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0);
+                mergedData.unshift({
+                  date: todayStr,
+                  target: Number(liveToday.target) || 0,
+                  actual: totalProducedNow,
+                  blocks: liveToday.blocks || [],
+                  shiftStart: liveToday.shiftStart,
+                  shiftEnd: liveToday.shiftEnd,
+                  unit: liveToday.unit || 'pieces',
+                  totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : 0,
+                  totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : 0,
+                  breakHistory: liveToday.breakHistory || []
+                });
+              }
+            }
+            setHistory(mergedData);
+            srSaveHistory(currentUser.uid, mergedData); // Cache locally
           }
         } catch (err) {
           console.error("Failed to load shift history:", err);
@@ -336,9 +388,15 @@ export default function ShiftReportPage({ currentUser, onBack }) {
     fetchHistory();
   }, [currentUser?.uid]);
 
+  const getTodayDateStr = () => {
+    // Consistent Asia/Dhaka (UTC+6) date string
+    const d = new Date(Date.now() + 6 * 3600000);
+    return d.toISOString().split('T')[0];
+  };
+
   const getFilteredData = () => {
     let sorted = history.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDateStr();
     
     if (filter === 'today') return sorted.filter(d => d.date === today);
     if (filter === '7days') return sorted.slice(0, 7);
@@ -550,27 +608,29 @@ export default function ShiftReportPage({ currentUser, onBack }) {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ minHeight: '100dvh', background: '#0F172A', color: '#F8FAFC', fontFamily: "'Outfit', sans-serif" }}>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ minHeight: '100dvh', background: '#0F172A', color: '#F8FAFC', fontFamily: "'Outfit', sans-serif", paddingBottom: 60 }}>
       
       {/* Header */}
-      <motion.div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(15, 23, 42, 0.7)', backdropFilter: 'blur(12px)', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', gap: 16 }}>
-        <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.2s' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-        </button>
-        <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.5px' }}>Shift Reports</div>
-        {!isOnline && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ padding: '3px 10px', background: '#FF4B4B', borderRadius: 10, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />Offline</motion.div>}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-          <button onClick={handleExportCSV} style={{ background: '#0EA5E9', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(14,165,233,0.3)' }}>
-            CSV
+      <motion.div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(12px)', padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <button onClick={onBack} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 40, height: 40, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: '0.2s' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <button onClick={handleExportXLSX} style={{ background: '#10B981', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            XLSX
-          </button>
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '0.5px' }}>Shift Reports</div>
+          {!isOnline && <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ padding: '3px 10px', background: '#FF4B4B', borderRadius: 10, fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}><motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff' }} />Offline</motion.div>}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <button onClick={handleExportCSV} style={{ background: '#0EA5E9', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(14,165,233,0.3)' }}>
+              CSV
+            </button>
+            <button onClick={handleExportXLSX} style={{ background: '#10B981', color: '#fff', border: 'none', padding: '8px 12px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 4px 12px rgba(16,185,129,0.3)' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+              XLSX
+            </button>
+          </div>
         </div>
       </motion.div>
 
-      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 24 }}>
         
         {/* Mobile-Friendly Pills */}
         <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
@@ -622,89 +682,163 @@ export default function ShiftReportPage({ currentUser, onBack }) {
               </div>
             </div>
 
-            {/* Glanceable Metrics Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 20 }}>
+            {/* Glanceable Metrics Grid (Responsive 2 cols on mobile, 4 cols on desktop) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 18, borderRadius: 20 }}>
                 <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase' }}>Total Produced</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: '#0EA5E9', marginTop: 4 }}>{totalProduced.toLocaleString()}</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 20 }}>
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 18, borderRadius: 20 }}>
                 <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase' }}>Completion</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: completionPct >= 100 ? '#10B981' : '#F59E0B', marginTop: 4 }}>{completionPct}%</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 20 }}>
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 18, borderRadius: 20 }}>
                 <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase' }}>Total Work Time</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: '#F8FAFC', marginTop: 4 }}>{formatHrs(totalShiftTime)}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#F8FAFC', marginTop: 4 }}>{formatHrs(totalShiftTime)}</div>
               </div>
-              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 20 }}>
+              <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 18, borderRadius: 20 }}>
                 <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600, textTransform: 'uppercase' }}>Total Break Time</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: '#F8FAFC', marginTop: 4 }}>{formatHrs(totalBreakTime)}</div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: '#F8FAFC', marginTop: 4 }}>{formatHrs(totalBreakTime)}</div>
               </div>
             </div>
 
-            {/* Data Visualization */}
-            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 20, borderRadius: 20 }}>
-               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Production Trend</div>
-               <div style={{ fontSize: 12, color: '#94A3B8', display: 'flex', gap: 12 }}>
-                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 8, height: 8, background: '#0EA5E9', borderRadius: '50%' }}/> Actual</span>
-                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 12, height: 2, background: 'rgba(255,255,255,0.3)' }}/> Target</span>
-               </div>
-               {loading ? <div style={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading...</div> : <BarChart data={filteredData} />}
-            </div>
+            {/* Desktop 2-Column Responsive Layout: Left: Shift History Log (Prominent), Right: Trend Chart */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 18, alignItems: 'start' }}>
 
-        {/* Expandable History Log */}
-        <div>
-           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 16 }}>Shift History</div>
-           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-             {history.slice(0, filter === '7days' ? 7 : filter === '30days' ? 30 : history.length).map((day, idx) => {
+            {/* Expandable History Log */}
+            <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', padding: 16, borderRadius: 20 }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                 <div>
+                   <div style={{ fontSize: 16, fontWeight: 700, color: '#F8FAFC' }}>📋 Shift History</div>
+                   <div style={{ fontSize: 11, color: '#94A3B8' }}>Tap any shift to view hourly block breakdowns</div>
+                 </div>
+                 <div style={{ background: 'rgba(14,165,233,0.15)', color: '#38BDF8', padding: '3px 10px', borderRadius: 12, fontSize: 11, fontWeight: 800 }}>
+                   {filteredData.length} Days
+                 </div>
+               </div>
+
+               {/* Quick Pagination / Days Notice when > 10 */}
+               {filteredData.length > 10 && (
+                 <div style={{ fontSize: 11, color: '#94A3B8', marginBottom: 10, padding: '6px 10px', background: 'rgba(0,0,0,0.25)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                   <span>Showing all {filteredData.length} shifts</span>
+                   <span style={{ fontSize: 10, color: '#64748B' }}>Scroll inside box ↓</span>
+                 </div>
+               )}
+
+               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 600, overflowY: 'auto', paddingRight: 6, paddingBottom: 24, scrollbarWidth: 'thin' }}>
+             {filteredData.map((day, idx) => {
                const isExpanded = expandedDate === day.date;
                const isSuccess = day.actual >= day.target;
+               const dateObj = new Date(day.date);
+               const fullDateStr = isNaN(dateObj) ? day.date : dateObj.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+               const dayName = isNaN(dateObj) ? '' : dateObj.toLocaleDateString(undefined, { weekday: 'short' });
+               const dayNumMonth = isNaN(dateObj) ? day.date : dateObj.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
+               const pct = day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0;
+               const diff = (day.actual || 0) - (day.target || 0);
+
                return (
-                 <div key={idx} style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 16, overflow: 'hidden' }}>
+                 <div key={idx} style={{ flexShrink: 0, background: isExpanded ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)', border: isExpanded ? '1px solid rgba(14,165,233,0.4)' : '1px solid rgba(255,255,255,0.04)', borderRadius: 14, overflow: 'hidden', transition: 'all 0.2s' }}>
                    
-                   <div onClick={() => setExpandedDate(isExpanded ? null : day.date)} style={{ padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-                     <div>
-                       <div style={{ fontSize: 16, fontWeight: 600 }}>{new Date(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</div>
-                       <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>Prod: {day.actual} / {day.target}</div>
-                     </div>
-                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                       <div style={{ background: isSuccess ? 'rgba(16,185,129,0.2)' : 'rgba(245,158,11,0.2)', color: isSuccess ? '#34D399' : '#FBBF24', padding: '4px 10px', borderRadius: 12, fontSize: 12, fontWeight: 700 }}>
-                         {Math.round((day.actual / day.target) * 100)}%
+                   <div onClick={() => setExpandedDate(isExpanded ? null : day.date)} style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', gap: 10 }}>
+                     
+                     {/* Left: Date pill + Target Info */}
+                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                       <div style={{ background: 'rgba(255,255,255,0.05)', padding: '6px 10px', borderRadius: 10, textAlign: 'center', minWidth: 46 }}>
+                         <div style={{ fontSize: 10, fontWeight: 700, color: '#38BDF8', textTransform: 'uppercase' }}>{dayName}</div>
+                         <div style={{ fontSize: 13, fontWeight: 800, color: '#F8FAFC' }}>{dayNumMonth}</div>
                        </div>
-                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" strokeWidth="2" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.3s' }}><path d="M6 9l6 6 6-6"/></svg>
+                       <div style={{ minWidth: 0 }}>
+                         <div style={{ fontSize: 13, fontWeight: 700, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 6 }}>
+                           <span>{day.actual} {day.unit || 'pcs'}</span>
+                           <span style={{ fontSize: 11, fontWeight: 600, color: diff >= 0 ? '#34D399' : '#F87171' }}>
+                             ({diff >= 0 ? `+${diff}` : `${diff}`})
+                           </span>
+                         </div>
+                         <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+                           Target: {day.target} {day.unit || 'pcs'}
+                         </div>
+                       </div>
+                     </div>
+
+                     {/* Right: Completion status badge + Expand caret */}
+                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                       <div style={{
+                         background: isSuccess ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.15)',
+                         color: isSuccess ? '#34D399' : '#F87171',
+                         border: `1px solid ${isSuccess ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                         padding: '4px 10px', borderRadius: 10, fontSize: 11, fontWeight: 800, textAlign: 'center'
+                       }}>
+                         {pct}%
+                       </div>
+                       <div style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8' }}>
+                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.2s' }}>
+                           <path d="M6 9l6 6 6-6"/>
+                         </svg>
+                       </div>
                      </div>
                    </div>
 
+                   {/* Expandable detailed drawer */}
                    <AnimatePresence>
                      {isExpanded && (
-                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden', background: 'rgba(0,0,0,0.2)' }}>
-                         <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12, fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>
-                              <div>Work: {formatHrs(day.totalShiftSec)}</div>
-                              <div>Break: {formatHrs(day.totalBreakSec)}</div>
+                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} style={{ overflow: 'hidden', background: 'rgba(0,0,0,0.3)' }}>
+                         <div style={{ padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                            
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, fontSize: 12 }}>
+                              <div>⏱️ <b>Work Time:</b> <span style={{ color: '#38BDF8' }}>{formatHrs(day.totalShiftSec || 0)}</span></div>
+                              <div>☕ <b>Break Time:</b> <span style={{ color: '#FBBF24' }}>{formatHrs(day.totalBreakSec || 0)}</span></div>
                             </div>
                             
                             {day.blocks && day.blocks.length > 0 ? (
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {day.blocks.map((b, i) => (
-                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 8, fontSize: 14 }}>
-                                    <div><span style={{ color: '#94A3B8' }}>{b.start} - {b.end}</span></div>
-                                    <div style={{ fontWeight: 600, color: b.actual >= b.target ? '#34D399' : '#F8FAFC' }}>{b.actual} / {b.target.toFixed(0)}</div>
-                                  </div>
-                                ))}
+                              <div>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                                  Hourly Breakdown ({day.blocks.length} blocks)
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                                  {day.blocks.map((b, i) => {
+                                    const bActual = b.actual || 0;
+                                    const bTarget = Math.round(b.target || 0);
+                                    const hit = bActual >= bTarget;
+                                    return (
+                                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <span style={{ color: '#94A3B8' }}>{b.start} – {b.end}</span>
+                                          {b.isBreak && <span style={{ color: '#FFB020', background: 'rgba(255,176,32,0.15)', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>Break</span>}
+                                        </div>
+                                        <div style={{ fontWeight: 700, color: b.isBreak ? '#94A3B8' : hit ? '#34D399' : '#F8FAFC' }}>
+                                          {b.isBreak ? '0' : `${bActual} / ${bTarget}`}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             ) : (
-                              <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic' }}>No detailed blocks recorded for this shift.</div>
+                              <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>
+                                No hourly block details recorded for this date.
+                              </div>
                             )}
                          </div>
                        </motion.div>
                      )}
                    </AnimatePresence>
                  </div>
-               )
+               );
              })}
-           </div>
-        </div>
+               </div>
+            </div>
+
+            {/* Data Visualization */}
+            <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', padding: 18, borderRadius: 20 }}>
+               <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>Production Trend</div>
+               <div style={{ fontSize: 12, color: '#94A3B8', display: 'flex', gap: 12, marginBottom: 8 }}>
+                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 8, height: 8, background: '#0EA5E9', borderRadius: '50%' }}/> Actual</span>
+                 <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 12, height: 2, background: 'rgba(255,255,255,0.3)' }}/> Target</span>
+               </div>
+               {loading ? <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Loading...</div> : <BarChart data={filteredData} />}
+            </div>
+
+         </div>{/* End of 2-Column Responsive Grid */}
           </>
         )}
 
@@ -723,11 +857,20 @@ export default function ShiftReportPage({ currentUser, onBack }) {
       {/* CUSTOM ALERT MODAL */}
       <AnimatePresence>
         {customAlert.isOpen && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)', zIndex: 10001, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} style={{ background: '#1E293B', padding: 24, borderRadius: 24, width: '100%', maxWidth: 360, boxShadow: '0 20px 40px rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}>
                <h3 style={{ margin: '0 0 10px 0', fontSize: 20, color: '#F8FAFC' }}>{customAlert.title}</h3>
                <p style={{ margin: '0 0 24px 0', color: '#94A3B8', fontSize: 16, lineHeight: '1.5' }}>{customAlert.message}</p>
-               <button onClick={() => setCustomAlert({ isOpen: false })} style={{ width: '100%', padding: 14, background: '#0EA5E9', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Okay</button>
+               <div style={{ display: 'flex', gap: 12 }}>
+                 {customAlert.type === 'confirm' ? (
+                   <>
+                     <button onClick={() => setCustomAlert({ isOpen: false })} style={{ flex: 1, padding: 14, background: 'rgba(255,255,255,0.08)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Cancel</button>
+                     <button onClick={customAlert.onConfirm} style={{ flex: 1, padding: 14, background: '#EF4444', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Yes, Delete</button>
+                   </>
+                 ) : (
+                   <button onClick={() => setCustomAlert({ isOpen: false })} style={{ width: '100%', padding: 14, background: '#0EA5E9', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Okay</button>
+                 )}
+               </div>
             </motion.div>
           </motion.div>
         )}
@@ -742,22 +885,27 @@ export default function ShiftReportPage({ currentUser, onBack }) {
             style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: '#0F172A', zIndex: 10000, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
           >
             {/* Header */}
-            <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(12px)', padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button onClick={() => { setShowDailyReport(false); setShowEntryForm(false); }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-              </button>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 17, fontWeight: 700 }}>Daily Shift Report</div>
-                <div style={{ fontSize: 11, color: '#94A3B8' }}>Monthly Tracking Sheet</div>
+            <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(12px)', padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={() => { setShowDailyReport(false); setShowEntryForm(false); }} style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', width: 36, height: 36, borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 17, fontWeight: 700 }}>Daily Shift Report</div>
+                  <div style={{ fontSize: 11, color: '#94A3B8' }}>Monthly Tracking Sheet</div>
+                </div>
+                <motion.button
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => { setEditingEntry(null); setEntryForm({ dayCount: String(filteredDailyEntries.length + 1), date: new Date().toISOString().split('T')[0], docsCount: '', elementCount: '', remarks: '' }); setShowEntryForm(true); }}
+                  style={{ background: '#8B5CF6', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                >
+                  + Add
+                </motion.button>
               </div>
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => { setEditingEntry(null); setEntryForm({ dayCount: String(filteredDailyEntries.length + 1), date: new Date().toISOString().split('T')[0], docsCount: '', elementCount: '', remarks: '' }); setShowEntryForm(true); }}
-                style={{ background: '#8B5CF6', color: '#fff', border: 'none', padding: '8px 14px', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-              >
-                + Add
-              </motion.button>
             </div>
+
+            {/* Main Sheet Container - Responsive Max Width */}
+            <div style={{ maxWidth: 1200, margin: '0 auto', width: '100%', flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
             {/* Month Selector */}
             <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -772,21 +920,21 @@ export default function ShiftReportPage({ currentUser, onBack }) {
               </button>
             </div>
 
-            {/* Summary Cards */}
-            <div style={{ padding: '0 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.15), rgba(37,99,235,0.1))', border: '1px solid rgba(14,165,233,0.2)', padding: 14, borderRadius: 16 }}>
+            {/* Summary Cards (Auto-fit on desktop: side-by-side or expanded) */}
+            <div style={{ padding: '0 16px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <div style={{ background: 'linear-gradient(135deg, rgba(14,165,233,0.15), rgba(37,99,235,0.1))', border: '1px solid rgba(14,165,233,0.2)', padding: 16, borderRadius: 16 }}>
                 <div style={{ fontSize: 11, color: '#7DD3FC', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Docs</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: '#0EA5E9', marginTop: 2 }}>{totalDocsCount.toLocaleString()}</div>
-                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>≈ ৳{totalDocsAmount}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: '#0EA5E9', marginTop: 2 }}>{totalDocsCount.toLocaleString()}</div>
+                <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>≈ ৳{totalDocsAmount}</div>
               </div>
-              <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.2)', padding: 14, borderRadius: 16 }}>
+              <div style={{ background: 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(5,150,105,0.1))', border: '1px solid rgba(16,185,129,0.2)', padding: 16, borderRadius: 16 }}>
                 <div style={{ fontSize: 11, color: '#6EE7B7', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Elements</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: '#10B981', marginTop: 2 }}>{totalElementCount.toLocaleString()}</div>
-                <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>≈ ৳{totalElemAmount}</div>
+                <div style={{ fontSize: 26, fontWeight: 800, color: '#10B981', marginTop: 2 }}>{totalElementCount.toLocaleString()}</div>
+                <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 2 }}>≈ ৳{totalElemAmount}</div>
               </div>
             </div>
 
-            {/* Scrollable Table */}
+            {/* Scrollable Table - Horizontal scroll container for mobile responsiveness */}
             <div style={{ flex: 1, overflow: 'auto', padding: '0 16px 100px', WebkitOverflowScrolling: 'touch' }}>
               {dailyLoading ? (
                 <div style={{ textAlign: 'center', padding: 40, color: '#94A3B8' }}>Loading...</div>
@@ -797,55 +945,83 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                   <div style={{ fontSize: 14, color: '#94A3B8', maxWidth: 260, margin: '0 auto' }}>Tap "+ Add" to start recording your daily shift details for this month.</div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div style={{ minWidth: 540, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {/* Table Header */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '36px 70px 60px 60px 1fr', gap: 6, padding: '10px 12px', background: 'rgba(139,92,246,0.15)', borderRadius: 12, fontSize: 11, fontWeight: 700, color: '#C4B5FD', textTransform: 'uppercase', letterSpacing: '0.5px', position: 'sticky', top: 0, zIndex: 5 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '40px 115px 75px 75px 1fr 34px', gap: 8, padding: '12px 14px', background: 'rgba(139,92,246,0.15)', borderRadius: 12, fontSize: 11, fontWeight: 700, color: '#C4B5FD', textTransform: 'uppercase', letterSpacing: '0.5px', position: 'sticky', top: 0, zIndex: 5 }}>
                     <div>#</div>
-                    <div>Date</div>
+                    <div>Date (Day)</div>
                     <div>Docs</div>
                     <div>Elem</div>
                     <div>Remarks</div>
+                    <div style={{ textAlign: 'center' }}>Del</div>
                   </div>
 
                   {/* Entries */}
-                  {filteredDailyEntries.map((entry, idx) => (
-                    <motion.div
-                      key={entry.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.02 }}
-                      onClick={() => handleEditEntry(entry)}
-                      style={{ display: 'grid', gridTemplateColumns: '36px 70px 60px 60px 1fr', gap: 6, padding: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12, fontSize: 13, color: '#E2E8F0', cursor: 'pointer', alignItems: 'center', position: 'relative' }}
-                    >
-                      <div style={{ fontWeight: 700, color: '#8B5CF6' }}>{String(entry.dayCount).padStart(2, '0')}</div>
-                      <div style={{ fontSize: 12, color: '#94A3B8' }}>{entry.date ? new Date(entry.date).toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : '-'}</div>
-                      <div style={{ fontWeight: 700, color: entry.docsCount > 0 ? '#0EA5E9' : '#475569' }}>{entry.docsCount || '-'}</div>
-                      <div style={{ fontWeight: 700, color: entry.elementCount > 0 ? '#10B981' : '#475569' }}>{entry.elementCount || '-'}</div>
-                      <div style={{ fontSize: 12, color: '#94A3B8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.remarks || '-'}</div>
-                      {/* Swipe hint */}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDeleteEntry(entry); }}
-                        style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'rgba(239,68,68,0.15)', border: 'none', color: '#EF4444', width: 24, height: 24, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, opacity: 0.5 }}
+                  {filteredDailyEntries.map((entry, idx) => {
+                    const dObj = entry.date ? new Date(entry.date) : null;
+                    const dateFormatted = dObj && !isNaN(dObj) ? dObj.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }) : '-';
+                    const dayFormatted = dObj && !isNaN(dObj) ? dObj.toLocaleDateString(undefined, { weekday: 'short' }) : '';
+
+                    return (
+                      <motion.div
+                        key={entry.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.02 }}
+                        onClick={() => handleEditEntry(entry)}
+                        style={{ display: 'grid', gridTemplateColumns: '40px 115px 75px 75px 1fr 34px', gap: 8, padding: '12px 14px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12, fontSize: 13, color: '#E2E8F0', cursor: 'pointer', alignItems: 'center' }}
                       >
-                        ✕
-                      </button>
-                    </motion.div>
-                  ))}
+                        <div style={{ fontWeight: 700, color: '#8B5CF6' }}>{String(entry.dayCount).padStart(2, '0')}</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
+                          <span style={{ color: '#F1F5F9', fontWeight: 600 }}>{dateFormatted}</span>
+                          {dayFormatted && (
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#A78BFA', background: 'rgba(167,139,250,0.15)', padding: '1px 5px', borderRadius: 4 }}>
+                              {dayFormatted}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontWeight: 700, color: entry.docsCount > 0 ? '#0EA5E9' : '#475569' }}>{entry.docsCount || '-'}</div>
+                        <div style={{ fontWeight: 700, color: entry.elementCount > 0 ? '#10B981' : '#475569' }}>{entry.elementCount || '-'}</div>
+                        <div style={{ fontSize: 12, color: '#94A3B8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.remarks || '-'}</div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCustomAlert({
+                              isOpen: true,
+                              type: 'confirm',
+                              title: '🗑️ Delete Report Entry',
+                              message: `Are you sure you want to delete Day ${entry.dayCount} (${dateFormatted} ${dayFormatted})? This action cannot be undone.`,
+                              onConfirm: () => {
+                                handleDeleteEntry(entry);
+                                setCustomAlert({ isOpen: false });
+                              }
+                            });
+                          }}
+                          style={{ background: 'rgba(239,68,68,0.15)', border: 'none', color: '#EF4444', width: 26, height: 26, borderRadius: 6, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, margin: '0 auto' }}
+                          title="Delete"
+                        >
+                          ✕
+                        </button>
+                      </motion.div>
+                    );
+                  })}
 
                   {/* Totals Row */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '36px 70px 60px 60px 1fr', gap: 6, padding: '14px 12px', background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(99,102,241,0.1))', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 12, fontSize: 14, fontWeight: 800, marginTop: 4 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '40px 115px 75px 75px 1fr 34px', gap: 8, padding: '14px 14px', background: 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(99,102,241,0.1))', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 12, fontSize: 14, fontWeight: 800, marginTop: 4 }}>
                     <div style={{ color: '#C4B5FD' }}>Σ</div>
                     <div style={{ color: '#94A3B8', fontSize: 11 }}>{filteredDailyEntries.length} days</div>
                     <div style={{ color: '#0EA5E9' }}>{totalDocsCount}</div>
                     <div style={{ color: '#10B981' }}>{totalElementCount}</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       <div style={{ color: '#0EA5E9', fontSize: 11 }}>📄 ৳{totalDocsAmount}</div>
                       <div style={{ color: '#10B981', fontSize: 11 }}>🔗 ৳{totalElemAmount}</div>
                     </div>
+                    <div />
                   </div>
                 </div>
               )}
             </div>
+            </div>{/* End Main Sheet Container */}
 
             {/* ─── Entry Form Modal ─── */}
             <AnimatePresence>
