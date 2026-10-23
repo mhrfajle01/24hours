@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../firebase/firebase';
-import { doc, getDoc, setDoc, collection } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { useSound } from '../contexts/SoundContext';
 
 // --- OFFLINE SUPPORT HELPERS ---
@@ -609,6 +609,20 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   // Active StarMaker emote trigger state: { blockId, type: 'achieved' | 'missed' }
   const [activeEmote, setActiveEmote] = useState(null);
 
+  // --- PHASE 2: PRODUCTION TARGET ENGINE (Monthly -> Weekly -> Daily Auto-Suggest) ---
+  const [showProductionModal, setShowProductionModal] = useState(false);
+  const [monthlyTarget, setMonthlyTarget] = useState(() => {
+    return Number(localStorage.getItem('shiftTracker_monthlyTarget')) || 2600;
+  });
+  const [monthlyWorkDays, setMonthlyWorkDays] = useState(() => {
+    return Number(localStorage.getItem('shiftTracker_monthlyWorkDays')) || 26;
+  });
+  const [productionUnit, setProductionUnit] = useState(() => {
+    return localStorage.getItem('shiftTracker_productionUnit') || 'pieces';
+  });
+  const [monthlyHistory, setMonthlyHistory] = useState([]);
+  const [monthlyHistoryLoading, setMonthlyHistoryLoading] = useState(false);
+
   // Custom Modal State
   const [customAlert, setCustomAlert] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null });
   const shiftEndPromptedRef = useRef(false);
@@ -914,6 +928,44 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
     loadData();
   }, [currentUser?.uid, selectedDate]);
+
+  // Load monthly production history to power dynamic targets
+  const loadMonthlyProductionHistory = useCallback(async () => {
+    if (!currentUser?.uid) return;
+    setMonthlyHistoryLoading(true);
+    try {
+      const currentMonthPrefix = selectedDate.substring(0, 7); // e.g. "2026-10"
+      let entries = [];
+
+      // Try local storage first
+      try {
+        const localDaily = JSON.parse(localStorage.getItem(`shiftReport_daily_${currentUser.uid}`)) || [];
+        entries = localDaily.filter(e => e.date && e.date.startsWith(currentMonthPrefix));
+      } catch {}
+
+      if (navigator.onLine) {
+        try {
+          const histCol = collection(db, 'shiftTracker', currentUser.uid, 'history');
+          const snap = await getDocs(histCol);
+          const histData = snap.docs.map(d => ({ date: d.id, ...d.data() }))
+            .filter(e => e.date && e.date.startsWith(currentMonthPrefix));
+          
+          if (histData.length > 0) {
+            entries = histData;
+          }
+        } catch {}
+      }
+      setMonthlyHistory(entries);
+    } catch (err) {
+      console.error('Error fetching monthly history:', err);
+    } finally {
+      setMonthlyHistoryLoading(false);
+    }
+  }, [currentUser?.uid, selectedDate]);
+
+  useEffect(() => {
+    loadMonthlyProductionHistory();
+  }, [loadMonthlyProductionHistory]);
 
   const resetState = () => {
     setTarget(Number(localStorage.getItem('shiftTracker_defaultTarget')) || 100);
@@ -1446,6 +1498,163 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   const totalProduced = blocks.reduce((s, b) => s + (b.logged ? b.actual : 0), 0);
   const isOverBreak = breakRemainingSec < 0;
 
+  // --- COMPREHENSIVE SHIFT & NEXT SHIFT TIMING CALCULATOR ---
+  const timingInfo = (() => {
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const nowSecInDay = nowMin * 60 + now.getSeconds();
+
+    // Normalized slots for today
+    const validSlots = activeSlots && activeSlots.length > 0 
+      ? activeSlots.map((s, idx) => ({
+          idx,
+          label: s.label || `Shift ${idx + 1}`,
+          startMin: timeToMinutes(s.start),
+          endMin: timeToMinutes(s.end),
+          startStr: s.start,
+          endStr: s.end
+        })).filter(s => s.startMin < s.endMin)
+      : [{
+          idx: 0,
+          label: 'Main Shift',
+          startMin: timeToMinutes(shiftStart),
+          endMin: timeToMinutes(shiftEnd),
+          startStr: shiftStart,
+          endStr: shiftEnd
+        }];
+
+    // Current active slot (by clock time)
+    const currentSlot = validSlots.find(s => nowMin >= s.startMin && nowMin < s.endMin) || null;
+    
+    // Remaining time in current scheduled shift slot (down to seconds)
+    let currentSlotRemainingSec = 0;
+    let currentSlotElapsedSec = 0;
+    let currentSlotTotalSec = 0;
+    let currentSlotProgress = 0;
+
+    if (currentSlot) {
+      const slotStartSec = currentSlot.startMin * 60;
+      const slotEndSec = currentSlot.endMin * 60;
+      currentSlotTotalSec = slotEndSec - slotStartSec;
+      currentSlotElapsedSec = Math.max(0, nowSecInDay - slotStartSec);
+      currentSlotRemainingSec = Math.max(0, slotEndSec - nowSecInDay);
+      currentSlotProgress = currentSlotTotalSec > 0 ? Math.min(100, (currentSlotElapsedSec / currentSlotTotalSec) * 100) : 0;
+    }
+
+    // Overall shift bounds
+    const firstShiftStartMin = validSlots.length > 0 ? validSlots[0].startMin : timeToMinutes(shiftStart);
+    const overallEndMin = validSlots.length > 0 ? validSlots[validSlots.length - 1].endMin : timeToMinutes(shiftEnd);
+    const overallEndSec = overallEndMin * 60;
+    const finalShiftRemainingSec = Math.max(0, overallEndSec - nowSecInDay);
+    const isPastFinalShift = nowMin >= overallEndMin;
+    const isShiftStarted = clockStatus === 'active' || clockStatus === 'break' || (nowMin >= firstShiftStartMin && !isPastFinalShift);
+
+    // Next shift start calculation
+    // Look for next upcoming slot today
+    const upcomingTodaySlot = validSlots.find(s => s.startMin > nowMin);
+    let nextShiftLabel = '';
+    let nextShiftStartStr = '';
+    let nextShiftRemainingSec = 0;
+    let isNextShiftTomorrow = false;
+
+    if (upcomingTodaySlot) {
+      nextShiftLabel = upcomingTodaySlot.label;
+      nextShiftStartStr = upcomingTodaySlot.startStr;
+      nextShiftRemainingSec = (upcomingTodaySlot.startMin * 60) - nowSecInDay;
+    } else if (validSlots.length > 0) {
+      // First shift of tomorrow
+      const firstTomorrow = validSlots[0];
+      nextShiftLabel = `${firstTomorrow.label} (Tomorrow)`;
+      nextShiftStartStr = firstTomorrow.startStr;
+      const secondsUntilMidnight = (24 * 3600) - nowSecInDay;
+      nextShiftRemainingSec = secondsUntilMidnight + (firstTomorrow.startMin * 60);
+      isNextShiftTomorrow = true;
+    }
+
+    // Current block remaining (if currently in a block)
+    let currentBlockRemainingSec = 0;
+    let currentBlockProgress = 0;
+    if (currentBlock) {
+      const bStartSec = timeToMinutes(currentBlock.start) * 60;
+      const bEndSec = timeToMinutes(currentBlock.end) * 60;
+      const bTotal = bEndSec - bStartSec;
+      currentBlockRemainingSec = Math.max(0, bEndSec - nowSecInDay);
+      currentBlockProgress = bTotal > 0 ? Math.min(100, Math.max(0, (nowSecInDay - bStartSec) / bTotal) * 100) : 0;
+    }
+
+    return {
+      currentSlot,
+      currentSlotRemainingSec,
+      currentSlotProgress,
+      finalShiftRemainingSec,
+      isPastFinalShift,
+      isShiftStarted,
+      firstShiftStartMin,
+      nextShiftLabel,
+      nextShiftStartStr,
+      nextShiftRemainingSec,
+      isNextShiftTomorrow,
+      currentBlockRemainingSec,
+      currentBlockProgress,
+      overallEndStr: validSlots.length > 0 ? validSlots[validSlots.length - 1].endStr : shiftEnd
+    };
+  })();
+
+  // --- PHASE 2: PRODUCTION ENGINE METRICS (Dynamic Targets & Run-Rate) ---
+  const productionMetrics = (() => {
+    // Total produced so far this month
+    const totalMonthProduced = monthlyHistory.reduce((sum, item) => sum + (Number(item.actual) || Number(item.docsCount) || 0), 0) + (isToday ? totalProduced : 0);
+    const mTarget = Math.max(1, monthlyTarget);
+    const mWorkDays = Math.max(1, monthlyWorkDays);
+    const monthProgressPct = Math.min(100, Math.round((totalMonthProduced / mTarget) * 100));
+
+    // Calculate days passed and remaining working days in current month
+    const d = new Date(selectedDate);
+    const currentDayOfMonth = d.getDate();
+    const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    
+    // Remaining working days estimate
+    const daysPassedRatio = Math.min(1, currentDayOfMonth / daysInMonth);
+    const workDaysPassed = Math.round(daysPassedRatio * mWorkDays);
+    const workDaysRemaining = Math.max(1, mWorkDays - workDaysPassed);
+
+    // Standard baseline daily target
+    const baseDailyTarget = Math.round(mTarget / mWorkDays);
+    // Baseline weekly target (assuming 6 working days / week)
+    const baseWeeklyTarget = Math.round(baseDailyTarget * Math.min(6, mWorkDays));
+
+    // Dynamic suggested target for today to catch up / stay on track
+    const remainingMonthTarget = Math.max(0, mTarget - totalMonthProduced);
+    const dynamicSuggestedDailyTarget = Math.max(1, Math.round(remainingMonthTarget / workDaysRemaining));
+    const dynamicSuggestedWeeklyTarget = Math.round(dynamicSuggestedDailyTarget * Math.min(6, workDaysRemaining));
+
+    // Run-rate projection
+    const expectedProducedSoFar = baseDailyTarget * workDaysPassed;
+    const paceStatus = totalMonthProduced >= expectedProducedSoFar
+      ? 'ahead'
+      : totalMonthProduced >= expectedProducedSoFar * 0.85
+        ? 'on-track'
+        : 'behind';
+
+    const projectedTotal = workDaysPassed > 0 
+      ? Math.round((totalMonthProduced / workDaysPassed) * mWorkDays)
+      : mTarget;
+    const projectedPct = Math.round((projectedTotal / mTarget) * 100);
+
+    return {
+      totalMonthProduced,
+      mTarget,
+      monthProgressPct,
+      workDaysRemaining,
+      baseDailyTarget,
+      baseWeeklyTarget,
+      dynamicSuggestedDailyTarget,
+      dynamicSuggestedWeeklyTarget,
+      paceStatus,
+      projectedTotal,
+      projectedPct
+    };
+  })();
+
   // Break insight calculations
   const completedBreaks = breakHistory.filter(b => b.endMs);
   const avgBreakMins = completedBreaks.length > 0 ? Math.round(completedBreaks.reduce((s, b) => s + b.durationMs, 0) / completedBreaks.length / 60000) : 0;
@@ -1476,73 +1685,100 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
           background: 'linear-gradient(135deg, rgba(28,176,246,0.95), rgba(20,128,179,0.95))',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          padding: '10px 14px',
+          padding: '8px 12px',
           color: '#fff',
           boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
           borderBottom: '1px solid rgba(255,255,255,0.15)'
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, maxWidth: 1200, margin: '0 auto', flexWrap: 'nowrap' }}>
           
           {/* Left: Back button + Title */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flexShrink: 0 }}>
             <motion.button
               whileTap={{ scale: 0.88 }}
               onClick={onBack}
               style={{
                 background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
-                width: 32, height: 32, borderRadius: '50%', cursor: 'pointer',
+                width: 30, height: 30, borderRadius: '50%', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 14, flexShrink: 0
               }}
             >
               ←
             </motion.button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-              <span style={{ fontSize: 16 }}>⏱️</span>
-              <span style={{ fontSize: 15, fontWeight: 800, letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                Shift Tracker
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 }}>
+              <span style={{ fontSize: 15 }}>⏱️</span>
+              <span style={{ fontSize: 14, fontWeight: 800, letterSpacing: -0.2, whiteSpace: 'nowrap' }}>
+                Shift
               </span>
             </div>
           </div>
 
-          {/* Right: Offline Indicator + Compact Action Pill Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          {/* Right: Actions Container with horizontal scroll on small mobile */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            overflowX: 'auto',
+            paddingBottom: 2,
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            WebkitOverflowScrolling: 'touch'
+          }}>
             {!isOnline && (
-              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ padding: '2px 8px', background: '#FF4B4B', borderRadius: 10, fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ width: 5, height: 5, borderRadius: '50%', background: '#fff' }} />
+              <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ padding: '2px 6px', background: '#FF4B4B', borderRadius: 8, fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
+                <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ width: 4, height: 4, borderRadius: '50%', background: '#fff' }} />
                 Offline
               </motion.div>
             )}
 
+            {/* Target Modal Pill */}
+            <motion.button
+              whileTap={{ scale: 0.92 }}
+              onClick={() => setShowProductionModal(true)}
+              title="Monthly Target & Production Tracker"
+              style={{
+                background: 'rgba(255,255,255,0.25)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)',
+                height: 29, padding: '0 8px', borderRadius: 14, fontWeight: 800, fontSize: 11,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0,
+                boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+              }}
+            >
+              <span>🎯</span>
+              <span>{productionMetrics.dynamicSuggestedDailyTarget}/d</span>
+            </motion.button>
+
+            {/* Settings button */}
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={() => setShowSettingsModal(true)}
               title="Settings"
               style={{
                 background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none',
-                height: 32, padding: '0 10px', borderRadius: 16, fontWeight: 700, fontSize: 12,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                height: 29, padding: '0 8px', borderRadius: 14, fontWeight: 700, fontSize: 11,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0
               }}
             >
               <span>⚙️</span>
-              <span style={{ display: 'none', '@media (min-width: 480px)': { display: 'inline' } }}>Settings</span>
             </motion.button>
 
+            {/* Reports button */}
             <motion.button
               whileTap={{ scale: 0.92 }}
               onClick={onOpenReports}
               title="Reports"
               style={{
                 background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none',
-                height: 32, padding: '0 10px', borderRadius: 16, fontWeight: 700, fontSize: 12,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                height: 29, padding: '0 8px', borderRadius: 14, fontWeight: 700, fontSize: 11,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0
               }}
             >
               <span>📊</span>
               <span>Reports</span>
             </motion.button>
 
+            {/* Bypass Tracker button */}
             {onOpenBypassTracker && (
               <motion.button
                 whileTap={{ scale: 0.92 }}
@@ -1550,8 +1786,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 title="Bypass Tracker"
                 style={{
                   background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none',
-                  height: 32, padding: '0 10px', borderRadius: 16, fontWeight: 700, fontSize: 12,
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                  height: 29, padding: '0 8px', borderRadius: 14, fontWeight: 700, fontSize: 11,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0
                 }}
               >
                 <span>⚡</span>
@@ -1559,6 +1795,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
               </motion.button>
             )}
 
+            {/* Export CSV button */}
             {!setupMode && (
               <motion.button
                 whileTap={{ scale: 0.92 }}
@@ -1566,8 +1803,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 title="Export CSV"
                 style={{
                   background: '#fff', color: '#1CB0F6', border: 'none',
-                  height: 32, padding: '0 10px', borderRadius: 16, fontWeight: 800, fontSize: 12,
-                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                  height: 29, padding: '0 8px', borderRadius: 14, fontWeight: 800, fontSize: 11,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0,
                   boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
                 }}
               >
@@ -1809,22 +2046,203 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
             {/* DIGITAL CLOCK & BREAK CONTROLS - Only show for today */}
-            {isToday && <div style={{
-              background: clockStatus === 'break'
-                ? 'linear-gradient(135deg, rgba(255,244,229,0.95), rgba(255,237,213,0.95))'
-                : isInScheduledBreak
-                  ? 'linear-gradient(135deg, rgba(255,248,238,0.95), rgba(255,243,224,0.95))'
-                  : '#fff',
-              padding: 20, borderRadius: 20,
-              boxShadow: clockStatus === 'break'
-                ? `0 4px 20px rgba(${currentBreakType.color}, 0.15), 0 0 0 1px rgba(255,176,32,0.1)`
-                : isInScheduledBreak
-                  ? '0 4px 20px rgba(255,152,0,0.12), 0 0 0 1px rgba(255,176,32,0.15)'
-                  : '0 4px 12px rgba(0,0,0,0.05)',
-              marginBottom: 16, textAlign: 'center',
-              position: 'relative', overflow: 'hidden',
-              border: isOverBreak ? '2px solid #FF4B4B' : isInScheduledBreak ? '2px solid #FF9800' : 'none',
-            }}>
+            {isToday && (
+              <>
+                {/* --- LIVE SHIFT COUNTDOWN & STATUS CARD (PHASE 1) --- */}
+                {!setupMode && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    style={{
+                      background: '#fff',
+                      borderRadius: 18,
+                      padding: '14px 16px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.06)',
+                      border: '1px solid #E2E8F0',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                      marginBottom: 14
+                    }}
+                  >
+                    {/* Top status indicator row */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{
+                          display: 'inline-block',
+                          width: 8,
+                          height: 8,
+                          borderRadius: '50%',
+                          backgroundColor: clockStatus === 'active' ? '#22C55E' : clockStatus === 'break' ? '#F59E0B' : '#94A3B8',
+                          boxShadow: clockStatus === 'active' ? '0 0 8px #22C55E' : 'none'
+                        }} />
+                        <span style={{ fontSize: 13, fontWeight: 800, color: '#1E293B', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          {clockStatus === 'active'
+                            ? (timingInfo.currentSlot ? `${timingInfo.currentSlot.label} In Progress` : 'Shift In Progress')
+                            : clockStatus === 'break'
+                              ? 'On Break'
+                              : timingInfo.isPastFinalShift
+                                ? 'Shift Completed'
+                                : 'Shift Off-Duty'}
+                        </span>
+                      </div>
+
+                      {/* Small badge for target shift schedule */}
+                      <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B', background: '#F1F5F9', padding: '3px 8px', borderRadius: 12 }}>
+                        {effectiveShiftStart} – {effectiveShiftEnd}
+                      </span>
+                    </div>
+
+                    {/* Section 1: End Shift Remaining Time / Active Shift Remaining */}
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                      gap: 10
+                    }}>
+                      {/* Active Shift / Slot countdown */}
+                      <div style={{
+                        background: timingInfo.currentSlot && timingInfo.isShiftStarted ? '#F0FDF4' : '#F8FAFC',
+                        borderRadius: 14,
+                        padding: '10px 12px',
+                        border: timingInfo.currentSlot && timingInfo.isShiftStarted ? '1px solid #BBF7D0' : '1px solid #E2E8F0'
+                      }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: timingInfo.currentSlot && timingInfo.isShiftStarted ? '#15803D' : '#64748B', textTransform: 'uppercase' }}>
+                          ⏱️ Current Shift Remaining
+                        </div>
+                        <div style={{
+                          fontSize: 'clamp(17px, 3.8vw, 22px)',
+                          fontWeight: 900,
+                          color: timingInfo.currentSlot && timingInfo.isShiftStarted ? '#166534' : '#94A3B8',
+                          fontVariantNumeric: 'tabular-nums',
+                          marginTop: 2
+                        }}>
+                          {!timingInfo.isShiftStarted
+                            ? '--:--:--'
+                            : timingInfo.currentSlot
+                              ? formatStopwatch(timingInfo.currentSlotRemainingSec)
+                              : timingInfo.isPastFinalShift ? '00:00:00' : 'Between Shifts'}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#64748B', marginTop: 2, fontWeight: 600 }}>
+                          {!timingInfo.isShiftStarted
+                            ? 'Shift not started'
+                            : timingInfo.currentSlot
+                              ? `${Math.round(timingInfo.currentSlotProgress)}% completed`
+                              : timingInfo.isPastFinalShift ? 'Shift ended' : 'No active slot'}
+                        </div>
+                        {/* Progress Bar */}
+                        {timingInfo.currentSlot && timingInfo.isShiftStarted && (
+                          <div style={{ width: '100%', height: 4, background: '#DCFCE7', borderRadius: 4, overflow: 'hidden', marginTop: 6 }}>
+                            <div style={{ width: `${timingInfo.currentSlotProgress}%`, height: '100%', background: '#22C55E', transition: 'width 0.5s linear' }} />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Day Shift End Remaining (Only shows active countdown when shift is actually started) */}
+                      <div style={{
+                        background: timingInfo.isShiftStarted && !timingInfo.isPastFinalShift ? '#EFF6FF' : '#F8FAFC',
+                        borderRadius: 14,
+                        padding: '10px 12px',
+                        border: timingInfo.isShiftStarted && !timingInfo.isPastFinalShift ? '1px solid #BFDBFE' : '1px solid #E2E8F0'
+                      }}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: timingInfo.isShiftStarted && !timingInfo.isPastFinalShift ? '#1D4ED8' : '#64748B', textTransform: 'uppercase' }}>
+                          🏁 Shift End Remaining
+                        </div>
+                        <div style={{
+                          fontSize: 'clamp(17px, 3.8vw, 22px)',
+                          fontWeight: 900,
+                          color: timingInfo.isShiftStarted && !timingInfo.isPastFinalShift ? '#1E40AF' : '#64748B',
+                          fontVariantNumeric: 'tabular-nums',
+                          marginTop: 2
+                        }}>
+                          {!timingInfo.isShiftStarted
+                            ? 'Not Started'
+                            : timingInfo.isPastFinalShift
+                              ? 'Shift Over'
+                              : formatStopwatch(timingInfo.finalShiftRemainingSec)}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#64748B', marginTop: 2, fontWeight: 600 }}>
+                          {!timingInfo.isShiftStarted ? `Scheduled End: ${fmt12h(timingInfo.overallEndStr)}` : `Target end: ${fmt12h(timingInfo.overallEndStr)}`}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Section 2: Next Shift Start Countdown (Dynamic countdown between shifts / for tomorrow) */}
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      background: 'linear-gradient(135deg, #FFFBEB, #FEF3C7)',
+                      borderRadius: 12,
+                      padding: '8px 12px',
+                      border: '1px solid #FDE68A'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 16 }}>🚀</span>
+                        <div>
+                          <div style={{ fontSize: 10.5, fontWeight: 800, color: '#B45309', textTransform: 'uppercase' }}>
+                            Next Shift Countdown
+                          </div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: '#78350F' }}>
+                            {timingInfo.nextShiftLabel} ({fmt12h(timingInfo.nextShiftStartStr)})
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{
+                          fontSize: 14,
+                          fontWeight: 900,
+                          color: '#92400E',
+                          fontVariantNumeric: 'tabular-nums'
+                        }}>
+                          {timingInfo.nextShiftRemainingSec > 0
+                            ? `${Math.floor(timingInfo.nextShiftRemainingSec / 3600)}h ${Math.floor((timingInfo.nextShiftRemainingSec % 3600) / 60)}m ${timingInfo.nextShiftRemainingSec % 60}s`
+                            : '0m'}
+                        </div>
+                        <div style={{ fontSize: 9.5, fontWeight: 700, color: '#B45309' }}>
+                          {timingInfo.isNextShiftTomorrow ? 'Tomorrow' : 'Later Today'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Current Block Remaining (if actively in a 30m / 60m work block) */}
+                    {currentBlock && !currentBlock.isBreak && (
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        background: '#FAF5FF',
+                        borderRadius: 12,
+                        padding: '6px 12px',
+                        border: '1px solid #E9D5FF'
+                      }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#7E22CE' }}>
+                          🎯 Current Block ({fmt12h(currentBlock.start)} – {fmt12h(currentBlock.end)})
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#6B21A8', fontVariantNumeric: 'tabular-nums' }}>
+                          {formatStopwatch(timingInfo.currentBlockRemainingSec)} left
+                        </div>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
+                <div style={{
+                  background: clockStatus === 'break'
+                    ? 'linear-gradient(135deg, rgba(255,244,229,0.95), rgba(255,237,213,0.95))'
+                    : isInScheduledBreak
+                      ? 'linear-gradient(135deg, rgba(255,248,238,0.95), rgba(255,243,224,0.95))'
+                      : '#fff',
+                  padding: 20, borderRadius: 20,
+                  boxShadow: clockStatus === 'break'
+                    ? `0 4px 20px rgba(${currentBreakType.color}, 0.15), 0 0 0 1px rgba(255,176,32,0.1)`
+                    : isInScheduledBreak
+                      ? '0 4px 20px rgba(255,152,0,0.12), 0 0 0 1px rgba(255,176,32,0.15)'
+                      : '0 4px 12px rgba(0,0,0,0.05)',
+                  marginBottom: 16, textAlign: 'center',
+                  position: 'relative', overflow: 'hidden',
+                  border: isOverBreak ? '2px solid #FF4B4B' : isInScheduledBreak ? '2px solid #FF9800' : 'none',
+                }}>
 
               {/* Zen floating particles during break */}
               {clockStatus === 'break' && (
@@ -2201,7 +2619,9 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                   </motion.button>
                 </>
               )}
-            </div>}
+            </div>
+            </>
+            )}
 
             {/* --- BREAK BUDGET BAR --- */}
             {isToday && clockStatus !== 'idle' && !setupMode && completedBreaks.length > 0 && (
@@ -2327,6 +2747,165 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
             {/* RIGHT COLUMN: Production Stats, Timeline Blocks, Actions */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+            {/* Smart Production Pacing Card (Phase 2 Auto-Suggestion Engine) */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              style={{
+                background: 'linear-gradient(135deg, #0F172A, #1E293B)',
+                borderRadius: 18,
+                padding: '16px 18px',
+                color: '#fff',
+                boxShadow: '0 8px 24px rgba(15, 23, 42, 0.25)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 12
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 18 }}>🎯</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: -0.2 }}>
+                      Monthly Production Pace
+                    </div>
+                    <div style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600 }}>
+                      Target: {productionMetrics.mTarget.toLocaleString()} {unit} • {productionMetrics.workDaysRemaining} work shifts left
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowProductionModal(true)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: 12,
+                    border: '1px solid rgba(255,255,255,0.2)',
+                    background: 'rgba(255,255,255,0.1)',
+                    color: '#fff',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Configure ⚙️
+                </button>
+              </div>
+
+              {/* Progress bar */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, marginBottom: 4 }}>
+                  <span style={{ color: '#38BDF8' }}>
+                    {productionMetrics.totalMonthProduced.toLocaleString()} Produced ({productionMetrics.monthProgressPct}%)
+                  </span>
+                  <span style={{
+                    color: productionMetrics.paceStatus === 'ahead' ? '#4ADE80' : productionMetrics.paceStatus === 'on-track' ? '#FACC15' : '#F87171'
+                  }}>
+                    {productionMetrics.paceStatus === 'ahead' ? '🚀 Ahead of Schedule' : productionMetrics.paceStatus === 'on-track' ? '⚡ On Track' : '⚠️ Behind Schedule'}
+                  </span>
+                </div>
+                <div style={{ width: '100%', height: 8, background: 'rgba(255,255,255,0.1)', borderRadius: 6, overflow: 'hidden' }}>
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${productionMetrics.monthProgressPct}%` }}
+                    transition={{ duration: 0.8, ease: 'easeOut' }}
+                    style={{
+                      height: '100%',
+                      background: productionMetrics.paceStatus === 'ahead'
+                        ? 'linear-gradient(90deg, #10B981, #34D399)'
+                        : productionMetrics.paceStatus === 'on-track'
+                          ? 'linear-gradient(90deg, #38BDF8, #818CF8)'
+                          : 'linear-gradient(90deg, #F87171, #EF4444)'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Auto-suggested targets pill badges */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                gap: 8,
+                marginTop: 2
+              }}>
+                {/* Auto Suggested Daily Target */}
+                <div style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  borderRadius: 12,
+                  padding: '8px 10px',
+                  border: '1px solid rgba(255,255,255,0.08)'
+                }}>
+                  <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>
+                    💡 Auto Daily Target
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#38BDF8', marginTop: 2 }}>
+                    {productionMetrics.dynamicSuggestedDailyTarget} <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>{unit}/day</span>
+                  </div>
+                  {target !== productionMetrics.dynamicSuggestedDailyTarget && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTarget(productionMetrics.dynamicSuggestedDailyTarget);
+                        localStorage.setItem('shiftTracker_defaultTarget', productionMetrics.dynamicSuggestedDailyTarget);
+                        playSound('success');
+                      }}
+                      style={{
+                        marginTop: 4,
+                        padding: '2px 8px',
+                        background: '#0284C7',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        fontSize: 9.5,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Apply ({productionMetrics.dynamicSuggestedDailyTarget})
+                    </button>
+                  )}
+                </div>
+
+                {/* Auto Suggested Weekly Target */}
+                <div style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  borderRadius: 12,
+                  padding: '8px 10px',
+                  border: '1px solid rgba(255,255,255,0.08)'
+                }}>
+                  <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>
+                    📅 Weekly Quota
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#A78BFA', marginTop: 2 }}>
+                    {productionMetrics.dynamicSuggestedWeeklyTarget.toLocaleString()} <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>{unit}</span>
+                  </div>
+                  <div style={{ fontSize: 9.5, color: '#94A3B8', marginTop: 4 }}>
+                    Base: {productionMetrics.baseWeeklyTarget.toLocaleString()}
+                  </div>
+                </div>
+
+                {/* Projected Month Total */}
+                <div style={{
+                  background: 'rgba(255,255,255,0.06)',
+                  borderRadius: 12,
+                  padding: '8px 10px',
+                  border: '1px solid rgba(255,255,255,0.08)'
+                }}>
+                  <div style={{ fontSize: 10, color: '#94A3B8', fontWeight: 700, textTransform: 'uppercase' }}>
+                    📈 Run-rate Projection
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 900, color: '#FACC15', marginTop: 2 }}>
+                    {productionMetrics.projectedTotal.toLocaleString()} <span style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8' }}>({productionMetrics.projectedPct}%)</span>
+                  </div>
+                  <div style={{ fontSize: 9.5, color: '#94A3B8', marginTop: 4 }}>
+                    Pacing forecast
+                  </div>
+                </div>
+              </div>
+            </motion.div>
 
             {/* Stats */}
             <div style={{ display: 'flex', gap: 10 }}>
@@ -2854,6 +3433,206 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                    <button onClick={() => setCustomAlert({ isOpen: false })} style={{ flex: 1, padding: 14, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer' }}>Okay</button>
                  )}
                </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* PHASE 2: PRODUCTION TARGET MODAL */}
+      <AnimatePresence>
+        {showProductionModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(15,23,42,0.65)', backdropFilter: 'blur(6px)',
+              zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 16
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              style={{
+                background: '#fff',
+                borderRadius: 24,
+                padding: '24px 20px',
+                width: '100%',
+                maxWidth: 440,
+                boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+                maxHeight: '90vh',
+                overflowY: 'auto'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 22 }}>🎯</span>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: '#0F172A' }}>
+                      Production Target Setup
+                    </h3>
+                    <p style={{ margin: '2px 0 0 0', fontSize: 12, color: '#64748B' }}>
+                      Auto-computes dynamic daily & weekly quotas
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowProductionModal(false)}
+                  style={{ background: 'none', border: 'none', fontSize: 18, color: '#94A3B8', cursor: 'pointer', padding: 4 }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Form inputs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 4 }}>
+                    Monthly Target ({unit})
+                  </label>
+                  <input
+                    type="number"
+                    value={monthlyTarget}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setMonthlyTarget(v);
+                      localStorage.setItem('shiftTracker_monthlyTarget', String(v));
+                    }}
+                    placeholder="e.g. 2600"
+                    style={{
+                      width: '100%', padding: '10px 12px', borderRadius: 10,
+                      border: '1px solid #CBD5E1', fontSize: 15, fontWeight: 800,
+                      color: '#0F172A', boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 4 }}>
+                      Work Days / Month
+                    </label>
+                    <input
+                      type="number"
+                      value={monthlyWorkDays}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setMonthlyWorkDays(v);
+                        localStorage.setItem('shiftTracker_monthlyWorkDays', String(v));
+                      }}
+                      placeholder="e.g. 26"
+                      style={{
+                        width: '100%', padding: '10px 12px', borderRadius: 10,
+                        border: '1px solid #CBD5E1', fontSize: 14, fontWeight: 800,
+                        color: '#0F172A', boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 4 }}>
+                      Unit Name
+                    </label>
+                    <input
+                      type="text"
+                      value={unit}
+                      onChange={(e) => {
+                        setUnit(e.target.value);
+                        localStorage.setItem('shiftTracker_productionUnit', e.target.value);
+                      }}
+                      placeholder="e.g. pieces"
+                      style={{
+                        width: '100%', padding: '10px 12px', borderRadius: 10,
+                        border: '1px solid #CBD5E1', fontSize: 14, fontWeight: 800,
+                        color: '#0F172A', boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Target Preview & Recommendations */}
+              <div style={{
+                background: '#F8FAFC',
+                borderRadius: 14,
+                padding: '12px 14px',
+                border: '1px solid #E2E8F0',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
+                  ⚡ Auto-Calculated Targets
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Standard Base Daily:</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>
+                    {productionMetrics.baseDailyTarget} {unit}/day
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Standard Base Weekly:</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>
+                    {productionMetrics.baseWeeklyTarget} {unit}/week
+                  </span>
+                </div>
+
+                <div style={{ height: 1, background: '#E2E8F0', margin: '4px 0' }} />
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: '#16A34A' }}>
+                      🔥 Recommended Daily for Today:
+                    </div>
+                    <div style={{ fontSize: 10.5, color: '#64748B' }}>
+                      Adjusts automatically based on month progress
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 16, fontWeight: 900, color: '#15803D' }}>
+                    {productionMetrics.dynamicSuggestedDailyTarget} {unit}
+                  </span>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTarget(productionMetrics.dynamicSuggestedDailyTarget);
+                    localStorage.setItem('shiftTracker_defaultTarget', String(productionMetrics.dynamicSuggestedDailyTarget));
+                    playSound('success');
+                    setShowProductionModal(false);
+                  }}
+                  style={{
+                    flex: 1, padding: 12, background: '#0284C7', color: '#fff',
+                    border: 'none', borderRadius: 12, fontWeight: 800, fontSize: 14,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Apply {productionMetrics.dynamicSuggestedDailyTarget} as Today's Target
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowProductionModal(false)}
+                  style={{
+                    padding: '12px 16px', background: '#F1F5F9', color: '#475569',
+                    border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 14,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Close
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

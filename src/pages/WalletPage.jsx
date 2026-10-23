@@ -36,6 +36,18 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
   const [transferForm, setTransferForm] = useState({ from: 'main', to: '', amount: '', note: '' });
   const [isDepositOpen, setIsDepositOpen] = useState(false);
   const [depositForm, setDepositForm] = useState({ targetId: 'main', amount: '', note: '' });
+
+  // Main Mode: 'wallets' or 'savings'
+  const [activeMainTab, setActiveMainTab] = useState('wallets');
+
+  // Savings State
+  const [savingsList, setSavingsList] = useState([]);
+  const [isSavingsFormOpen, setIsSavingsFormOpen] = useState(false);
+  const [savingsForm, setSavingsForm] = useState({ id: null, name: '', targetAmount: '', category: 'monthly', note: '' });
+  const [isSavingsTransferOpen, setIsSavingsTransferOpen] = useState(false);
+  const [savingsTransferForm, setSavingsTransferForm] = useState({ savingId: '', walletId: '', amount: '', type: 'deposit' });
+  const [savingsFilter, setSavingsFilter] = useState('ALL');
+  const [confirmDeleteSaving, setConfirmDeleteSaving] = useState(null);
   
   // Listen for UI preference changes from Settings Modal
   useEffect(() => {
@@ -62,9 +74,11 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
           setWallet({ accounts: [migratedAccount] });
         } else {
           setWallet(data.accounts ? data : { accounts: [] });
+          setSavingsList(data.savings || []);
         }
       } else {
         setWallet({ accounts: [] });
+        setSavingsList([]);
       }
       setLoading(false);
     }, (error) => {
@@ -97,13 +111,17 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
   };
 
-  const saveWallet = async (newAccounts) => {
+  const saveWallet = async (newAccounts, newSavings = null) => {
     if (!currentUser?.uid) return;
     try {
-      await setDoc(doc(db, 'wallets', currentUser.uid), {
+      const payload = {
         accounts: newAccounts,
         updatedAt: serverTimestamp()
-      }, { merge: true });
+      };
+      if (newSavings !== null) {
+        payload.savings = newSavings;
+      }
+      await setDoc(doc(db, 'wallets', currentUser.uid), payload, { merge: true });
     } catch (error) {
       console.error('Error saving wallet:', error);
       showToast('Failed to save data', 'danger');
@@ -243,6 +261,103 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
     saveWallet(newAccounts);
     setIsTransferOpen(false);
     showToast('Transfer complete');
+  };
+
+  // --- Savings Operations ---
+  const handleSaveSavingGoal = () => {
+    if (!savingsForm.name.trim()) { showToast('Name required', 'danger'); return; }
+    const target = parseFloat(savingsForm.targetAmount);
+    if (isNaN(target) || target <= 0) { showToast('Valid target amount required', 'danger'); return; }
+
+    const isEdit = !!savingsForm.id;
+    let updatedSavings = [...savingsList];
+
+    if (isEdit) {
+      updatedSavings = updatedSavings.map(s => s.id === savingsForm.id ? {
+        ...s,
+        name: savingsForm.name.trim(),
+        targetAmount: target,
+        category: savingsForm.category,
+        note: savingsForm.note.trim()
+      } : s);
+    } else {
+      updatedSavings.push({
+        id: Date.now().toString(36),
+        name: savingsForm.name.trim(),
+        targetAmount: target,
+        currentAmount: 0,
+        category: savingsForm.category,
+        note: savingsForm.note.trim(),
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    saveWallet(accounts, updatedSavings);
+    setSavingsList(updatedSavings);
+    setIsSavingsFormOpen(false);
+    showToast(`Savings goal ${isEdit ? 'updated' : 'created'}`);
+  };
+
+  const handleDeleteSavingGoal = (id) => {
+    const updatedSavings = savingsList.filter(s => s.id !== id);
+    saveWallet(accounts, updatedSavings);
+    setSavingsList(updatedSavings);
+    setConfirmDeleteSaving(null);
+    showToast('Savings goal deleted');
+  };
+
+  const handleSavingsTransfer = () => {
+    const amt = parseFloat(savingsTransferForm.amount);
+    if (isNaN(amt) || amt <= 0) { showToast('Valid amount required', 'danger'); return; }
+    if (!savingsTransferForm.walletId) { showToast('Please select a wallet', 'danger'); return; }
+
+    const walletIdx = accounts.findIndex(a => a.id === savingsTransferForm.walletId);
+    const savingIdx = savingsList.findIndex(s => s.id === savingsTransferForm.savingId);
+    if (walletIdx === -1 || savingIdx === -1) { showToast('Account not found', 'danger'); return; }
+
+    let newAccounts = JSON.parse(JSON.stringify(accounts));
+    let newSavings = JSON.parse(JSON.stringify(savingsList));
+
+    const isDeposit = savingsTransferForm.type === 'deposit';
+
+    if (isDeposit) {
+      if (amt > newAccounts[walletIdx].amount) {
+        showToast('Insufficient wallet balance', 'danger');
+        return;
+      }
+      newAccounts[walletIdx].amount -= amt;
+      newSavings[savingIdx].currentAmount = (newSavings[savingIdx].currentAmount || 0) + amt;
+      newAccounts[walletIdx].transactions = [{
+        id: Date.now().toString(36),
+        date: new Date().toISOString(),
+        amount: amt,
+        type: 'transfer',
+        from: 'main',
+        to: `saving:${newSavings[savingIdx].name}`,
+        note: `Transfer to Savings: ${newSavings[savingIdx].name}`
+      }, ...(newAccounts[walletIdx].transactions || [])];
+    } else {
+      // Withdraw back to wallet
+      if (amt > (newSavings[savingIdx].currentAmount || 0)) {
+        showToast('Insufficient savings balance', 'danger');
+        return;
+      }
+      newSavings[savingIdx].currentAmount -= amt;
+      newAccounts[walletIdx].amount += amt;
+      newAccounts[walletIdx].transactions = [{
+        id: Date.now().toString(36),
+        date: new Date().toISOString(),
+        amount: amt,
+        type: 'deposit',
+        targetId: 'main',
+        note: `Withdrawal from Savings: ${newSavings[savingIdx].name}`
+      }, ...(newAccounts[walletIdx].transactions || [])];
+    }
+
+    saveWallet(newAccounts, newSavings);
+    setSavingsList(newSavings);
+    setIsSavingsTransferOpen(false);
+    showToast(isDeposit ? 'Transferred to Savings' : 'Withdrawn to Wallet');
   };
 
   const handleDeleteWallet = (walletId) => {
@@ -557,54 +672,277 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
     );
   }
 
-  // Common Header
+  // Common Header with Wallets vs Savings navigation
   const pageHeader = (
-    <div className="d-flex align-items-center justify-content-between mb-3">
-      <div>
-        <div className="text-success fw-bold small text-uppercase">Finance</div>
-        <h2 className="fw-bold text-dark mb-0">Wallets</h2>
+    <div className="mb-3">
+      <div className="d-flex align-items-center justify-content-between mb-2">
+        <div>
+          <div className="text-success fw-bold small text-uppercase">Finance</div>
+          <h2 className="fw-bold text-dark mb-0">{activeMainTab === 'wallets' ? 'Wallets' : 'Savings Goals'}</h2>
+        </div>
+        <button className="btn btn-outline-secondary rounded-pill fw-bold hover-scale" onClick={onBack}>
+          <i className="bi bi-arrow-left me-1" /> Back
+        </button>
       </div>
-      <button className="btn btn-outline-secondary rounded-pill fw-bold hover-scale" onClick={onBack}>
-        <i className="bi bi-arrow-left me-1" /> Back
-      </button>
+
+      {/* Main Tab Switcher */}
+      <div className="d-flex bg-white p-1 rounded-pill shadow-xs border">
+        <button
+          type="button"
+          className={`btn btn-sm rounded-pill flex-grow-1 fw-bold transition-all ${activeMainTab === 'wallets' ? 'btn-success text-white shadow-xs' : 'btn-light text-secondary border-0'}`}
+          style={activeMainTab === 'wallets' ? { backgroundColor: '#128C7E' } : {}}
+          onClick={() => setActiveMainTab('wallets')}
+        >
+          <i className="bi bi-wallet2 me-1.5" /> Wallets & Distributions
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm rounded-pill flex-grow-1 fw-bold transition-all ${activeMainTab === 'savings' ? 'btn-success text-white shadow-xs' : 'btn-light text-secondary border-0'}`}
+          style={activeMainTab === 'savings' ? { backgroundColor: '#128C7E' } : {}}
+          onClick={() => setActiveMainTab('savings')}
+        >
+          <i className="bi bi-piggy-bank-fill me-1.5" /> Savings Goals ({savingsList.length})
+        </button>
+      </div>
     </div>
   );
 
-  // Render Dashboard Grid UI
+  // Render Dashboard Grid UI (no wallet selected yet)
   if (walletUI === 'dashboard' && !activeAccountId) {
+    // In dashboard mode without a selected wallet, show the page header with tab switcher.
+    // If savings tab is active, render savings content here; otherwise show wallet grid.
+    const renderDashboardSavingsContent = () => (
+      <div>
+        {/* Total Savings Overview Card */}
+        {(() => {
+          const totalSavedAll = savingsList.reduce((acc, s) => acc + (s.currentAmount || 0), 0);
+          const totalTargetAll = savingsList.reduce((acc, s) => acc + (s.targetAmount || 0), 0);
+          const overallPerc = totalTargetAll > 0 ? Math.min(100, (totalSavedAll / totalTargetAll) * 100) : 0;
+          return (
+            <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 text-white" style={{ background: 'linear-gradient(135deg, #075E54 0%, #128C7E 100%)' }}>
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <div>
+                  <div className="text-white-50 fw-semibold small text-uppercase">Total Saved Across Goals</div>
+                  <div className="fw-bold display-5">৳{totalSavedAll.toLocaleString()}</div>
+                </div>
+                <div className="rounded-circle d-flex align-items-center justify-content-center bg-white bg-opacity-20 shadow-sm" style={{ width: '56px', height: '56px' }}>
+                  <i className="bi bi-piggy-bank fs-2 text-white" />
+                </div>
+              </div>
+              <div className="d-flex justify-content-between small text-white-50 mt-2 mb-1">
+                <span>Overall Target: ৳{totalTargetAll.toLocaleString()}</span>
+                <span>{overallPerc.toFixed(1)}% Achieved</span>
+              </div>
+              <div className="progress rounded-pill bg-white bg-opacity-25" style={{ height: '10px' }}>
+                <div className="progress-bar bg-white" role="progressbar" style={{ width: `${overallPerc}%` }}></div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Filter and Add Goal Header */}
+        <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+          <div className="d-flex gap-1.5 flex-wrap">
+            {['ALL', 'monthly', 'purchase', 'shopping', 'custom'].map(cat => (
+              <button
+                key={cat}
+                type="button"
+                className={`btn btn-xs rounded-pill px-2.5 py-1 fw-bold border ${savingsFilter === cat ? 'bg-success text-white border-success' : 'btn-light text-secondary'}`}
+                style={savingsFilter === cat ? { backgroundColor: '#128C7E' } : {}}
+                onClick={() => setSavingsFilter(cat)}
+              >
+                {cat === 'ALL' ? 'All Goals' : cat === 'monthly' ? 'Monthly' : cat === 'purchase' ? 'Purchases' : cat === 'shopping' ? 'Shopping' : 'Custom'}
+              </button>
+            ))}
+          </div>
+          <button 
+            className="btn btn-success rounded-pill fw-bold btn-sm shadow-sm"
+            onClick={() => {
+              setSavingsForm({ id: null, name: '', targetAmount: '', category: 'monthly', note: '' });
+              setIsSavingsFormOpen(true);
+            }}
+          >
+            <i className="bi bi-plus-lg me-1" /> New Savings Goal
+          </button>
+        </div>
+
+        {/* Savings Cards */}
+        {(() => {
+          const filteredSavings = savingsFilter === 'ALL' ? savingsList : savingsList.filter(s => s.category === savingsFilter);
+          if (filteredSavings.length === 0) {
+            return (
+              <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white mb-4">
+                <i className="bi bi-piggy-bank fs-1 text-muted mb-2"></i>
+                <h6 className="fw-bold text-dark">No savings goals yet</h6>
+                <p className="text-secondary small mb-3">
+                  Start saving for monthly reserves, gadgets, shopping, or custom targets!
+                </p>
+                <div>
+                  <button
+                    className="btn btn-outline-success rounded-pill fw-bold"
+                    onClick={() => {
+                      setSavingsForm({ id: null, name: '', targetAmount: '', category: 'monthly', note: '' });
+                      setIsSavingsFormOpen(true);
+                    }}
+                  >
+                    <i className="bi bi-plus-lg me-1" /> Create Your First Goal
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <div className="d-flex flex-column gap-3 pb-5">
+              {filteredSavings.map(s => {
+                const saved = s.currentAmount || 0;
+                const target = s.targetAmount || 1;
+                const perc = Math.min(100, (saved / target) * 100);
+                const isCompleted = saved >= target;
+                const iconName = s.category === 'purchase' ? 'bi-laptop' : s.category === 'shopping' ? 'bi-bag-heart-fill' : s.category === 'monthly' ? 'bi-calendar-check-fill' : 'bi-bullseye';
+                
+                return (
+                  <div key={s.id} className="card border-0 shadow-sm rounded-4 p-3 bg-white hover-scale">
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <div className="d-flex align-items-center gap-3">
+                        <div 
+                          className="rounded-circle d-flex align-items-center justify-content-center text-white shadow-xs"
+                          style={{ width: '44px', height: '44px', backgroundColor: isCompleted ? '#25D366' : '#128C7E' }}
+                        >
+                          <i className={`bi ${iconName} fs-5`} />
+                        </div>
+                        <div>
+                          <div className="fw-bold text-dark d-flex align-items-center gap-1.5">
+                            {s.name}
+                            {isCompleted && (
+                              <span className="badge bg-success-subtle text-success border border-success-subtle rounded-pill small">
+                                <i className="bi bi-check-circle-fill me-1" /> Reached
+                              </span>
+                            )}
+                          </div>
+                          <span className="badge bg-light text-secondary border rounded-pill small px-2">
+                            #{s.category.toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="d-flex gap-1.5">
+                        <button
+                          className="btn btn-sm btn-light border rounded-pill fw-semibold text-secondary"
+                          onClick={() => {
+                            setSavingsForm({ id: s.id, name: s.name, targetAmount: s.targetAmount, category: s.category || 'custom', note: s.note || '' });
+                            setIsSavingsFormOpen(true);
+                          }}
+                          title="Edit Goal"
+                        >
+                          <i className="bi bi-pencil" />
+                        </button>
+                        <button
+                          className="btn btn-sm btn-light border rounded-pill text-danger"
+                          onClick={() => setConfirmDeleteSaving(s.id)}
+                          title="Delete Goal"
+                        >
+                          <i className="bi bi-trash" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Progress Bar & Amount */}
+                    <div className="mt-2">
+                      <div className="d-flex justify-content-between small mb-1">
+                        <span>Saved: <strong className="text-success">৳{saved.toLocaleString()}</strong></span>
+                        <span>Target: <strong className="text-dark">৳{target.toLocaleString()}</strong> ({perc.toFixed(1)}%)</span>
+                      </div>
+                      <div className="progress rounded-pill bg-light border" style={{ height: '10px' }}>
+                        <div 
+                          className={`progress-bar ${isCompleted ? 'bg-success' : 'bg-primary'}`} 
+                          role="progressbar" 
+                          style={{ width: `${perc}%` }}
+                        />
+                      </div>
+                      <div className="d-flex justify-content-between text-muted small mt-1" style={{ fontSize: '0.78rem' }}>
+                        <span>Remaining: ৳{Math.max(0, target - saved).toLocaleString()}</span>
+                        {s.note && <span className="fst-italic text-truncate" style={{ maxWidth: '200px' }}>{s.note}</span>}
+                      </div>
+                    </div>
+
+                    {/* Quick Transfer Actions */}
+                    <div className="d-flex gap-2 mt-3 pt-2 border-top">
+                      <button
+                        className="btn btn-sm btn-outline-success rounded-pill fw-bold flex-grow-1"
+                        onClick={() => {
+                          setSavingsTransferForm({
+                            savingId: s.id,
+                            walletId: accounts.length > 0 ? accounts[0].id : '',
+                            amount: '',
+                            type: 'deposit'
+                          });
+                          setIsSavingsTransferOpen(true);
+                        }}
+                      >
+                        <i className="bi bi-arrow-down-circle me-1" /> Transfer In
+                      </button>
+                      <button
+                        className="btn btn-sm btn-outline-secondary rounded-pill fw-bold flex-grow-1"
+                        disabled={saved <= 0}
+                        onClick={() => {
+                          setSavingsTransferForm({
+                            savingId: s.id,
+                            walletId: accounts.length > 0 ? accounts[0].id : '',
+                            amount: '',
+                            type: 'withdraw'
+                          });
+                          setIsSavingsTransferOpen(true);
+                        }}
+                      >
+                        <i className="bi bi-arrow-up-circle me-1" /> Withdraw
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
+    );
+
     return (
       <div className="wallet-page w-100 position-fixed top-0 start-0 bottom-0" style={{ zIndex: 1050, height: '100dvh', background: '#ECE5DD', overflowY: 'auto' }}>
         <div className="container-fluid max-width-container py-3 py-md-4 px-3">
           {pageHeader}
-          <div className="row g-3">
-            {accounts.map(acc => {
-              const accSpent = (acc.distributions || []).reduce((sum, d) => sum + (d.expenses || []).reduce((s, e) => s + e.amount, 0), 0);
-              return (
-                <div key={acc.id} className="col-12 col-md-6">
-                  <div className="card border-0 shadow-sm rounded-4 p-4 hover-scale cursor-pointer h-100" style={{ cursor: 'pointer', background: 'linear-gradient(135deg, #075E54, #128C7E)' }} onClick={() => setActiveAccountId(acc.id)}>
-                    <div className="d-flex justify-content-between align-items-center mb-3">
-                      <div className="text-white-50 fw-semibold"><i className="bi bi-wallet2 me-2" />{acc.name}</div>
-                      <button 
-                        className="btn btn-sm btn-outline-light rounded-circle border-0 px-2 py-1" 
-                        onClick={(e) => { e.stopPropagation(); setConfirmDeleteWallet(acc.id); }}
-                        title="Delete Wallet"
-                      >
-                        <i className="bi bi-trash" />
-                      </button>
+
+          {activeMainTab === 'savings' ? renderDashboardSavingsContent() : (
+            <div className="row g-3">
+              {accounts.map(acc => {
+                const accSpent = (acc.distributions || []).reduce((sum, d) => sum + (d.expenses || []).reduce((s, e) => s + e.amount, 0), 0);
+                return (
+                  <div key={acc.id} className="col-12 col-md-6">
+                    <div className="card border-0 shadow-sm rounded-4 p-4 hover-scale cursor-pointer h-100" style={{ cursor: 'pointer', background: 'linear-gradient(135deg, #075E54, #128C7E)' }} onClick={() => setActiveAccountId(acc.id)}>
+                      <div className="d-flex justify-content-between align-items-center mb-3">
+                        <div className="text-white-50 fw-semibold"><i className="bi bi-wallet2 me-2" />{acc.name}</div>
+                        <button 
+                          className="btn btn-sm btn-outline-light rounded-circle border-0 px-2 py-1" 
+                          onClick={(e) => { e.stopPropagation(); setConfirmDeleteWallet(acc.id); }}
+                          title="Delete Wallet"
+                        >
+                          <i className="bi bi-trash" />
+                        </button>
+                      </div>
+                      <div className="text-white fw-bold display-6 mb-2">৳{acc.amount.toLocaleString()}</div>
+                      <div className="text-white-50 small">Spent: ৳{accSpent.toLocaleString()}</div>
                     </div>
-                    <div className="text-white fw-bold display-6 mb-2">৳{acc.amount.toLocaleString()}</div>
-                    <div className="text-white-50 small">Spent: ৳{accSpent.toLocaleString()}</div>
                   </div>
+                );
+              })}
+              <div className="col-12 col-md-6">
+                <div className="card border-0 shadow-sm rounded-4 p-4 hover-scale cursor-pointer h-100 d-flex flex-column align-items-center justify-content-center text-success bg-white border" style={{ cursor: 'pointer', minHeight: '140px', borderStyle: 'dashed !important' }} onClick={() => { setWalletForm({ id: null, name: '', amount: '' }); setIsWalletFormOpen(true); }}>
+                  <i className="bi bi-plus-circle-fill fs-2 mb-2" />
+                  <div className="fw-bold">Create New Wallet</div>
                 </div>
-              );
-            })}
-            <div className="col-12 col-md-6">
-              <div className="card border-0 shadow-sm rounded-4 p-4 hover-scale cursor-pointer h-100 d-flex flex-column align-items-center justify-content-center text-success bg-white border" style={{ cursor: 'pointer', minHeight: '140px', borderStyle: 'dashed !important' }} onClick={() => { setWalletForm({ id: null, name: '', amount: '' }); setIsWalletFormOpen(true); }}>
-                <i className="bi bi-plus-circle-fill fs-2 mb-2" />
-                <div className="fw-bold">Create New Wallet</div>
               </div>
             </div>
-          </div>
+          )}
         </div>
         
         {isWalletFormOpen && (
@@ -654,6 +992,132 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                   <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4 d-flex justify-content-center gap-2">
                     <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setConfirmDeleteWallet(null)}>Cancel</button>
                     <button className="btn text-white rounded-pill px-4 py-2 fw-bold shadow-sm" style={{ background: '#c62828' }} onClick={() => handleDeleteWallet(confirmDeleteWallet)}>Delete</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Savings Goal Create / Edit Modal (for dashboard savings tab) */}
+        {isSavingsFormOpen && (
+          <>
+            <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1100 }} onClick={() => setIsSavingsFormOpen(false)}></div>
+            <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1110 }} tabIndex="-1">
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                  <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
+                    <h5 className="modal-title fw-bold">
+                      <i className="bi bi-piggy-bank me-2" />
+                      {savingsForm.id ? 'Edit Savings Goal' : 'New Savings Goal'}
+                    </h5>
+                    <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setIsSavingsFormOpen(false)}></button>
+                  </div>
+                  <div className="modal-body p-4 bg-light d-flex flex-column gap-3">
+                    <div>
+                      <label className="form-label fw-bold text-secondary">Goal Name</label>
+                      <input type="text" className="form-control rounded-3 shadow-sm border-0" placeholder="e.g. MacBook Pro, Monthly Reserve, Eid Shopping" value={savingsForm.name} onChange={(e) => setSavingsForm({ ...savingsForm, name: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="form-label fw-bold text-secondary">Category</label>
+                      <select className="form-select rounded-3 shadow-sm border-0" value={savingsForm.category} onChange={(e) => setSavingsForm({ ...savingsForm, category: e.target.value })}>
+                        <option value="monthly">Monthly Saving (Emergency, Fixed fund)</option>
+                        <option value="purchase">Purchase Items (Gadget, Vehicle, Asset)</option>
+                        <option value="shopping">Shopping Saving (Clothes, Gifts, Festivals)</option>
+                        <option value="custom">Custom Goal</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label fw-bold text-secondary">Target Amount (৳)</label>
+                      <input type="number" className="form-control rounded-3 shadow-sm border-0" placeholder="Enter target amount" value={savingsForm.targetAmount} onChange={(e) => setSavingsForm({ ...savingsForm, targetAmount: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="form-label fw-bold text-secondary">Note / Purpose (Optional)</label>
+                      <input type="text" className="form-control rounded-3 shadow-sm border-0" placeholder="e.g. Target by December" value={savingsForm.note} onChange={(e) => setSavingsForm({ ...savingsForm, note: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
+                    <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setIsSavingsFormOpen(false)}>Cancel</button>
+                    <button className="btn btn-success rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleSaveSavingGoal}>Save Goal</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Savings Transfer / Withdraw Modal (for dashboard savings tab) */}
+        {isSavingsTransferOpen && (
+          <>
+            <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1100 }} onClick={() => setIsSavingsTransferOpen(false)}></div>
+            <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1110 }} tabIndex="-1">
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                  <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
+                    <h5 className="modal-title fw-bold">
+                      <i className="bi bi-arrow-left-right me-2" />
+                      {savingsTransferForm.type === 'deposit' ? 'Transfer Wallet to Savings' : 'Withdraw from Savings to Wallet'}
+                    </h5>
+                    <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setIsSavingsTransferOpen(false)}></button>
+                  </div>
+                  <div className="modal-body p-4 bg-light d-flex flex-column gap-3">
+                    <div>
+                      <label className="form-label fw-bold text-secondary">Action</label>
+                      <div className="btn-group w-100">
+                        <button type="button" className={`btn btn-sm fw-bold ${savingsTransferForm.type === 'deposit' ? 'btn-success text-white' : 'btn-outline-secondary'}`} onClick={() => setSavingsTransferForm({ ...savingsTransferForm, type: 'deposit' })}>
+                          Wallet ➔ Savings
+                        </button>
+                        <button type="button" className={`btn btn-sm fw-bold ${savingsTransferForm.type === 'withdraw' ? 'btn-success text-white' : 'btn-outline-secondary'}`} onClick={() => setSavingsTransferForm({ ...savingsTransferForm, type: 'withdraw' })}>
+                          Savings ➔ Wallet
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="form-label fw-bold text-secondary">Select Wallet</label>
+                      <select className="form-select rounded-3 shadow-sm border-0" value={savingsTransferForm.walletId} onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, walletId: e.target.value })}>
+                        <option value="">-- Choose a Wallet --</option>
+                        {accounts.map(a => (
+                          <option key={a.id} value={a.id}>
+                            {a.name} (Balance: ৳{a.amount.toLocaleString()})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label fw-bold text-secondary">Amount (৳)</label>
+                      <input type="number" className="form-control rounded-3 shadow-sm border-0" placeholder="Enter amount" value={savingsTransferForm.amount} onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, amount: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
+                    <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setIsSavingsTransferOpen(false)}>Cancel</button>
+                    <button className="btn btn-success rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleSavingsTransfer}>
+                      {savingsTransferForm.type === 'deposit' ? 'Transfer Now' : 'Withdraw Now'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Delete Savings Goal Confirmation (for dashboard savings tab) */}
+        {confirmDeleteSaving && (
+          <>
+            <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1200 }} onClick={() => setConfirmDeleteSaving(null)}></div>
+            <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1210 }} tabIndex="-1">
+              <div className="modal-dialog modal-dialog-centered">
+                <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                  <div className="modal-header border-0 text-white pb-3" style={{ background: 'linear-gradient(135deg, #b71c1c, #c62828)' }}>
+                    <h5 className="modal-title fw-bold d-flex align-items-center gap-2"><i className="bi bi-trash3-fill"></i> Delete Savings Goal</h5>
+                    <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setConfirmDeleteSaving(null)}></button>
+                  </div>
+                  <div className="modal-body p-4 bg-light text-center">
+                    <h5 className="fw-bold text-dark mb-2">Delete this savings goal?</h5>
+                    <p className="text-secondary small">The goal will be deleted. Any funds in this goal should be withdrawn to your wallet first.</p>
+                  </div>
+                  <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4 d-flex justify-content-center gap-2">
+                    <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setConfirmDeleteSaving(null)}>Cancel</button>
+                    <button className="btn text-white rounded-pill px-4 py-2 fw-bold shadow-sm" style={{ background: '#c62828' }} onClick={() => handleDeleteSavingGoal(confirmDeleteSaving)}>Delete</button>
                   </div>
                 </div>
               </div>
@@ -740,45 +1204,51 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
   return (
     <div className="wallet-page w-100 position-fixed top-0 start-0 bottom-0" style={{ zIndex: 1050, height: '100dvh', background: '#ECE5DD', overflowY: 'auto' }}>
       <div className="container-fluid max-width-container py-3 py-md-4 px-3">
-        <div className="d-flex align-items-center justify-content-between mb-3">
+        <div className="d-flex align-items-center justify-content-between mb-2">
           <div>
             <div className="text-success fw-bold small text-uppercase">Finance</div>
             {walletUI === 'dashboard' ? (
-              <h2 className="fw-bold text-dark mb-0">{currentAccount?.name}</h2>
+              <h2 className="fw-bold text-dark mb-0">{activeMainTab === 'savings' ? 'Savings Goals' : currentAccount?.name}</h2>
             ) : (
-              <div className="dropdown mt-1 position-relative">
-                <button 
-                  className="btn btn-light bg-white border rounded-pill fw-bold shadow-sm d-flex align-items-center gap-2" 
-                  type="button" 
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                >
-                  <i className="bi bi-wallet2 text-success" />
-                  {currentAccount?.name}
-                  <i className="bi bi-chevron-down ms-1" style={{ fontSize: '0.8rem' }} />
-                </button>
-                {isDropdownOpen && (
-                  <>
-                    <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 1040 }} onClick={() => setIsDropdownOpen(false)}></div>
-                    <ul className="dropdown-menu show shadow-lg border-0 rounded-4 mt-2 p-2 position-absolute" style={{ minWidth: '220px', zIndex: 1050, top: '100%', left: 0 }}>
-                      {accounts.map(acc => (
-                        <li key={acc.id}>
-                          <button 
-                            className={`dropdown-item rounded-3 mb-1 fw-semibold ${acc.id === activeAccountId ? 'bg-success-subtle text-success' : ''}`} 
-                            onClick={() => { setActiveAccountId(acc.id); setIsDropdownOpen(false); }}
-                          >
-                            <i className={`bi bi-wallet me-2 ${acc.id === activeAccountId ? 'text-success' : 'text-secondary'}`} />
-                            {acc.name}
-                          </button>
-                        </li>
-                      ))}
-                      <li><hr className="dropdown-divider" /></li>
-                      <li>
-                        <button className="dropdown-item rounded-3 fw-bold text-success d-flex align-items-center" onClick={() => { setIsDropdownOpen(false); setWalletForm({ id: null, name: '', amount: '' }); setIsWalletFormOpen(true); }}>
-                          <i className="bi bi-plus-circle-fill me-2" /> Add New Wallet
-                        </button>
-                      </li>
-                    </ul>
-                  </>
+              <div className="d-flex align-items-center gap-2 mt-1">
+                {activeMainTab === 'wallets' ? (
+                  <div className="dropdown position-relative">
+                    <button 
+                      className="btn btn-light bg-white border rounded-pill fw-bold shadow-sm d-flex align-items-center gap-2" 
+                      type="button" 
+                      onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                    >
+                      <i className="bi bi-wallet2 text-success" />
+                      {currentAccount?.name}
+                      <i className="bi bi-chevron-down ms-1" style={{ fontSize: '0.8rem' }} />
+                    </button>
+                    {isDropdownOpen && (
+                      <>
+                        <div className="position-fixed top-0 start-0 w-100 h-100" style={{ zIndex: 1040 }} onClick={() => setIsDropdownOpen(false)}></div>
+                        <ul className="dropdown-menu show shadow-lg border-0 rounded-4 mt-2 p-2 position-absolute" style={{ minWidth: '220px', zIndex: 1050, top: '100%', left: 0 }}>
+                          {accounts.map(acc => (
+                            <li key={acc.id}>
+                              <button 
+                                className={`dropdown-item rounded-3 mb-1 fw-semibold ${acc.id === activeAccountId ? 'bg-success-subtle text-success' : ''}`} 
+                                onClick={() => { setActiveAccountId(acc.id); setIsDropdownOpen(false); }}
+                              >
+                                <i className={`bi bi-wallet me-2 ${acc.id === activeAccountId ? 'text-success' : 'text-secondary'}`} />
+                                {acc.name}
+                              </button>
+                            </li>
+                          ))}
+                          <li><hr className="dropdown-divider" /></li>
+                          <li>
+                            <button className="dropdown-item rounded-3 fw-bold text-success d-flex align-items-center" onClick={() => { setIsDropdownOpen(false); setWalletForm({ id: null, name: '', amount: '' }); setIsWalletFormOpen(true); }}>
+                              <i className="bi bi-plus-circle-fill me-2" /> Add New Wallet
+                            </button>
+                          </li>
+                        </ul>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <h2 className="fw-bold text-dark mb-0">Savings Goals</h2>
                 )}
               </div>
             )}
@@ -788,9 +1258,224 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
           </button>
         </div>
 
+        {/* Main Tab Switcher: Wallets vs Savings */}
+        <div className="d-flex bg-white p-1 rounded-pill shadow-xs border mb-3">
+          <button
+            type="button"
+            className={`btn btn-sm rounded-pill flex-grow-1 fw-bold transition-all ${activeMainTab === 'wallets' ? 'btn-success text-white shadow-xs' : 'btn-light text-secondary border-0'}`}
+            style={activeMainTab === 'wallets' ? { backgroundColor: '#128C7E' } : {}}
+            onClick={() => setActiveMainTab('wallets')}
+          >
+            <i className="bi bi-wallet2 me-1.5" /> Wallets & Distributions
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm rounded-pill flex-grow-1 fw-bold transition-all ${activeMainTab === 'savings' ? 'btn-success text-white shadow-xs' : 'btn-light text-secondary border-0'}`}
+            style={activeMainTab === 'savings' ? { backgroundColor: '#128C7E' } : {}}
+            onClick={() => setActiveMainTab('savings')}
+          >
+            <i className="bi bi-piggy-bank-fill me-1.5" /> Savings Goals ({savingsList.length})
+          </button>
+        </div>
+
         {loading ? (
           <div className="d-flex justify-content-center py-5">
             <div className="spinner-border text-success" role="status"><span className="visually-hidden">Loading...</span></div>
+          </div>
+        ) : activeMainTab === 'savings' ? (
+          // ==================== SAVINGS SYSTEM VIEW ====================
+          <div>
+            {/* Total Savings Overview Card */}
+            {(() => {
+              const totalSavedAll = savingsList.reduce((acc, s) => acc + (s.currentAmount || 0), 0);
+              const totalTargetAll = savingsList.reduce((acc, s) => acc + (s.targetAmount || 0), 0);
+              const overallPerc = totalTargetAll > 0 ? Math.min(100, (totalSavedAll / totalTargetAll) * 100) : 0;
+              return (
+                <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 text-white" style={{ background: 'linear-gradient(135deg, #075E54 0%, #128C7E 100%)' }}>
+                  <div className="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                      <div className="text-white-50 fw-semibold small text-uppercase">Total Saved Across Goals</div>
+                      <div className="fw-bold display-5">৳{totalSavedAll.toLocaleString()}</div>
+                    </div>
+                    <div className="rounded-circle d-flex align-items-center justify-content-center bg-white bg-opacity-20 shadow-sm" style={{ width: '56px', height: '56px' }}>
+                      <i className="bi bi-piggy-bank fs-2 text-white" />
+                    </div>
+                  </div>
+                  <div className="d-flex justify-content-between small text-white-50 mt-2 mb-1">
+                    <span>Overall Target: ৳{totalTargetAll.toLocaleString()}</span>
+                    <span>{overallPerc.toFixed(1)}% Achieved</span>
+                  </div>
+                  <div className="progress rounded-pill bg-white bg-opacity-25" style={{ height: '10px' }}>
+                    <div className="progress-bar bg-white" role="progressbar" style={{ width: `${overallPerc}%` }}></div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Filter and Add Goal Header */}
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+              <div className="d-flex gap-1.5 flex-wrap">
+                {['ALL', 'monthly', 'purchase', 'shopping', 'custom'].map(cat => (
+                  <button
+                    key={cat}
+                    type="button"
+                    className={`btn btn-xs rounded-pill px-2.5 py-1 fw-bold border ${savingsFilter === cat ? 'bg-success text-white border-success' : 'btn-light text-secondary'}`}
+                    style={savingsFilter === cat ? { backgroundColor: '#128C7E' } : {}}
+                    onClick={() => setSavingsFilter(cat)}
+                  >
+                    {cat === 'ALL' ? 'All Goals' : cat === 'monthly' ? 'Monthly' : cat === 'purchase' ? 'Purchases' : cat === 'shopping' ? 'Shopping' : 'Custom'}
+                  </button>
+                ))}
+              </div>
+              <button 
+                className="btn btn-success rounded-pill fw-bold btn-sm shadow-sm"
+                onClick={() => {
+                  setSavingsForm({ id: null, name: '', targetAmount: '', category: 'monthly', note: '' });
+                  setIsSavingsFormOpen(true);
+                }}
+              >
+                <i className="bi bi-plus-lg me-1" /> New Savings Goal
+              </button>
+            </div>
+
+            {/* Savings Cards Grid */}
+            {(() => {
+              const filteredSavings = savingsFilter === 'ALL' ? savingsList : savingsList.filter(s => s.category === savingsFilter);
+              if (filteredSavings.length === 0) {
+                return (
+                  <div className="card border-0 shadow-sm rounded-4 p-5 text-center bg-white mb-4">
+                    <i className="bi bi-piggy-bank fs-1 text-muted mb-2"></i>
+                    <h6 className="fw-bold text-dark">No savings goals yet</h6>
+                    <p className="text-secondary small mb-3">
+                      Start saving for monthly reserves, gadgets, shopping, or custom targets!
+                    </p>
+                    <div>
+                      <button
+                        className="btn btn-outline-success rounded-pill fw-bold"
+                        onClick={() => {
+                          setSavingsForm({ id: null, name: '', targetAmount: '', category: 'monthly', note: '' });
+                          setIsSavingsFormOpen(true);
+                        }}
+                      >
+                        <i className="bi bi-plus-lg me-1" /> Create Your First Goal
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="d-flex flex-column gap-3 pb-5">
+                  {filteredSavings.map(s => {
+                    const saved = s.currentAmount || 0;
+                    const target = s.targetAmount || 1;
+                    const perc = Math.min(100, (saved / target) * 100);
+                    const isCompleted = saved >= target;
+                    const iconName = s.category === 'purchase' ? 'bi-laptop' : s.category === 'shopping' ? 'bi-bag-heart-fill' : s.category === 'monthly' ? 'bi-calendar-check-fill' : 'bi-bullseye';
+                    
+                    return (
+                      <div key={s.id} className="card border-0 shadow-sm rounded-4 p-3 bg-white hover-scale">
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <div className="d-flex align-items-center gap-3">
+                            <div 
+                              className="rounded-circle d-flex align-items-center justify-content-center text-white shadow-xs"
+                              style={{ width: '44px', height: '44px', backgroundColor: isCompleted ? '#25D366' : '#128C7E' }}
+                            >
+                              <i className={`bi ${iconName} fs-5`} />
+                            </div>
+                            <div>
+                              <div className="fw-bold text-dark d-flex align-items-center gap-1.5">
+                                {s.name}
+                                {isCompleted && (
+                                  <span className="badge bg-success-subtle text-success border border-success-subtle rounded-pill small">
+                                    <i className="bi bi-check-circle-fill me-1" /> Reached
+                                  </span>
+                                )}
+                              </div>
+                              <span className="badge bg-light text-secondary border rounded-pill small px-2">
+                                #{s.category.toUpperCase()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="d-flex gap-1.5">
+                            <button
+                              className="btn btn-sm btn-light border rounded-pill fw-semibold text-secondary"
+                              onClick={() => {
+                                setSavingsForm({ id: s.id, name: s.name, targetAmount: s.targetAmount, category: s.category || 'custom', note: s.note || '' });
+                                setIsSavingsFormOpen(true);
+                              }}
+                              title="Edit Goal"
+                            >
+                              <i className="bi bi-pencil" />
+                            </button>
+                            <button
+                              className="btn btn-sm btn-light border rounded-pill text-danger"
+                              onClick={() => setConfirmDeleteSaving(s.id)}
+                              title="Delete Goal"
+                            >
+                              <i className="bi bi-trash" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Progress Bar & Amount */}
+                        <div className="mt-2">
+                          <div className="d-flex justify-content-between small mb-1">
+                            <span>Saved: <strong className="text-success">৳{saved.toLocaleString()}</strong></span>
+                            <span>Target: <strong className="text-dark">৳{target.toLocaleString()}</strong> ({perc.toFixed(1)}%)</span>
+                          </div>
+                          <div className="progress rounded-pill bg-light border" style={{ height: '10px' }}>
+                            <div 
+                              className={`progress-bar ${isCompleted ? 'bg-success' : 'bg-primary'}`} 
+                              role="progressbar" 
+                              style={{ width: `${perc}%` }}
+                            />
+                          </div>
+                          <div className="d-flex justify-content-between text-muted small mt-1" style={{ fontSize: '0.78rem' }}>
+                            <span>Remaining: ৳{Math.max(0, target - saved).toLocaleString()}</span>
+                            {s.note && <span className="fst-italic text-truncate" style={{ maxWidth: '200px' }}>{s.note}</span>}
+                          </div>
+                        </div>
+
+                        {/* Quick Transfer Actions */}
+                        <div className="d-flex gap-2 mt-3 pt-2 border-top">
+                          <button
+                            className="btn btn-sm btn-outline-success rounded-pill fw-bold flex-grow-1"
+                            onClick={() => {
+                              setSavingsTransferForm({
+                                savingId: s.id,
+                                walletId: accounts.length > 0 ? accounts[0].id : '',
+                                amount: '',
+                                type: 'deposit'
+                              });
+                              setIsSavingsTransferOpen(true);
+                            }}
+                          >
+                            <i className="bi bi-arrow-down-circle me-1" /> Transfer In
+                          </button>
+                          <button
+                            className="btn btn-sm btn-outline-secondary rounded-pill fw-bold flex-grow-1"
+                            disabled={saved <= 0}
+                            onClick={() => {
+                              setSavingsTransferForm({
+                                savingId: s.id,
+                                walletId: accounts.length > 0 ? accounts[0].id : '',
+                                amount: '',
+                                type: 'withdraw'
+                              });
+                              setIsSavingsTransferOpen(true);
+                            }}
+                          >
+                            <i className="bi bi-arrow-up-circle me-1" /> Withdraw
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         ) : (
           <>
@@ -1212,6 +1897,174 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                 <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4 d-flex justify-content-center gap-2">
                   <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setConfirmDeleteWallet(null)}>Cancel</button>
                   <button className="btn text-white rounded-pill px-4 py-2 fw-bold shadow-sm" style={{ background: '#c62828' }} onClick={() => handleDeleteWallet(confirmDeleteWallet)}>Delete</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Savings Goal Create / Edit Modal */}
+      {isSavingsFormOpen && (
+        <>
+          <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1100 }} onClick={() => setIsSavingsFormOpen(false)}></div>
+          <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1110 }} tabIndex="-1">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
+                  <h5 className="modal-title fw-bold">
+                    <i className="bi bi-piggy-bank me-2" />
+                    {savingsForm.id ? 'Edit Savings Goal' : 'New Savings Goal'}
+                  </h5>
+                  <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setIsSavingsFormOpen(false)}></button>
+                </div>
+                <div className="modal-body p-4 bg-light d-flex flex-column gap-3">
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Goal Name</label>
+                    <input 
+                      type="text" 
+                      className="form-control rounded-3 shadow-sm border-0" 
+                      placeholder="e.g. MacBook Pro, Monthly Reserve, Eid Shopping" 
+                      value={savingsForm.name} 
+                      onChange={(e) => setSavingsForm({ ...savingsForm, name: e.target.value })} 
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Category</label>
+                    <select 
+                      className="form-select rounded-3 shadow-sm border-0" 
+                      value={savingsForm.category} 
+                      onChange={(e) => setSavingsForm({ ...savingsForm, category: e.target.value })}
+                    >
+                      <option value="monthly">Monthly Saving (Emergency, Fixed fund)</option>
+                      <option value="purchase">Purchase Items (Gadget, Vehicle, Asset)</option>
+                      <option value="shopping">Shopping Saving (Clothes, Gifts, Festivals)</option>
+                      <option value="custom">Custom Goal</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Target Amount (৳)</label>
+                    <input 
+                      type="number" 
+                      className="form-control rounded-3 shadow-sm border-0" 
+                      placeholder="Enter target amount" 
+                      value={savingsForm.targetAmount} 
+                      onChange={(e) => setSavingsForm({ ...savingsForm, targetAmount: e.target.value })} 
+                    />
+                  </div>
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Note / Purpose (Optional)</label>
+                    <input 
+                      type="text" 
+                      className="form-control rounded-3 shadow-sm border-0" 
+                      placeholder="e.g. Target by December" 
+                      value={savingsForm.note} 
+                      onChange={(e) => setSavingsForm({ ...savingsForm, note: e.target.value })} 
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
+                  <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setIsSavingsFormOpen(false)}>Cancel</button>
+                  <button className="btn btn-success rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleSaveSavingGoal}>Save Goal</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Savings Transfer / Withdraw Modal */}
+      {isSavingsTransferOpen && (
+        <>
+          <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1100 }} onClick={() => setIsSavingsTransferOpen(false)}></div>
+          <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1110 }} tabIndex="-1">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                <div className="modal-header border-0 text-white pb-3" style={{ backgroundColor: '#075E54' }}>
+                  <h5 className="modal-title fw-bold">
+                    <i className="bi bi-arrow-left-right me-2" />
+                    {savingsTransferForm.type === 'deposit' ? 'Transfer Wallet to Savings' : 'Withdraw from Savings to Wallet'}
+                  </h5>
+                  <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setIsSavingsTransferOpen(false)}></button>
+                </div>
+                <div className="modal-body p-4 bg-light d-flex flex-column gap-3">
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Action</label>
+                    <div className="btn-group w-100">
+                      <button 
+                        type="button" 
+                        className={`btn btn-sm fw-bold ${savingsTransferForm.type === 'deposit' ? 'btn-success text-white' : 'btn-outline-secondary'}`}
+                        onClick={() => setSavingsTransferForm({ ...savingsTransferForm, type: 'deposit' })}
+                      >
+                        Wallet ➔ Savings
+                      </button>
+                      <button 
+                        type="button" 
+                        className={`btn btn-sm fw-bold ${savingsTransferForm.type === 'withdraw' ? 'btn-success text-white' : 'btn-outline-secondary'}`}
+                        onClick={() => setSavingsTransferForm({ ...savingsTransferForm, type: 'withdraw' })}
+                      >
+                        Savings ➔ Wallet
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Select Wallet</label>
+                    <select 
+                      className="form-select rounded-3 shadow-sm border-0" 
+                      value={savingsTransferForm.walletId} 
+                      onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, walletId: e.target.value })}
+                    >
+                      <option value="">-- Choose a Wallet --</option>
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} (Balance: ৳{a.amount.toLocaleString()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Amount (৳)</label>
+                    <input 
+                      type="number" 
+                      className="form-control rounded-3 shadow-sm border-0" 
+                      placeholder="Enter amount" 
+                      value={savingsTransferForm.amount} 
+                      onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, amount: e.target.value })} 
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
+                  <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setIsSavingsTransferOpen(false)}>Cancel</button>
+                  <button className="btn btn-success rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleSavingsTransfer}>
+                    {savingsTransferForm.type === 'deposit' ? 'Transfer Now' : 'Withdraw Now'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Delete Savings Goal Confirmation */}
+      {confirmDeleteSaving && (
+        <>
+          <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1200 }} onClick={() => setConfirmDeleteSaving(null)}></div>
+          <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1210 }} tabIndex="-1">
+            <div className="modal-dialog modal-dialog-centered">
+              <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                <div className="modal-header border-0 text-white pb-3" style={{ background: 'linear-gradient(135deg, #b71c1c, #c62828)' }}>
+                  <h5 className="modal-title fw-bold d-flex align-items-center gap-2"><i className="bi bi-trash3-fill"></i> Delete Savings Goal</h5>
+                  <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setConfirmDeleteSaving(null)}></button>
+                </div>
+                <div className="modal-body p-4 bg-light text-center">
+                  <h5 className="fw-bold text-dark mb-2">Delete this savings goal?</h5>
+                  <p className="text-secondary small">The goal will be deleted. Any funds in this goal should be withdrawn to your wallet first.</p>
+                </div>
+                <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4 d-flex justify-content-center gap-2">
+                  <button className="btn btn-white border rounded-pill px-4 py-2 text-secondary fw-bold" onClick={() => setConfirmDeleteSaving(null)}>Cancel</button>
+                  <button className="btn text-white rounded-pill px-4 py-2 fw-bold shadow-sm" style={{ background: '#c62828' }} onClick={() => handleDeleteSavingGoal(confirmDeleteSaving)}>Delete</button>
                 </div>
               </div>
             </div>
