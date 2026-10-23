@@ -503,22 +503,23 @@ const BreakTimeline = ({ shiftStartTime, shiftEndTime, breakHistory, currentTime
 
 
 // --- Limited edit panel for running shift (preserves logged blocks) ---
-const ShiftQuickEdit = ({ target, unit, shiftEnd, onApply }) => {
+const ShiftQuickEdit = ({ target, unit, shiftStart, shiftEnd, onApply }) => {
   const [open, setOpen] = React.useState(false);
   const [t, setT] = React.useState(target);
   const [u, setU] = React.useState(unit);
+  const [s, setS] = React.useState(shiftStart);
   const [e, setE] = React.useState(shiftEnd);
-  React.useEffect(() => { setT(target); setU(unit); setE(shiftEnd); }, [target, unit, shiftEnd]);
+  React.useEffect(() => { setT(target); setU(unit); setS(shiftStart); setE(shiftEnd); }, [target, unit, shiftStart, shiftEnd]);
   const inp = { padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14, width: '100%', boxSizing: 'border-box' };
   return (
     <div style={{ marginTop: 10 }}>
       <button onClick={() => setOpen(p => !p)}
         style={{ width: '100%', padding: 12, background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-        ✏️ Quick Edit (Target / Unit / End Time)
+        ✏️ Quick Edit (Target / Unit / Start / End Time)
       </button>
       {open && (
         <div style={{ marginTop: 8, padding: 14, background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>⚠️ Blocks & logged data are preserved</div>
+          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>⚠️ Logged blocks are preserved. Changing end time adds/removes unlogged blocks.</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <label style={{ fontSize: 13, fontWeight: 600 }}>Target
               <input type="number" value={t} onChange={ev => setT(Number(ev.target.value))} style={{ ...inp, marginTop: 4 }} />
@@ -527,12 +528,17 @@ const ShiftQuickEdit = ({ target, unit, shiftEnd, onApply }) => {
               <input type="text" value={u} onChange={ev => setU(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
             </label>
           </div>
-          <label style={{ fontSize: 13, fontWeight: 600 }}>Shift End Time
-            <input type="time" value={e} onChange={ev => setE(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
-          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Shift Start
+              <input type="time" value={s} onChange={ev => setS(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
+            </label>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Shift End
+              <input type="time" value={e} onChange={ev => setE(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
+            </label>
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setOpen(false)} style={{ flex: 1, padding: 10, background: '#f0f0f0', border: 'none', borderRadius: 10, fontWeight: 700, color: '#666', cursor: 'pointer' }}>Cancel</button>
-            <button onClick={() => { onApply(t, u, e); setOpen(false); }}
+            <button onClick={() => { onApply(t, u, s, e); setOpen(false); }}
               style={{ flex: 2, padding: 10, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>Apply Changes</button>
           </div>
         </div>
@@ -541,14 +547,20 @@ const ShiftQuickEdit = ({ target, unit, shiftEnd, onApply }) => {
   );
 };
 
-export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports }) {
+export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, onOpenBypassTracker }) {
   const { playSound } = useSound();
 
   // Settings
-  const [target, setTarget] = useState(100);
+  const [target, setTarget] = useState(() => {
+    return Number(localStorage.getItem('shiftTracker_defaultTarget')) || 100;
+  });
   const [unit, setUnit] = useState('pieces');
-  const [shiftStart, setShiftStart] = useState('09:00');
-  const [shiftEnd, setShiftEnd] = useState('17:00');
+  const [shiftStart, setShiftStart] = useState(() => {
+    return localStorage.getItem('shiftTracker_defaultStart') || '09:00';
+  });
+  const [shiftEnd, setShiftEnd] = useState(() => {
+    return localStorage.getItem('shiftTracker_defaultEnd') || '17:00';
+  });
   const [shiftSlots, setShiftSlots] = useState([]);
   const [blockLen, setBlockLen] = useState(60);
   const [scheduledBreaks, setScheduledBreaks] = useState([]);
@@ -904,10 +916,10 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
   }, [currentUser?.uid, selectedDate]);
 
   const resetState = () => {
-    setTarget(100);
+    setTarget(Number(localStorage.getItem('shiftTracker_defaultTarget')) || 100);
     setUnit('pieces');
-    setShiftStart('09:00');
-    setShiftEnd('17:00');
+    setShiftStart(localStorage.getItem('shiftTracker_defaultStart') || '09:00');
+    setShiftEnd(localStorage.getItem('shiftTracker_defaultEnd') || '17:00');
     setShiftSlots([]);
     setBlockLen(60);
     setBlocks([]);
@@ -1083,7 +1095,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
     const endMinutes = timeToMinutes(effectiveShiftEnd);
 
     // If shift hasn't started yet (e.g. shift is 9:00 AM but it's 8:30 AM)
-    if (startMinutes > 0 && nowMin < startMinutes) {
+    if (nowMin < startMinutes) {
       const waitMins = startMinutes - nowMin;
       const waitHrs = Math.floor(waitMins / 60);
       const waitRemMins = waitMins % 60;
@@ -1530,6 +1542,22 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
               <span>📊</span>
               <span>Reports</span>
             </motion.button>
+
+            {onOpenBypassTracker && (
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={onOpenBypassTracker}
+                title="Bypass Tracker"
+                style={{
+                  background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none',
+                  height: 32, padding: '0 10px', borderRadius: 16, fontWeight: 700, fontSize: 12,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4
+                }}
+              >
+                <span>⚡</span>
+                <span>Bypass</span>
+              </motion.button>
+            )}
 
             {!setupMode && (
               <motion.button
@@ -2444,16 +2472,116 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports })
             {/* Limited edit during running shift — preserves blocks */}
             {isToday && clockStatus !== 'idle' ? (
               <ShiftQuickEdit
-                target={target} unit={unit} shiftEnd={shiftEnd}
-                onApply={(newTarget, newUnit, newEnd) => {
+                target={target} unit={unit} shiftStart={shiftStart} shiftEnd={shiftEnd}
+                onApply={(newTarget, newUnit, newStart, newEnd) => {
                   setTarget(newTarget);
                   setUnit(newUnit);
+
+                  const oldStartMin = timeToMinutes(shiftStart);
+                  const oldEndMin = timeToMinutes(shiftEnd);
+                  const newStartMin = timeToMinutes(newStart);
+                  const newEndMin = timeToMinutes(newEnd);
+                  setShiftStart(newStart);
                   setShiftEnd(newEnd);
-                  // Recalc targets with new total, keep blocks
-                  const nb = [...blocks];
+
+                  // Also update shiftSlots if multi-shift is used
+                  if (shiftSlots && shiftSlots.length > 0) {
+                    const updatedSlots = [...shiftSlots];
+                    // Update first slot's start
+                    updatedSlots[0] = {
+                      ...updatedSlots[0],
+                      start: newStart
+                    };
+                    // Update last slot's end
+                    updatedSlots[updatedSlots.length - 1] = {
+                      ...updatedSlots[updatedSlots.length - 1],
+                      end: newEnd
+                    };
+                    setShiftSlots(updatedSlots);
+                  }
+
+                  let nb = blocks.map(b => ({ ...b }));
+
+                  // Handle start time change — add blocks before existing start if extending earlier
+                  if (newStartMin < oldStartMin && nb.length > 0) {
+                    const firstBlockStart = timeToMinutes(nb[0].start);
+                    const addUpTo = Math.min(firstBlockStart, oldStartMin);
+                    if (newStartMin < addUpTo) {
+                      let cur = new Date(`1970-01-01T${newStart}:00`);
+                      const endDate = new Date(`1970-01-01T${String(Math.floor(addUpTo / 60)).padStart(2, '0')}:${String(addUpTo % 60).padStart(2, '0')}:00`);
+                      let blockId = Math.max(...nb.map(b => b.id)) + 1;
+                      const firstShiftLabel = nb[0].shiftLabel || '';
+                      const newBlocks = [];
+                      while (cur < endDate) {
+                        const bEnd = new Date(Math.min(cur.getTime() + blockLen * 60000, endDate.getTime()));
+                        newBlocks.push({
+                          id: blockId++,
+                          start: fmtTime(cur),
+                          end: fmtTime(bEnd),
+                          shiftLabel: firstShiftLabel,
+                          actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
+                        });
+                        cur = bEnd;
+                      }
+                      nb = [...newBlocks, ...nb];
+                    }
+                  } else if (newStartMin > oldStartMin && nb.length > 0) {
+                    // Shrink from the start — remove unlogged blocks that end at or before the new start time
+                    nb = nb.filter(b => {
+                      const bEnd = timeToMinutes(b.end);
+                      return bEnd > newStartMin || b.logged;
+                    });
+                    // Trim the first remaining block's start if it starts before newStart
+                    if (nb.length > 0) {
+                      const firstB = nb[0];
+                      if (!firstB.logged && !firstB.isBreak && timeToMinutes(firstB.start) < newStartMin) {
+                        nb[0] = { ...firstB, start: newStart };
+                      }
+                    }
+                  }
+
+                  // Handle end time change
+                  if (newEndMin > oldEndMin && nb.length > 0) {
+                    // Extend: add new work blocks from old end to new end
+                    const lastBlock = nb[nb.length - 1];
+                    const lastBlockEnd = timeToMinutes(lastBlock.end);
+                    const startFrom = Math.max(lastBlockEnd, oldEndMin);
+                    if (newEndMin > startFrom) {
+                      let cur = new Date(`1970-01-01T${String(Math.floor(startFrom / 60)).padStart(2, '0')}:${String(startFrom % 60).padStart(2, '0')}:00`);
+                      const endDate = new Date(`1970-01-01T${newEnd}:00`);
+                      let blockId = Math.max(...nb.map(b => b.id)) + 1;
+                      const lastShiftLabel = lastBlock.shiftLabel || '';
+                      while (cur < endDate) {
+                        const bEnd = new Date(Math.min(cur.getTime() + blockLen * 60000, endDate.getTime()));
+                        nb.push({
+                          id: blockId++,
+                          start: fmtTime(cur),
+                          end: fmtTime(bEnd),
+                          shiftLabel: lastShiftLabel,
+                          actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
+                        });
+                        cur = bEnd;
+                      }
+                    }
+                  } else if (newEndMin < oldEndMin && nb.length > 0) {
+                    // Shrink: remove unlogged blocks that start at or after the new end time
+                    nb = nb.filter(b => {
+                      const bStart = timeToMinutes(b.start);
+                      return bStart < newEndMin || b.logged;
+                    });
+                    // Trim the last remaining block's end time if it extends past newEnd
+                    if (nb.length > 0) {
+                      const lastIdx = nb.length - 1;
+                      const lastB = nb[lastIdx];
+                      if (!lastB.logged && !lastB.isBreak && timeToMinutes(lastB.end) > newEndMin) {
+                        nb[lastIdx] = { ...lastB, end: newEnd };
+                      }
+                    }
+                  }
+
                   recalcTargets(nb, newTarget, breakHistory);
                   setBlocks(nb);
-                  save(nb, { target: newTarget, unit: newUnit, shiftEnd: newEnd });
+                  save(nb, { target: newTarget, unit: newUnit, shiftStart: newStart, shiftEnd: newEnd });
                 }}
               />
             ) : (

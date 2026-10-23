@@ -163,7 +163,7 @@ export default function Header({
   return (
     <>
     <header className="sticky-top shadow-sm text-white" style={{ backgroundColor: '#075E54', zIndex: 1020 }}>
-      <div className="container-fluid max-width-container px-3 py-2 position-relative">
+      <div className="container-fluid header-responsive-container px-3 py-2 position-relative">
         <div className="d-flex align-items-center justify-content-between flex-nowrap gap-2" style={{ minHeight: '44px' }}>
           
           {/* Left: Branding + Date */}

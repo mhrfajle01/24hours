@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase/firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { useCustomFeatures } from '../hooks/useCustomFeatures';
@@ -42,6 +42,23 @@ export default function QuickAccessDashboardWidget({
   const [walletDists, setWalletDists] = useState([]);
   const { features: customFeatures } = useCustomFeatures();
   const [activeCustomFeature, setActiveCustomFeature] = useState(null);
+  const scrollContainerRef = useRef(null);
+
+  // Enable mouse wheel horizontal scrolling
+  const handleWheel = (e) => {
+    if (scrollContainerRef.current) {
+      if (Math.abs(e.deltaX) < Math.abs(e.deltaY)) {
+        e.preventDefault();
+        scrollContainerRef.current.scrollLeft += e.deltaY;
+      }
+    }
+  };
+
+  const scrollByAmount = (amt) => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollBy({ left: amt, behavior: 'smooth' });
+    }
+  };
 
   useEffect(() => {
     const handlePopState = () => {
@@ -103,7 +120,7 @@ export default function QuickAccessDashboardWidget({
             setPinnedFeatures(['journal', 'streaks', 'wallet']);
           }
         } else {
-          setPinnedFeatures(['journal', 'streaks', 'wallet']);
+          setPinnedFeatures(baseFeatures.map(f => f.id));
         }
       }
     });
@@ -323,15 +340,45 @@ export default function QuickAccessDashboardWidget({
               <i className="bi bi-lightning-charge-fill text-warning me-2"></i>
               Quick Access
             </h6>
-            <button 
-              className="btn btn-sm btn-light border text-secondary rounded-pill fw-bold"
-              onClick={openEditMode}
-            >
-              <i className="bi bi-pencil-fill me-1"></i>Edit
-            </button>
+            <div className="d-flex align-items-center gap-1">
+              {/* Desktop Scroll Arrow Controls */}
+              <button 
+                type="button"
+                className="btn btn-sm btn-light border rounded-circle p-0 d-none d-md-inline-flex align-items-center justify-content-center text-secondary"
+                style={{ width: '28px', height: '28px' }}
+                onClick={() => scrollByAmount(-180)}
+                title="Scroll left"
+              >
+                <i className="bi bi-chevron-left" style={{ fontSize: '0.75rem' }}></i>
+              </button>
+              <button 
+                type="button"
+                className="btn btn-sm btn-light border rounded-circle p-0 d-none d-md-inline-flex align-items-center justify-content-center text-secondary me-1"
+                style={{ width: '28px', height: '28px' }}
+                onClick={() => scrollByAmount(180)}
+                title="Scroll right"
+              >
+                <i className="bi bi-chevron-right" style={{ fontSize: '0.75rem' }}></i>
+              </button>
+              <button 
+                className="btn btn-sm btn-light border text-secondary rounded-pill fw-bold"
+                onClick={openEditMode}
+              >
+                <i className="bi bi-pencil-fill me-1"></i>Edit
+              </button>
+            </div>
           </div>
           
-          <div className="d-flex gap-3 overflow-auto pb-2" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          <div 
+            ref={scrollContainerRef}
+            onWheel={handleWheel}
+            className="d-flex gap-3 overflow-auto pb-2 position-relative" 
+            style={{ 
+              scrollbarWidth: 'thin',
+              cursor: 'grab',
+              userSelect: 'none'
+            }}
+          >
             {featuresToRender.map(feature => (
               <div 
                 key={feature.id} 

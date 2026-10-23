@@ -40,6 +40,70 @@ body {
   margin-right: auto;
 }
 
+/* Responsive Desktop Layout for Homepage */
+.home-dashboard-layout {
+  max-width: 1380px;
+  margin: 0 auto;
+}
+
+/* Header container responsiveness across mobile, tablet and desktop */
+.header-responsive-container {
+  max-width: 680px;
+  margin-left: auto;
+  margin-right: auto;
+  transition: max-width 0.2s ease;
+}
+
+@media (min-width: 768px) {
+  .header-responsive-container {
+    max-width: 100% !important;
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+  }
+}
+
+@media (min-width: 1200px) {
+  .header-responsive-container {
+    max-width: 1380px !important;
+  }
+}
+
+@media (min-width: 992px) {
+  /* On desktop screens (lg and above), let widgets and timeline expand to fill their column */
+  .home-sidebar-col .max-width-container,
+  .home-timeline-col .max-width-container {
+    max-width: 100% !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  
+  .home-sidebar-col {
+    position: relative;
+    height: 100%;
+  }
+
+  /* Fixed sticky left sidebar that scrolls its own contents if taller than viewport */
+  .home-sticky-sidebar {
+    position: sticky;
+    top: 65px;
+    z-index: 10;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+  }
+
+  .home-sticky-sidebar::-webkit-scrollbar {
+    width: 5px;
+  }
+  .home-sticky-sidebar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 4px;
+  }
+}
+
 /* WhatsApp message bubbles with asymmetric tails */
 .rounded-chat-right {
   border-radius: 18px 18px 0px 18px;

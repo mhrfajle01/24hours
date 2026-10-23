@@ -163,6 +163,11 @@ service cloud.firestore {
       match /dailyShiftReport/{docId} {
         allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
       }
+
+      // Rules for Bypass Records
+      match /bypassRecords/{docId} {
+        allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      }
     }
   }
 }

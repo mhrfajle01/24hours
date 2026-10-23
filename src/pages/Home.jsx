@@ -26,6 +26,7 @@ import StoriesPage from './StoriesPage';
 import TaskPlannerPage from './TaskPlannerPage';
 import ShiftTrackerPage from './ShiftTrackerPage';
 import ShiftReportPage from './ShiftReportPage';
+import BypassTrackerPage from './BypassTrackerPage';
 import FeatureHubPage from './FeatureHubPage';
 import WalletPage from './WalletPage';
 import AdminPage from './AdminPage';
@@ -217,6 +218,7 @@ export default function Home() {
   const [isTaskPlannerOpen, setIsTaskPlannerOpen] = useState(false);
   const [isShiftTrackerOpen, setIsShiftTrackerOpen] = useState(false);
   const [isShiftReportOpen, setIsShiftReportOpen] = useState(false);
+  const [isBypassTrackerOpen, setIsBypassTrackerOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
     try {
       return localStorage.getItem('24hours-tutorial-complete') ? -1 : 0;
@@ -248,6 +250,7 @@ export default function Home() {
       setIsTaskPlannerOpen(path === '/task-planner');
       setIsShiftTrackerOpen(path === '/shift-tracker');
       setIsShiftReportOpen(path === '/shift-report');
+      setIsBypassTrackerOpen(path === '/bypass-tracker');
       if (path === '/islamic') setTheme('islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
@@ -1864,6 +1867,11 @@ export default function Home() {
           setIsShiftReportOpen(true);
           navigateTo('/shift-report');
         }}
+        onOpenBypassTracker={() => {
+          setIsShiftTrackerOpen(false);
+          setIsBypassTrackerOpen(true);
+          navigateTo('/bypass-tracker');
+        }}
         onBack={() => {
           setIsShiftTrackerOpen(false);
           navigateTo('/');
@@ -1879,6 +1887,20 @@ export default function Home() {
         currentUser={currentUser}
         onBack={() => {
           setIsShiftReportOpen(false);
+          setIsShiftTrackerOpen(true);
+          navigateTo('/shift-tracker');
+        }}
+      />
+    );
+  }
+
+  // ── Bypass Tracker Page ──────────────────────────────────────────────
+  if (isBypassTrackerOpen) {
+    return (
+      <BypassTrackerPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsBypassTrackerOpen(false);
           setIsShiftTrackerOpen(true);
           navigateTo('/shift-tracker');
         }}
@@ -2035,146 +2057,159 @@ export default function Home() {
 
         {/* Normal View */}
         {!error && !firestoreLoading && (
-          <>
-            <ConsistencyWidget
-              reports={reports}
-              appUsage={appUsage}
-              streakRequirements={dashboardStreakRequirements}
-              streakData={streakData}
-              streakLoaded={streakLoaded}
-              weeklyStats={weeklyStats}
-              dailyGoal={dailyGoal}
-              onUpdateDailyGoal={updateDailyGoal}
-              heatmapData={heatmapData}
-              onExcuseDay={excuseDay}
-              onRefreshStreak={refreshStreak}
-              onAddStreakFreeze={addStreakFreeze}
-              onOpenPoints={handleOpenPoints}
-              onOpenPlan={handleOpenAddPlan}
-              onOpenSettings={handleOpenSettings}
-              onOpenJournal={() => {
-                setJournalInitialDate(getTodayDateString());
-                setIsJournalOpen(true);
-                navigateTo('/journal');
-              }}
-              onOpenStreaks={() => openStreaksPage()}
-              selectedDate={selectedDate}
-              pointsData={pointsData}
-              onUnlockFeature={unlockFeature}
-              claimDailyCheckIn={claimDailyCheckIn}
-            />
-            <QuickAccessDashboardWidget
-              currentUser={currentUser}
-              onOpenJournal={() => {
-                setJournalInitialDate(getTodayDateString());
-                setIsJournalOpen(true);
-                navigateTo('/journal');
-              }}
-              onOpenStreaks={() => openStreaksPage()}
-              onOpenRewards={() => setActiveModal('points')}
-              onOpenWallet={() => {
-                setIsWalletOpen(true);
-                navigateTo('/wallet');
-              }}
-              onOpenWalletDist={(distId) => {
-                setWalletInitialDist(distId);
-                setIsWalletOpen(true);
-                navigateTo('/wallet');
-              }}
-              onOpenStories={() => {
-                setIsStoriesOpen(true);
-                navigateTo('/stories');
-              }}
-              onOpenTaskPlanner={() => {
-                setIsTaskPlannerOpen(true);
-                navigateTo('/task-planner');
-              }}
-              onOpenInsights={() => setIsInsightsOpen(true)}
-              onOpenFeatureHub={handleOpenFeatureHub}
-              onOpenSurvey={() => {
-                setIsSurveyOpen(true);
-                navigateTo('/survey');
-              }}
-              onOpenProductLife={() => {
-                setIsProductsLifeOpen(true);
-                navigateTo('/product-life');
-              }}
-              onOpenVirtualIsland={() => {
-                setIsVirtualIslandOpen(true);
-                navigateTo('/virtual-island');
-              }}
-              onOpenShiftTracker={() => {
-                setIsShiftTrackerOpen(true);
-                navigateTo('/shift-tracker');
-              }}
-            />
-            <TodoDashboardWidget 
-              currentUser={currentUser} 
-              onOpenTodo={() => setIsTodoOpen(true)} 
-            />
-            {theme === 'islamic' && (
-              <div className="container-fluid max-width-container px-3">
-                <PrayerChecklist selectedDate={selectedDate} />
-              </div>
-            )}
-            <Summary
-              reports={reports}
-              selectedDate={selectedDate}
-              onDateChange={setSelectedDate}
-              onGenerateToday={handleGenerateToday}
-              onOpenPDFSettings={handleOpenSettings}
-              dictionaryData={finalDictionary}
-              selectedTag={selectedTag}
-              onSelectTag={setSelectedTag}
-            />
-            {selectedTag && (
-              <div className="container-fluid max-width-container px-3 mb-3">
-                <div className="alert alert-info border-0 rounded-3 shadow-sm d-flex justify-content-between align-items-center mb-0 py-2.5 bg-info-subtle border-start border-4 border-info">
-                  <span className="small fw-semibold text-info-emphasis">
-                    <i className="bi bi-filter-circle-fill me-1.5 fs-6 text-info"></i>
-                    Filtering timeline by: <strong className="text-uppercase">#{selectedTag}</strong>
-                  </span>
-                  <button 
-                    className="btn btn-xs btn-outline-info text-info-emphasis border-0 rounded-pill py-0 px-2 fw-bold text-dark hover-bg-info-subtle"
-                    onClick={() => setSelectedTag(null)}
-                  >
-                    Clear Filter
-                  </button>
+          <div className="home-dashboard-layout container-fluid px-2 px-md-3 px-xl-4 py-2">
+            <div className="row g-3 g-xl-4 justify-content-center">
+              
+              {/* Left Column on Desktop / Top on Mobile: Widgets & Stats Sidebar */}
+              <div className="col-12 col-lg-5 col-xl-4 home-sidebar-col">
+                <div className="home-sticky-sidebar">
+                  <ConsistencyWidget
+                    reports={reports}
+                    appUsage={appUsage}
+                    streakRequirements={dashboardStreakRequirements}
+                    streakData={streakData}
+                    streakLoaded={streakLoaded}
+                    weeklyStats={weeklyStats}
+                    dailyGoal={dailyGoal}
+                    onUpdateDailyGoal={updateDailyGoal}
+                    heatmapData={heatmapData}
+                    onExcuseDay={excuseDay}
+                    onRefreshStreak={refreshStreak}
+                    onAddStreakFreeze={addStreakFreeze}
+                    onOpenPoints={handleOpenPoints}
+                    onOpenPlan={handleOpenAddPlan}
+                    onOpenSettings={handleOpenSettings}
+                    onOpenJournal={() => {
+                      setJournalInitialDate(getTodayDateString());
+                      setIsJournalOpen(true);
+                      navigateTo('/journal');
+                    }}
+                    onOpenStreaks={() => openStreaksPage()}
+                    selectedDate={selectedDate}
+                    pointsData={pointsData}
+                    onUnlockFeature={unlockFeature}
+                    claimDailyCheckIn={claimDailyCheckIn}
+                  />
+                  <QuickAccessDashboardWidget
+                    currentUser={currentUser}
+                    onOpenJournal={() => {
+                      setJournalInitialDate(getTodayDateString());
+                      setIsJournalOpen(true);
+                      navigateTo('/journal');
+                    }}
+                    onOpenStreaks={() => openStreaksPage()}
+                    onOpenRewards={() => setActiveModal('points')}
+                    onOpenWallet={() => {
+                      setIsWalletOpen(true);
+                      navigateTo('/wallet');
+                    }}
+                    onOpenWalletDist={(distId) => {
+                      setWalletInitialDist(distId);
+                      setIsWalletOpen(true);
+                      navigateTo('/wallet');
+                    }}
+                    onOpenStories={() => {
+                      setIsStoriesOpen(true);
+                      navigateTo('/stories');
+                    }}
+                    onOpenTaskPlanner={() => {
+                      setIsTaskPlannerOpen(true);
+                      navigateTo('/task-planner');
+                    }}
+                    onOpenInsights={() => setIsInsightsOpen(true)}
+                    onOpenFeatureHub={handleOpenFeatureHub}
+                    onOpenSurvey={() => {
+                      setIsSurveyOpen(true);
+                      navigateTo('/survey');
+                    }}
+                    onOpenProductLife={() => {
+                      setIsProductsLifeOpen(true);
+                      navigateTo('/product-life');
+                    }}
+                    onOpenVirtualIsland={() => {
+                      setIsVirtualIslandOpen(true);
+                      navigateTo('/virtual-island');
+                    }}
+                    onOpenShiftTracker={() => {
+                      setIsShiftTrackerOpen(true);
+                      navigateTo('/shift-tracker');
+                    }}
+                  />
+                  <TodoDashboardWidget 
+                    currentUser={currentUser} 
+                    onOpenTodo={() => setIsTodoOpen(true)} 
+                  />
+                  {theme === 'islamic' && (
+                    <div className="px-1 px-md-3">
+                      <PrayerChecklist selectedDate={selectedDate} />
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-            <Timeline
-              reports={(() => {
-                if (!selectedTag) return reports;
-                return reports.filter(r => {
-                  let activeTag = r.tag;
-                  if (!activeTag && r.report) {
-                    const matched = finalDictionary.find(d => 
-                      (d.report_bn && d.report_bn === r.report) ||
-                      (d.plan_bn && d.plan_bn === r.report) ||
-                      (d.report_en && d.report_en === r.report) ||
-                      (d.plan_en && d.plan_en === r.report)
-                    );
-                    if (matched) activeTag = matched.tag;
-                  }
-                  return activeTag === selectedTag;
-                });
-              })()}
-              currentTime={currentTime}
-              selectedDate={selectedDate}
-              onEditPlan={handleOpenEditPlan}
-              onEditReport={handleOpenEditReport}
-              onDelete={handleOpenDelete}
-              onGenerateToday={handleGenerateToday}
-              onInlineUpdatePlan={handleInlineUpdatePlan}
-              onInlineUpdateReport={handleInlineUpdateReport}
-              dictionaryData={finalDictionary}
-              onOpenPomodoro={(report) => {
-                setPomodoroReport(report);
-                setIsPomodoroOpen(true);
-              }}
-            />
-          </>
+
+              {/* Right Column on Desktop / Main Feed: Summary & Timeline Log */}
+              <div className="col-12 col-lg-7 col-xl-7 home-timeline-col">
+                <Summary
+                  reports={reports}
+                  selectedDate={selectedDate}
+                  onDateChange={setSelectedDate}
+                  onGenerateToday={handleGenerateToday}
+                  onOpenPDFSettings={handleOpenSettings}
+                  dictionaryData={finalDictionary}
+                  selectedTag={selectedTag}
+                  onSelectTag={setSelectedTag}
+                />
+                {selectedTag && (
+                  <div className="px-1 px-md-3 mb-3">
+                    <div className="alert alert-info border-0 rounded-3 shadow-sm d-flex justify-content-between align-items-center mb-0 py-2.5 bg-info-subtle border-start border-4 border-info">
+                      <span className="small fw-semibold text-info-emphasis">
+                        <i className="bi bi-filter-circle-fill me-1.5 fs-6 text-info"></i>
+                        Filtering timeline by: <strong className="text-uppercase">#{selectedTag}</strong>
+                      </span>
+                      <button 
+                        className="btn btn-xs btn-outline-info text-info-emphasis border-0 rounded-pill py-0 px-2 fw-bold text-dark hover-bg-info-subtle"
+                        onClick={() => setSelectedTag(null)}
+                      >
+                        Clear Filter
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <Timeline
+                  reports={(() => {
+                    if (!selectedTag) return reports;
+                    return reports.filter(r => {
+                      let activeTag = r.tag;
+                      if (!activeTag && r.report) {
+                        const matched = finalDictionary.find(d => 
+                          (d.report_bn && d.report_bn === r.report) ||
+                          (d.plan_bn && d.plan_bn === r.report) ||
+                          (d.report_en && d.report_en === r.report) ||
+                          (d.plan_en && d.plan_en === r.report)
+                        );
+                        if (matched) activeTag = matched.tag;
+                      }
+                      return activeTag === selectedTag;
+                    });
+                  })()}
+                  currentTime={currentTime}
+                  selectedDate={selectedDate}
+                  onEditPlan={handleOpenEditPlan}
+                  onEditReport={handleOpenEditReport}
+                  onDelete={handleOpenDelete}
+                  onGenerateToday={handleGenerateToday}
+                  onInlineUpdatePlan={handleInlineUpdatePlan}
+                  onInlineUpdateReport={handleInlineUpdateReport}
+                  dictionaryData={finalDictionary}
+                  onOpenPomodoro={(report) => {
+                    setPomodoroReport(report);
+                    setIsPomodoroOpen(true);
+                  }}
+                />
+              </div>
+
+            </div>
+          </div>
         )}
       </main>
 
