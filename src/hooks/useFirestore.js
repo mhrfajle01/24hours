@@ -103,6 +103,36 @@ export const useFirestore = (selectedDate, uid) => {
     } catch { return []; }
   };
 
+  /**
+   * Get all past dates that actually have saved reports in IndexedDB
+   */
+  const idbGetDatesWithReports = async (userId) => {
+    try {
+      const db = await getLocalDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(IDB_REPORTS_STORE, 'readonly');
+        const store = tx.objectStore(IDB_REPORTS_STORE);
+        const request = store.getAll();
+        request.onsuccess = () => {
+          const all = request.result || [];
+          const dateMap = new Map();
+          all.forEach(r => {
+            if (r.uid === userId && !r._deleted && r.date) {
+              const count = dateMap.get(r.date) || 0;
+              dateMap.set(r.date, count + 1);
+            }
+          });
+          const sortedDates = Array.from(dateMap.entries())
+            .filter(([_, count]) => count > 0)
+            .map(([date, count]) => ({ date, count }))
+            .sort((a, b) => b.date.localeCompare(a.date));
+          resolve(sortedDates);
+        };
+        request.onerror = () => resolve([]);
+      });
+    } catch { return []; }
+  };
+
   const idbPutReport = async (report) => {
     try {
       const db = await getLocalDB();
@@ -558,6 +588,100 @@ export const useFirestore = (selectedDate, uid) => {
     }
 
     return newIds;
+  };
+
+  /**
+   * Bulk add or update blocks for a specific date (used by Dynamic Generator & JSON Importer).
+   * Overwrite mode replaces matching slots or appends new ones smoothly with IndexedDB & sync queue.
+   */
+  const batchUpsertReports = async (targetDate, reportsToApply, { overwrite = false } = {}) => {
+    if (!uid) throw new Error('Authentication required');
+    if (!reportsToApply || reportsToApply.length === 0) return [];
+
+    const existingReports = targetDate === selectedDate
+      ? [...reports]
+      : await idbGetReports(uid, targetDate);
+
+    const updatedList = [];
+    const createdList = [];
+    const queueSyncActions = [];
+
+    for (const item of reportsToApply) {
+      const times = getIntervalTimes(item);
+      const itemStartMin = timeToMinutes(times.startTime);
+      let itemEndMin = timeToMinutes(times.endTime);
+      if (itemEndMin <= itemStartMin) itemEndMin += 24 * 60;
+
+      // Find if an existing report matches exactly or overlaps
+      const matchIndex = existingReports.findIndex(r => {
+        const rTimes = getIntervalTimes(r);
+        return rTimes.startTime === times.startTime && rTimes.endTime === times.endTime;
+      });
+
+      if (matchIndex >= 0) {
+        if (overwrite) {
+          const current = existingReports[matchIndex];
+          const updatedDoc = {
+            ...current,
+            ...item,
+            id: current.id,
+            uid,
+            date: targetDate,
+            startTime: times.startTime,
+            endTime: times.endTime,
+            updatedAt: new Date().toISOString()
+          };
+          existingReports[matchIndex] = updatedDoc;
+          updatedList.push(updatedDoc);
+          queueSyncActions.push({ action: 'update', data: updatedDoc });
+        }
+      } else {
+        const id = item.id || generateLocalId();
+        const newDoc = {
+          plan: '',
+          report: '',
+          status: 'Pending',
+          ...item,
+          id,
+          uid,
+          date: targetDate,
+          startTime: times.startTime,
+          endTime: times.endTime,
+          createdAt: item.createdAt || new Date().toISOString(),
+          _localOnly: true
+        };
+        existingReports.push(newDoc);
+        createdList.push(newDoc);
+        queueSyncActions.push({ action: 'create', data: newDoc });
+      }
+    }
+
+    const allModified = [...updatedList, ...createdList];
+    if (allModified.length > 0) {
+      // 1. IndexedDB update
+      await idbPutMany(allModified);
+
+      // 2. React state update
+      if (targetDate === selectedDate) {
+        setReports(sortReports([...existingReports]));
+      }
+
+      // 3. Queue for sync
+      const doQueue = async () => {
+        try {
+          const { addToSyncQueue } = await import('../utils/localSyncManager');
+          for (const item of queueSyncActions) {
+            await addToSyncQueue('reports', item.action, item.data);
+          }
+          window.dispatchEvent(new Event('syncQueueUpdated'));
+        } catch (e) {
+          console.warn('Failed to queue batch upsert sync:', e);
+        }
+      };
+      doQueue();
+    }
+
+    return allModified;
   };
 
   /**
@@ -1541,6 +1665,9 @@ export const useFirestore = (selectedDate, uid) => {
     restoreAllFromTrash,
     // Bulk
     generateDayReports,
+    batchUpsertReports,
+    idbGetReports,
+    idbGetDatesWithReports,
     clearDayReports,
     // Dictionary
     userDictionary,

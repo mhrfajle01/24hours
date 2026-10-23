@@ -41,6 +41,7 @@ import MessageCenterModal from '../components/MessageCenterModal';
 import AboutAdminsModal from '../components/AboutAdminsModal';
 import CustomFeatureViewer from '../components/CustomFeatureViewer';
 import NotificationPrompt from '../components/NotificationPrompt';
+import GenerateTodayModal from '../components/GenerateTodayModal';
 import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAppUsage } from '../hooks/useAppUsage';
@@ -70,8 +71,11 @@ const PRIMARY_ADMIN_EMAIL = 'mhrfazle@gmail.com';
 export default function Home() {
   const { playSound } = useSound();
   // ── Auth ────────────────────────────────────────────────────────────────
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const u = auth.currentUser;
+    return u ? { uid: u.uid, email: u.email, displayName: u.displayName, photoURL: u.photoURL } : null;
+  });
+  const [authLoading, setAuthLoading] = useState(() => !auth.currentUser);
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -140,6 +144,9 @@ export default function Home() {
     emptyTrash,
     restoreAllFromTrash,
     generateDayReports,
+    batchUpsertReports,
+    idbGetReports,
+    idbGetDatesWithReports,
     clearDayReports,
     userDictionary,
     dictionaryLoading,
@@ -403,29 +410,22 @@ export default function Home() {
   };
 
   useEffect(() => {
-    // Timeout to prevent infinite loading spinner when offline
-    // Firebase Auth will still resolve eventually via its persistence layer,
-    // but we don't block the UI longer than 3s
-    let authTimeout = null;
-    if (!navigator.onLine) {
-      authTimeout = setTimeout(() => {
-        setAuthLoading(false);
-      }, 3000);
-    }
+    // When cache is cleared, auth.currentUser is initially null until Firebase parses IndexedDB.
+    // Ensure loading spinner clears within 800ms max so login page displays promptly.
+    const authTimeout = setTimeout(() => {
+      setAuthLoading(false);
+    }, 800);
 
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (authTimeout) clearTimeout(authTimeout);
+      clearTimeout(authTimeout);
       if (user) {
         setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
           email: user.email || '',
           displayName: user.displayName || '',
           lastSeenAt: serverTimestamp(),
-        }, { merge: true }).catch((error) => {
-          console.error('Failed to sync user profile:', error);
-        });
+        }, { merge: true }).catch(() => {});
         
-        // Force navigate to Home page upon login
         if (window.location.pathname !== '/') {
           window.history.replaceState({}, '', '/');
         }
@@ -448,7 +448,7 @@ export default function Home() {
     });
     return () => {
       unsub();
-      if (authTimeout) clearTimeout(authTimeout);
+      clearTimeout(authTimeout);
     };
   }, []);
 
@@ -1270,20 +1270,12 @@ export default function Home() {
     }
   };
 
-  const handleGenerateToday = async () => {
-    try {
-      const newIds = await generateDayReports(selectedDate);
-      if (newIds.length > 0) {
-        pushUndo({ type: 'GENERATE', docIds: newIds, date: selectedDate });
-        showToast('Hour blocks generated', 'success');
-      } else {
-        showToast('Hours already generated.', 'info');
-      }
-      if (activeModal === 'settings') handleCloseModal();
-    } catch (err) {
-      console.error(err);
-      showToast('Something went wrong.', 'danger');
-    }
+  const handleGenerateToday = () => {
+    setActiveModal('generateToday');
+  };
+
+  const handleApplyGeneratedBlocks = async (targetDate, blocks, options) => {
+    return await batchUpsertReports(targetDate, blocks, options);
   };
 
   const handleClearTodayData = async () => {
@@ -2046,7 +2038,7 @@ export default function Home() {
         )}
 
         {/* Loading */}
-        {!error && firestoreLoading && (
+        {!error && firestoreLoading && reports.length === 0 && (
           <div className="d-flex flex-column justify-content-center align-items-center py-5">
             <div className="spinner-border mb-3" role="status" style={{ color: '#075E54' }}>
               <span className="visually-hidden">Loading...</span>
@@ -2056,7 +2048,7 @@ export default function Home() {
         )}
 
         {/* Normal View */}
-        {!error && !firestoreLoading && (
+        {!error && (!firestoreLoading || reports.length > 0) && (
           <div className="home-dashboard-layout container-fluid px-2 px-md-3 px-xl-4 py-2">
             <div className="row g-3 g-xl-4 justify-content-center">
               
@@ -2346,6 +2338,19 @@ export default function Home() {
         onClose={handleCloseModal}
         onConfirm={handleConfirmDelete}
         report={selectedReport}
+      />
+
+      <GenerateTodayModal
+        isOpen={activeModal === 'generateToday'}
+        onClose={handleCloseModal}
+        selectedDate={selectedDate}
+        todayReports={reports}
+        idbGetReports={idbGetReports}
+        idbGetDatesWithReports={idbGetDatesWithReports}
+        currentUser={currentUser}
+        onApplyBlocks={handleApplyGeneratedBlocks}
+        showToast={showToast}
+        playSound={playSound}
       />
 
       <SettingsModal
