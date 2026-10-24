@@ -1,5 +1,37 @@
 import React, { useState, useMemo } from 'react';
 
+// Render message content with clickable, auto-wrapping URLs
+function renderMessageText(text) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const parts = text.split(urlRegex);
+
+  return parts.map((part, index) => {
+    if (urlRegex.test(part)) {
+      const href = part.startsWith('http://') || part.startsWith('https://') ? part : `https://${part}`;
+      return (
+        <a
+          key={index}
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-info text-decoration-underline"
+          style={{
+            wordBreak: 'break-all',
+            overflowWrap: 'anywhere',
+            display: 'inline',
+            maxWidth: '100%'
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part}
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
 export default function MessageCenterModal({
   isOpen,
   onClose,
@@ -266,7 +298,18 @@ export default function MessageCenterModal({
             </div>
           </div>
         ) : (
-          <p className="mb-2" style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem', color: isRead ? '#ccc' : '#fff' }}>{m.content}</p>
+          <p
+            className="mb-2"
+            style={{
+              whiteSpace: 'pre-wrap',
+              fontSize: '0.9rem',
+              color: isRead ? '#ccc' : '#fff',
+              wordBreak: 'break-word',
+              overflowWrap: 'anywhere'
+            }}
+          >
+            {renderMessageText(m.content)}
+          </p>
         )}
         
         {/* Action Buttons */}
@@ -311,8 +354,8 @@ export default function MessageCenterModal({
   return (
     <div className="modal fade show d-block" tabIndex="-1" style={{ zIndex: 1050, background: 'rgba(0,0,0,0.7)' }} onClick={onClose}>
       <div 
-        className="modal-dialog modal-dialog-centered modal-dialog-scrollable" 
-        style={{ width: '90%', maxWidth: '600px', margin: '1.5rem auto' }} 
+        className="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg" 
+        style={{ width: '94%', maxWidth: '720px', margin: '1.25rem auto' }} 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-content border-0" style={{ borderRadius: '1.25rem', background: 'rgba(30, 30, 47, 0.98)', backdropFilter: 'blur(16px)', color: '#fff', boxShadow: '0 1rem 3rem rgba(0,0,0,0.5)' }}>

@@ -416,6 +416,7 @@ export default function Home() {
       setAuthLoading(false);
     }, 800);
 
+    let previousUid = null;
     const unsub = onAuthStateChanged(auth, (user) => {
       clearTimeout(authTimeout);
       if (user) {
@@ -426,18 +427,24 @@ export default function Home() {
           lastSeenAt: serverTimestamp(),
         }, { merge: true }).catch(() => {});
         
-        if (window.location.pathname !== '/') {
-          window.history.replaceState({}, '', '/');
+        // Only reset route/page state on a fresh login (user changed), not on page refresh
+        if (previousUid !== null && previousUid !== user.uid) {
+          if (window.location.pathname !== '/') {
+            window.history.replaceState({}, '', '/');
+          }
+          setIsAdminOpen(false);
+          setIsFeatureHubOpen(false);
+          setIsJournalOpen(false);
+          setIsStreaksOpen(false);
+          setIsStoriesOpen(false);
+          setIsWalletOpen(false);
+          setIsVirtualIslandOpen(false);
+          setIsInsightsOpen(false);
+          setActiveModal(null);
         }
-        setIsAdminOpen(false);
-        setIsFeatureHubOpen(false);
-        setIsJournalOpen(false);
-        setIsStreaksOpen(false);
-        setIsStoriesOpen(false);
-        setIsWalletOpen(false);
-        setIsVirtualIslandOpen(false);
-        setIsInsightsOpen(false);
-        setActiveModal(null);
+        previousUid = user.uid;
+      } else {
+        previousUid = null;
       }
       setCurrentUser(
         user
@@ -500,7 +507,7 @@ export default function Home() {
     const STORAGE_KEY_REVIEW_DATE = 'hourlog_last_review_date';
 
     const checkPendingBlocks = () => {
-      if (firestoreLoading || !reports.length) return;
+      if (firestoreLoading) return;
 
       const today = getTodayDateString();
       const isToday = selectedDate === today;
@@ -509,6 +516,15 @@ export default function Home() {
       if (!isToday && !isPastDay) {
         setPastPendingReports([]);
         setShowPendingToast(false);
+        setIsReviewModalOpen(false);
+        return;
+      }
+
+      if (!reports || reports.length === 0) {
+        localStorage.removeItem('hourlog_notified_blocks');
+        setPastPendingReports([]);
+        setShowPendingToast(false);
+        setIsReviewModalOpen(false);
         return;
       }
 
@@ -592,10 +608,11 @@ export default function Home() {
           setShowPendingToast(false);
         }
       } else {
-        // All pending blocks resolved — hide toast
+        // All pending blocks resolved — hide toast and close modal
         localStorage.removeItem('hourlog_notified_blocks');
         setPastPendingReports([]);
         setShowPendingToast(false);
+        setIsReviewModalOpen(false);
       }
     };
 
@@ -1283,6 +1300,10 @@ export default function Home() {
     try {
       const trashIds = await clearDayReports(selectedDate);
       if (trashIds.length > 0) {
+        setPastPendingReports([]);
+        setShowPendingToast(false);
+        setIsReviewModalOpen(false);
+        localStorage.removeItem('hourlog_notified_blocks');
         for (const report of reports) {
           if (report.status) await reconcileBlockPoints(report, 'Pending');
         }

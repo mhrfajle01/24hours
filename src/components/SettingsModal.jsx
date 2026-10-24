@@ -530,7 +530,11 @@ export default function SettingsModal({
         role="dialog"
         aria-modal="true"
       >
-        <div className={`modal-dialog modal-xl ${fullPage ? 'm-0 mw-100' : 'modal-dialog-centered'}`} role="document">
+        <div
+          className={`modal-dialog ${fullPage ? 'm-0 mw-100' : 'modal-dialog-centered'}`}
+          style={fullPage ? undefined : { maxWidth: '820px', width: '92%', margin: '1.25rem auto' }}
+          role="document"
+        >
           <div className={`modal-content border-0 ${fullPage ? 'rounded-0 min-vh-100' : 'rounded-4 shadow-lg'} overflow-hidden`}>
 
             {/* Header */}
@@ -550,8 +554,8 @@ export default function SettingsModal({
             {/* Body */}
             <div
               id="settingsModalBody"
-              className={`modal-body p-3 bg-light ${fullPage ? 'overflow-auto' : 'overflow-hidden'}`}
-              style={{ height: fullPage ? 'auto' : '72vh', flex: fullPage ? '1 1 auto' : undefined }}
+              className={`modal-body p-3 p-md-4 bg-light ${fullPage ? 'overflow-auto' : 'overflow-hidden'}`}
+              style={{ maxHeight: fullPage ? 'auto' : '82vh', height: fullPage ? 'auto' : '75vh', flex: fullPage ? '1 1 auto' : undefined }}
             >
 
               {/* Custom Alert Banner */}

@@ -801,9 +801,21 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                                     const hit = bActual >= bTarget;
                                     return (
                                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: 8, fontSize: 12 }}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                          <span style={{ color: '#94A3B8' }}>{b.start} – {b.end}</span>
-                                          {b.isBreak && <span style={{ color: '#FFB020', background: 'rgba(255,176,32,0.15)', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>Break</span>}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span style={{ color: '#94A3B8' }}>{b.start} – {b.end}</span>
+                                            {b.isBreak && <span style={{ color: '#FFB020', background: 'rgba(255,176,32,0.15)', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>Break</span>}
+                                            {!b.isBreak && b.logged && !hit && (
+                                              <span style={{ color: '#F87171', background: 'rgba(239,68,68,0.15)', padding: '1px 6px', borderRadius: 4, fontSize: 10, fontWeight: 700 }}>
+                                                Missed
+                                              </span>
+                                            )}
+                                          </div>
+                                          {b.missReason && (
+                                            <div style={{ fontSize: 11, color: '#FCA5A5', fontWeight: 600 }}>
+                                              ⚠️ {b.missReason}
+                                            </div>
+                                          )}
                                         </div>
                                         <div style={{ fontWeight: 700, color: b.isBreak ? '#94A3B8' : hit ? '#34D399' : '#F8FAFC' }}>
                                           {b.isBreak ? '0' : `${bActual} / ${bTarget}`}

@@ -89,6 +89,13 @@ const timeToMinutes = (t24) => {
   return parseInt(h, 10) * 60 + parseInt(m, 10);
 };
 
+const minsToTime = (totalMinutes) => {
+  const norm = ((totalMinutes % 1440) + 1440) % 1440;
+  const hh = String(Math.floor(norm / 60)).padStart(2, '0');
+  const mm = String(norm % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
 const formatStopwatch = (totalSeconds) => {
   const isNeg = totalSeconds < 0;
   const abs = Math.abs(totalSeconds);
@@ -115,8 +122,17 @@ const calcBlockBreakMins = (block, history) => {
   return mins;
 };
 
+const DEFAULT_MISSED_REASONS = [
+  'Machine breakdown / Stoppage',
+  'Material / Supply delay',
+  'Power / Network interruption',
+  'Rework / Quality inspection',
+  'Meeting / Shift handover',
+  'Shortage of manpower'
+];
+
 function exportCSV(data, date) {
-  const rows = [['Block', 'Time', 'Type', 'Target', 'Actual', 'Cumulative', 'Status']];
+  const rows = [['Block', 'Time', 'Type', 'Target', 'Actual', 'Cumulative', 'Status', 'Missed Reason']];
   data.blocks.forEach((b, i) => {
     rows.push([
       i + 1,
@@ -125,7 +141,8 @@ function exportCSV(data, date) {
       b.isBreak ? 0 : b.target.toFixed(1),
       b.actual || 0,
       b.cumulative || 0,
-      b.isBreak ? '-' : (b.logged ? (b.actual >= b.target ? 'On Target' : 'Behind') : 'Not Logged')
+      b.isBreak ? '-' : (b.logged ? (b.actual >= b.target ? 'On Target' : 'Behind') : 'Not Logged'),
+      b.missReason ? `"${b.missReason.replace(/"/g, '""')}"` : ''
     ]);
   });
   const csv = rows.map(r => r.join(',')).join('\n');
@@ -509,36 +526,74 @@ const ShiftQuickEdit = ({ target, unit, shiftStart, shiftEnd, onApply }) => {
   const [u, setU] = React.useState(unit);
   const [s, setS] = React.useState(shiftStart);
   const [e, setE] = React.useState(shiftEnd);
-  React.useEffect(() => { setT(target); setU(unit); setS(shiftStart); setE(shiftEnd); }, [target, unit, shiftStart, shiftEnd]);
-  const inp = { padding: '8px 10px', borderRadius: 8, border: '1px solid #ddd', fontSize: 14, width: '100%', boxSizing: 'border-box' };
+  const [errorMsg, setErrorMsg] = React.useState('');
+
+  React.useEffect(() => {
+    setT(target);
+    setU(unit);
+    setS(shiftStart);
+    setE(shiftEnd);
+    setErrorMsg('');
+  }, [target, unit, shiftStart, shiftEnd, open]);
+
+  const handleApply = () => {
+    if (!s || !e) {
+      setErrorMsg('Please specify both shift start and end time.');
+      return;
+    }
+    const startMin = timeToMinutes(s);
+    const endMin = timeToMinutes(e);
+    if (endMin <= startMin) {
+      setErrorMsg('Shift end time must be later than start time.');
+      return;
+    }
+    const numTarget = Number(t);
+    if (isNaN(numTarget) || numTarget < 0) {
+      setErrorMsg('Target must be a non-negative number.');
+      return;
+    }
+    setErrorMsg('');
+    onApply(numTarget, u || 'pieces', s, e);
+    setOpen(false);
+  };
+
+  const inp = { padding: '8px 10px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 14, width: '100%', boxSizing: 'border-box' };
+
   return (
     <div style={{ marginTop: 10 }}>
       <button onClick={() => setOpen(p => !p)}
-        style={{ width: '100%', padding: 12, background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
-        ✏️ Quick Edit (Target / Unit / Start / End Time)
+        style={{ width: '100%', padding: 12, background: '#EFF6FF', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+        <span>✏️</span> <span>Quick Edit (Target / Unit / Times)</span>
       </button>
       {open && (
         <div style={{ marginTop: 8, padding: 14, background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 600 }}>⚠️ Logged blocks are preserved. Changing end time adds/removes unlogged blocks.</div>
+          <div style={{ fontSize: 12, color: '#64748B', fontWeight: 600 }}>
+            ⚠️ All logged block numbers are preserved. Adjusting shift times logically expands, trims, or redistributes targets across blocks.
+          </div>
+          {errorMsg && (
+            <div style={{ fontSize: 12, color: '#EF4444', fontWeight: 700, background: '#FEE2E2', padding: '6px 10px', borderRadius: 8 }}>
+              {errorMsg}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Target
-              <input type="number" value={t} onChange={ev => setT(Number(ev.target.value))} style={{ ...inp, marginTop: 4 }} />
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Target
+              <input type="number" min="0" value={t} onChange={ev => { setT(ev.target.value); setErrorMsg(''); }} style={{ ...inp, marginTop: 4 }} />
             </label>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Unit
-              <input type="text" value={u} onChange={ev => setU(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Unit
+              <input type="text" value={u} onChange={ev => { setU(ev.target.value); setErrorMsg(''); }} style={{ ...inp, marginTop: 4 }} />
             </label>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Shift Start
-              <input type="time" value={s} onChange={ev => setS(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Shift Start
+              <input type="time" value={s} onChange={ev => { setS(ev.target.value); setErrorMsg(''); }} style={{ ...inp, marginTop: 4 }} />
             </label>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Shift End
-              <input type="time" value={e} onChange={ev => setE(ev.target.value)} style={{ ...inp, marginTop: 4 }} />
+            <label style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Shift End
+              <input type="time" value={e} onChange={ev => { setE(ev.target.value); setErrorMsg(''); }} style={{ ...inp, marginTop: 4 }} />
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={() => setOpen(false)} style={{ flex: 1, padding: 10, background: '#f0f0f0', border: 'none', borderRadius: 10, fontWeight: 700, color: '#666', cursor: 'pointer' }}>Cancel</button>
-            <button onClick={() => { onApply(t, u, s, e); setOpen(false); }}
+            <button onClick={handleApply}
               style={{ flex: 2, padding: 10, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, cursor: 'pointer' }}>Apply Changes</button>
           </div>
         </div>
@@ -606,6 +661,16 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   const [showBreakInsights, setShowBreakInsights] = useState(false);
   const [zenQuoteIdx, setZenQuoteIdx] = useState(0);
 
+  // --- OFF-DAY / LEAVE / HOLIDAY SYSTEM ---
+  const [dayType, setDayType] = useState('work'); // 'work' | 'off' | 'leave' | 'holiday'
+  const [dayTypeNote, setDayTypeNote] = useState(''); // optional note (e.g. holiday name, leave reason)
+  const [weeklyOffDays, setWeeklyOffDays] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('shiftTracker_weeklyOffDays')) || [5]; } catch { return [5]; }
+  });
+  const [markedDays, setMarkedDays] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('shiftTracker_markedDays')) || {}; } catch { return {}; }
+  });
+
   // Active StarMaker emote trigger state: { blockId, type: 'achieved' | 'missed' }
   const [activeEmote, setActiveEmote] = useState(null);
 
@@ -648,6 +713,17 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     return localStorage.getItem('shiftTracker_defaultEnd') || '17:00';
   });
 
+  // Preset chips for missed block reasons
+  const [customMissedReasons, setCustomMissedReasons] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('shiftTracker_missedReasons'));
+      return Array.isArray(saved) && saved.length > 0 ? saved : DEFAULT_MISSED_REASONS;
+    } catch {
+      return DEFAULT_MISSED_REASONS;
+    }
+  });
+  const [newReasonInput, setNewReasonInput] = useState('');
+
   // Keyboard shortcut configuration state (locally configurable)
   const DEFAULT_KEYBINDINGS = {
     takeBreak: 'b',
@@ -680,14 +756,20 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
           const idx = parseInt(activeName, 10);
           const val = document.activeElement.value;
           if (val) {
-            logCumulative(idx, val);
+            const result = logCumulative(idx, val);
+            // If target was missed and requires inline reason, do not auto-advance focus
+            if (result && result.needsReason) {
+              return;
+            }
           }
           // Automatically advance focus to the next available unlogged work block
-          const nextBlock = blocks.find((blk, i) => i > idx && !blk.isBreak && !blk.logged);
-          if (nextBlock && blockInputRefs.current[nextBlock.id]) {
-            blockInputRefs.current[nextBlock.id].focus();
-          } else {
-            document.activeElement.blur();
+          if (autoAdvance) {
+            const nextBlock = blocks.find((blk, i) => i > idx && !blk.isBreak && !blk.logged);
+            if (nextBlock && blockInputRefs.current[nextBlock.id]) {
+              blockInputRefs.current[nextBlock.id].focus();
+            } else {
+              document.activeElement.blur();
+            }
           }
         }
         return;
@@ -773,9 +855,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       }, 0);
       return totalMins / 60;
     }
-    const s = new Date(`1970-01-01T${shiftStart}:00`);
-    const e = new Date(`1970-01-01T${shiftEnd}:00`);
-    return (e - s) / 3600000;
+    const diffMins = Math.max(0, timeToMinutes(shiftEnd) - timeToMinutes(shiftStart));
+    return diffMins / 60;
   };
   const breakBudgetMins = getShiftDurationHrs() <= 6 ? 30 : getShiftDurationHrs() <= 8 ? 60 : 90;
   const breakUsedMins = Math.floor(totalBreakAccumulatedMs / 60000);
@@ -823,6 +904,10 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     if (d.shiftSlots) setShiftSlots(d.shiftSlots);
     setBlockLen(d.blockLen || 60);
     if (d.scheduledBreaks) setScheduledBreaks(d.scheduledBreaks);
+    if (Array.isArray(d.missedReasons) && d.missedReasons.length > 0) {
+      setCustomMissedReasons(d.missedReasons);
+      try { localStorage.setItem('shiftTracker_missedReasons', JSON.stringify(d.missedReasons)); } catch {}
+    }
     setBlocks(d.blocks || []);
     if (d.blocks && d.blocks.length > 0) setSetupMode(false);
     if (d.clockStatus) setClockStatus(d.clockStatus);
@@ -835,6 +920,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
     if (d.breakHistory) setBreakHistory(d.breakHistory);
     if (d.breakType) setBreakType(d.breakType);
+    if (d.dayType) setDayType(d.dayType);
+    if (d.dayTypeNote) setDayTypeNote(d.dayTypeNote);
   };
 
   useEffect(() => {
@@ -888,6 +975,11 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
           else setSetupMode(true);
           if (local.breakHistory) setBreakHistory(local.breakHistory);
           if (local.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(local.totalBreakAccumulatedMs);
+          if (local.dayType) { setDayType(local.dayType); setDayTypeNote(local.dayTypeNote || ''); }
+          else { const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' }; setDayType(dt.type); setDayTypeNote(dt.note); }
+        } else {
+          const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
+          setDayType(dt.type); setDayTypeNote(dt.note);
         }
         if (navigator.onLine) {
           try {
@@ -908,16 +1000,25 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 else setSetupMode(true);
                 if (d.breakHistory) setBreakHistory(d.breakHistory);
                 if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
+                if (d.dayType) { setDayType(d.dayType); setDayTypeNote(d.dayTypeNote || ''); }
                 lsSaveByDate(currentUser.uid, selectedDate, d);
               }
             } else if (!local) {
               resetState();
+              const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
+              setDayType(dt.type); setDayTypeNote(dt.note);
             }
           } catch {
-            if (!local) resetState();
+            if (!local) {
+              resetState();
+              const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
+              setDayType(dt.type); setDayTypeNote(dt.note);
+            }
           }
         } else if (!local) {
           resetState();
+          const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
+          setDayType(dt.type); setDayTypeNote(dt.note);
         }
         setClockStatus('idle');
         setShiftStartMs(null);
@@ -989,6 +1090,23 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     setBreakNudgeLevel(0);
   };
 
+  // Determine default day type for a date based on weeklyOffDays and markedDays
+  const getDayTypeForDate = useCallback((dateStr) => {
+    // Check manually marked days first
+    if (markedDays[dateStr]) {
+      const m = markedDays[dateStr];
+      return typeof m === 'string' ? { type: m, note: '' } : m;
+    }
+    // Check weekly off-day pattern
+    const d = new Date(dateStr + 'T00:00:00');
+    if (weeklyOffDays.includes(d.getDay())) return { type: 'off', note: 'Weekly off' };
+    return { type: 'work', note: '' };
+  }, [weeklyOffDays, markedDays]);
+
+  // Hoist getDayTypeForDate ref to allow usage in loadData before definition if needed
+  const getDayTypeForDateRef = useRef(getDayTypeForDate);
+  getDayTypeForDateRef.current = getDayTypeForDate;
+
   const save = (b, extraData = {}) => {
     if (!currentUser?.uid) return;
     const currentBlocks = b || blocks;
@@ -1004,6 +1122,9 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       totalBreakAccumulatedMs: currentTotalBreakMs,
       breakHistory: currentBreakHistory,
       breakType,
+      dayType,
+      dayTypeNote,
+      missedReasons: customMissedReasons,
       updatedAt: nowTs,
       ...extraData
     } : null;
@@ -1022,6 +1143,9 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       totalShiftSec: extraData.totalAccumulatedMs != null ? Math.floor(extraData.totalAccumulatedMs / 1000) : Math.floor(totalAccumulatedMs / 1000),
       totalBreakSec: Math.floor(currentTotalBreakMs / 1000),
       breakHistory: currentBreakHistory,
+      missedReasons: customMissedReasons,
+      dayType,
+      dayTypeNote,
       updatedAt: nowTs
     };
 
@@ -1133,12 +1257,64 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
 
   // --- SHIFT TRACKER FUNCTIONS ---
-  const performClockIn = () => {
+  const performClockIn = (opts = {}) => {
+    let targetBlocks = blocks;
+    let targetStart = shiftStart;
+    let targetSlots = shiftSlots;
+
+    // If options specify adjusting the scheduled start time to right now (early clock in)
+    if (opts.adjustScheduledStart && opts.newStartTime) {
+      const newStart = opts.newStartTime;
+      const newStartMin = timeToMinutes(newStart);
+      const oldStartMin = timeToMinutes(shiftStart);
+      targetStart = newStart;
+      setShiftStart(newStart);
+
+      if (targetSlots && targetSlots.length > 0) {
+        const updatedSlots = [...targetSlots];
+        updatedSlots[0] = { ...updatedSlots[0], start: newStart };
+        targetSlots = updatedSlots;
+        setShiftSlots(updatedSlots);
+      }
+
+      let nb = blocks.map(b => ({ ...b }));
+      if (nb.length > 0 && newStartMin < oldStartMin) {
+        const firstBlockStart = timeToMinutes(nb[0].start);
+        const addUpTo = Math.min(firstBlockStart, oldStartMin);
+        if (newStartMin < addUpTo) {
+          let curMin = newStartMin;
+          let blockId = Math.max(0, ...nb.map(b => b.id)) + 1;
+          const firstShiftLabel = nb[0].shiftLabel || '';
+          const newBlocks = [];
+          while (curMin < addUpTo) {
+            const bEndMin = Math.min(curMin + blockLen, addUpTo);
+            newBlocks.push({
+              id: blockId++,
+              start: minsToTime(curMin),
+              end: minsToTime(bEndMin),
+              shiftLabel: firstShiftLabel,
+              actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
+            });
+            curMin = bEndMin;
+          }
+          nb = [...newBlocks, ...nb];
+        }
+      }
+      recalcTargets(nb, target, breakHistory);
+      targetBlocks = nb;
+      setBlocks(nb);
+    }
+
     setClockStatus('active');
     setShiftStartMs(Date.now());
     shiftEndPromptedRef.current = false;
     playSound('success');
-    save(blocks, { clockStatus: 'active', shiftStartMs: Date.now() });
+    save(targetBlocks, {
+      clockStatus: 'active',
+      shiftStartMs: Date.now(),
+      shiftStart: targetStart,
+      shiftSlots: targetSlots
+    });
   };
 
   const handleClockIn = () => {
@@ -1152,14 +1328,15 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       const waitHrs = Math.floor(waitMins / 60);
       const waitRemMins = waitMins % 60;
       const waitStr = waitHrs > 0 ? `${waitHrs}h ${waitRemMins}m` : `${waitRemMins} mins`;
+      const currentNowStr = fmtTime(now);
 
       setCustomAlert({
         isOpen: true,
         type: 'confirm',
         title: '⏳ Shift Not Started Yet',
-        message: `Your shift is scheduled to start at ${fmt12h(effectiveShiftStart)} (in ${waitStr}). Do you want to clock in early anyway?`,
+        message: `Your shift is scheduled to start at ${fmt12h(effectiveShiftStart)} (in ${waitStr}). Do you want to clock in now starting at ${fmt12h(currentNowStr)} and adapt shift blocks?`,
         onConfirm: () => {
-          performClockIn();
+          performClockIn({ adjustScheduledStart: true, newStartTime: currentNowStr });
           setCustomAlert({ isOpen: false });
         }
       });
@@ -1279,6 +1456,20 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   };
 
   const handleClockOut = () => {
+    // Check if any logged block missed target without a reason
+    const missedWithoutReason = blocks.findIndex(b => !b.isBreak && b.logged && b.actual < b.target && !b.missReason?.trim());
+    if (missedWithoutReason >= 0) {
+      playSound('missed');
+      setCustomAlert({
+        isOpen: true,
+        type: 'alert',
+        title: '⚠️ Reason Required',
+        message: `Block ${missedWithoutReason + 1} (${fmt12h(blocks[missedWithoutReason].start)} - ${fmt12h(blocks[missedWithoutReason].end)}) missed target. Please write or select a reason for this block before clocking out.`,
+        onConfirm: null
+      });
+      return;
+    }
+
     setCustomAlert({
       isOpen: true,
       type: 'confirm',
@@ -1309,19 +1500,15 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     let blockId = 0;
 
     slotsToUse.forEach(slot => {
-      const s = new Date(`1970-01-01T${slot.start}:00`);
-      const e = new Date(`1970-01-01T${slot.end}:00`);
-      let cur = s;
+      let curMin = timeToMinutes(slot.start);
+      const slotEndMin = timeToMinutes(slot.end);
 
-      while (cur < e) {
-        const curTime = fmtTime(cur);
-        const curMin = timeToMinutes(curTime);
-
+      while (curMin < slotEndMin) {
         // Check if a scheduled break starts at or before current position within this slot
         const nextBreak = sortedBreaks.find(sb => {
           const sbStart = timeToMinutes(sb.start);
           const sbEnd = timeToMinutes(sb.end);
-          return sbStart >= curMin && sbStart < timeToMinutes(fmtTime(e)) && sbEnd > curMin;
+          return sbStart >= curMin && sbStart < slotEndMin && sbEnd > curMin;
         });
 
         if (nextBreak) {
@@ -1330,14 +1517,13 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
           // If there's work time before this break, add work block(s)
           if (curMin < brkStartMin) {
-            const workEnd = new Date(`1970-01-01T${nextBreak.start}:00`);
-            let workCur = cur;
-            while (workCur < workEnd) {
-              const chunkEnd = new Date(Math.min(workCur.getTime() + blockLen * 60000, workEnd.getTime()));
+            let workCur = curMin;
+            while (workCur < brkStartMin) {
+              const chunkEnd = Math.min(workCur + blockLen, brkStartMin);
               b.push({
                 id: blockId++,
-                start: fmtTime(workCur),
-                end: fmtTime(chunkEnd),
+                start: minsToTime(workCur),
+                end: minsToTime(chunkEnd),
                 shiftLabel: slot.label,
                 actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
               });
@@ -1356,18 +1542,18 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
             breakLabel: nextBreak.label || 'Break'
           });
 
-          cur = new Date(`1970-01-01T${nextBreak.end}:00`);
+          curMin = brkEndMin;
         } else {
           // No more breaks ahead in this slot, fill with work blocks
-          const bEnd = new Date(Math.min(cur.getTime() + blockLen * 60000, e.getTime()));
+          const bEndMin = Math.min(curMin + blockLen, slotEndMin);
           b.push({
             id: blockId++,
-            start: fmtTime(cur),
-            end: fmtTime(bEnd),
+            start: minsToTime(curMin),
+            end: minsToTime(bEndMin),
             shiftLabel: slot.label,
             actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
           });
-          cur = bEnd;
+          curMin = bEndMin;
         }
       }
     });
@@ -1441,8 +1627,14 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     b.actual = actualProd;
     b.logged = true;
 
-    // Trigger StarMaker Emote animation + Sound for 3 seconds
+    // Check if target was missed
     const isTargetAchieved = actualProd >= b.target;
+    if (isTargetAchieved) {
+      // Clear any prior missed reason if it now meets/exceeds target
+      delete b.missReason;
+    }
+
+    // Trigger StarMaker Emote animation + Sound for 3 seconds
     setActiveEmote({ blockId: b.id, type: isTargetAchieved ? 'achieved' : 'missed' });
     if (isTargetAchieved) {
       playSound('success');
@@ -1474,6 +1666,23 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     recalcTargets(nb, target, breakHistory);
     setBlocks(nb);
     save(nb, { earnedBreak: newEarnedBreak, earnedBreakReason: newReason });
+    return { needsReason: !isTargetAchieved && !b.missReason };
+  };
+
+  const updateBlockMissReason = (id, reason) => {
+    const trimmed = (reason || '').trim();
+    const nb = blocks.map((blk, idx) => {
+      if (idx !== id) return blk;
+      if (!trimmed) {
+        const copy = { ...blk };
+        delete copy.missReason;
+        return copy;
+      }
+      return { ...blk, missReason: trimmed };
+    });
+    setBlocks(nb);
+    save(nb);
+    if (trimmed) playSound('success');
   };
 
   const resetBlock = (id) => {
@@ -1481,6 +1690,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     nb[id].logged = false;
     nb[id].actual = 0;
     nb[id].cumulative = 0;
+    delete nb[id].missReason;
     // Check if any other blocks earned break
     const hasOtherOverTarget = nb.some((blk, idx) => idx !== id && blk.logged && !blk.isBreak && blk.actual > blk.target);
     if (!hasOtherOverTarget) {
@@ -1604,30 +1814,75 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     // Total produced so far this month
     const totalMonthProduced = monthlyHistory.reduce((sum, item) => sum + (Number(item.actual) || Number(item.docsCount) || 0), 0) + (isToday ? totalProduced : 0);
     const mTarget = Math.max(1, monthlyTarget);
-    const mWorkDays = Math.max(1, monthlyWorkDays);
-    const monthProgressPct = Math.min(100, Math.round((totalMonthProduced / mTarget) * 100));
 
-    // Calculate days passed and remaining working days in current month
+    // Calculate days passed and remaining working days in current month with Offday/Leave/Holiday awareness
     const d = new Date(selectedDate);
     const currentDayOfMonth = d.getDate();
     const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    
-    // Remaining working days estimate
-    const daysPassedRatio = Math.min(1, currentDayOfMonth / daysInMonth);
-    const workDaysPassed = Math.round(daysPassedRatio * mWorkDays);
-    const workDaysRemaining = Math.max(1, mWorkDays - workDaysPassed);
+    const yearMonth = selectedDate.substring(0, 7);
+
+    // Count actual workdays in month, excluding weekly offs and leaves/holidays
+    let totalScheduledWorkDays = 0;
+    let actualWorkDaysPassed = 0;
+    let actualWorkDaysRemaining = 0;
+    let offDaysCount = 0;
+    let leaveDaysCount = 0;
+    let holidaysCount = 0;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${yearMonth}-${String(day).padStart(2, '0')}`;
+      let dType = 'work';
+      if (markedDays[dateStr]) {
+        const m = markedDays[dateStr];
+        dType = typeof m === 'string' ? m : (m.type || 'work');
+      } else {
+        const histItem = monthlyHistory.find(h => h.date === dateStr);
+        if (histItem?.dayType) {
+          dType = histItem.dayType;
+        } else {
+          const testDate = new Date(`${dateStr}T00:00:00`);
+          if (weeklyOffDays.includes(testDate.getDay())) {
+            dType = 'off';
+          }
+        }
+      }
+
+      // Check current day if viewing today
+      if (dateStr === selectedDate) {
+        dType = dayType;
+      }
+
+      if (dType === 'off') offDaysCount++;
+      else if (dType === 'leave') leaveDaysCount++;
+      else if (dType === 'holiday') holidaysCount++;
+      else totalScheduledWorkDays++;
+
+      if (dType === 'work') {
+        if (day <= currentDayOfMonth) {
+          actualWorkDaysPassed++;
+        } else {
+          actualWorkDaysRemaining++;
+        }
+      }
+    }
+
+    const effectiveTotalWorkDays = Math.max(1, totalScheduledWorkDays || monthlyWorkDays);
+    const workDaysPassed = Math.max(1, actualWorkDaysPassed);
+    const workDaysRemaining = Math.max(1, (dayType === 'work' ? 0 : 0) + actualWorkDaysRemaining + (dayType === 'work' ? 1 : 0));
+
+    const monthProgressPct = Math.min(100, Math.round((totalMonthProduced / mTarget) * 100));
 
     // Standard baseline daily target
-    const baseDailyTarget = Math.round(mTarget / mWorkDays);
+    const baseDailyTarget = Math.round(mTarget / effectiveTotalWorkDays);
     // Baseline weekly target (assuming 6 working days / week)
-    const baseWeeklyTarget = Math.round(baseDailyTarget * Math.min(6, mWorkDays));
+    const baseWeeklyTarget = Math.round(baseDailyTarget * Math.min(6, effectiveTotalWorkDays));
 
     // Dynamic suggested target for today to catch up / stay on track
     const remainingMonthTarget = Math.max(0, mTarget - totalMonthProduced);
-    const dynamicSuggestedDailyTarget = Math.max(1, Math.round(remainingMonthTarget / workDaysRemaining));
+    const dynamicSuggestedDailyTarget = Math.max(1, Math.round(remainingMonthTarget / Math.max(1, workDaysRemaining)));
     const dynamicSuggestedWeeklyTarget = Math.round(dynamicSuggestedDailyTarget * Math.min(6, workDaysRemaining));
 
-    // Run-rate projection
+    // Run-rate projection based on actual working days passed
     const expectedProducedSoFar = baseDailyTarget * workDaysPassed;
     const paceStatus = totalMonthProduced >= expectedProducedSoFar
       ? 'ahead'
@@ -1636,7 +1891,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
         : 'behind';
 
     const projectedTotal = workDaysPassed > 0 
-      ? Math.round((totalMonthProduced / workDaysPassed) * mWorkDays)
+      ? Math.round((totalMonthProduced / workDaysPassed) * effectiveTotalWorkDays)
       : mTarget;
     const projectedPct = Math.round((projectedTotal / mTarget) * 100);
 
@@ -1645,6 +1900,10 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       mTarget,
       monthProgressPct,
       workDaysRemaining,
+      effectiveTotalWorkDays,
+      offDaysCount,
+      leaveDaysCount,
+      holidaysCount,
       baseDailyTarget,
       baseWeeklyTarget,
       dynamicSuggestedDailyTarget,
@@ -1817,16 +2076,186 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
         </div>
       </motion.div>
 
-      {/* Date Selector */}
-      <div style={{ display: 'flex', gap: 6, padding: '8px 14px', background: '#fff', borderBottom: '1px solid #edf2f7', overflowX: 'auto', alignItems: 'center' }}>
-        <motion.button whileTap={{ scale: 0.95 }} onClick={() => setSelectedDate(yesterdayStr)} style={{ flexShrink: 0, padding: '6px 12px', background: selectedDate === yesterdayStr ? '#FF9500' : '#f1f5f9', color: selectedDate === yesterdayStr ? '#fff' : '#475569', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>📅 Yesterday</motion.button>
-        <motion.button whileTap={{ scale: 0.95 }} onClick={() => setSelectedDate(todayStr)} style={{ flexShrink: 0, padding: '6px 12px', background: selectedDate === todayStr ? '#1CB0F6' : '#f1f5f9', color: selectedDate === todayStr ? '#fff' : '#475569', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>📍 Today</motion.button>
-        <input type="date" value={selectedDate} max={todayStr} onChange={e => setSelectedDate(e.target.value)} style={{ flexShrink: 0, padding: '5px 10px', border: '1px solid #cbd5e1', borderRadius: 16, fontSize: 12, fontWeight: 600, color: '#334155', outline: 'none' }} />
-        {!isToday && <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 4px', color: '#FF9500', fontSize: 11, fontWeight: 700 }}>⚠️ Past Date</div>}
+      {/* Date & Day Type Status Bar */}
+      <div style={{ display: 'flex', flexDirection: 'column', background: '#fff', borderBottom: '1px solid #edf2f7' }}>
+        <div style={{ display: 'flex', gap: 6, padding: '8px 14px', overflowX: 'auto', alignItems: 'center' }}>
+          <motion.button whileTap={{ scale: 0.95 }} onClick={() => setSelectedDate(yesterdayStr)} style={{ flexShrink: 0, padding: '6px 12px', background: selectedDate === yesterdayStr ? '#FF9500' : '#f1f5f9', color: selectedDate === yesterdayStr ? '#fff' : '#475569', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>📅 Yesterday</motion.button>
+          <motion.button whileTap={{ scale: 0.95 }} onClick={() => setSelectedDate(todayStr)} style={{ flexShrink: 0, padding: '6px 12px', background: selectedDate === todayStr ? '#1CB0F6' : '#f1f5f9', color: selectedDate === todayStr ? '#fff' : '#475569', border: 'none', borderRadius: 16, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>📍 Today</motion.button>
+          <input type="date" value={selectedDate} max={todayStr} onChange={e => setSelectedDate(e.target.value)} style={{ flexShrink: 0, padding: '5px 10px', border: '1px solid #cbd5e1', borderRadius: 16, fontSize: 12, fontWeight: 600, color: '#334155', outline: 'none' }} />
+          {!isToday && <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', padding: '0 4px', color: '#FF9500', fontSize: 11, fontWeight: 700 }}>⚠️ Past Date</div>}
+
+          {/* Day Type Selector Chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 'auto', flexShrink: 0 }}>
+            {[
+              { id: 'work', label: 'Work', icon: '💼', activeBg: '#10B981', activeText: '#fff' },
+              { id: 'off', label: 'Off', icon: '🏖️', activeBg: '#EF4444', activeText: '#fff' },
+              { id: 'leave', label: 'Leave', icon: '🌴', activeBg: '#F59E0B', activeText: '#fff' },
+              { id: 'holiday', label: 'Holiday', icon: '🎉', activeBg: '#6366F1', activeText: '#fff' }
+            ].map(item => {
+              const active = dayType === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    const newType = item.id;
+                    setDayType(newType);
+                    const newMarked = { ...markedDays, [selectedDate]: { type: newType, note: dayTypeNote } };
+                    setMarkedDays(newMarked);
+                    try { localStorage.setItem('shiftTracker_markedDays', JSON.stringify(newMarked)); } catch {}
+                    save(blocks, { dayType: newType, dayTypeNote });
+                    playSound('points');
+                  }}
+                  style={{
+                    padding: '4px 8px',
+                    borderRadius: 12,
+                    border: active ? 'none' : '1px solid #E2E8F0',
+                    background: active ? item.activeBg : '#F8FAFC',
+                    color: active ? item.activeText : '#64748B',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 3,
+                    transition: 'all 0.15s'
+                  }}
+                >
+                  <span>{item.icon}</span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Note / Reason bar for Off/Leave/Holiday */}
+        {dayType !== 'work' && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '6px 14px',
+            background: dayType === 'off' ? '#FEF2F2' : dayType === 'leave' ? '#FFFBEB' : '#EEF2FF',
+            borderTop: '1px dashed #E2E8F0',
+            fontSize: 12
+          }}>
+            <span style={{ fontWeight: 700, color: dayType === 'off' ? '#991B1B' : dayType === 'leave' ? '#92400E' : '#3730A3' }}>
+              {dayType === 'off' ? '🏖️ Off-Day Note:' : dayType === 'leave' ? '🌴 Leave Reason:' : '🎉 Holiday Name:'}
+            </span>
+            <input
+              type="text"
+              placeholder={dayType === 'off' ? 'e.g. Weekly Rest' : dayType === 'leave' ? 'e.g. Sick Leave / Personal' : 'e.g. National Day'}
+              value={dayTypeNote}
+              onChange={(e) => {
+                const note = e.target.value;
+                setDayTypeNote(note);
+                const newMarked = { ...markedDays, [selectedDate]: { type: dayType, note } };
+                setMarkedDays(newMarked);
+                try { localStorage.setItem('shiftTracker_markedDays', JSON.stringify(newMarked)); } catch {}
+                save(blocks, { dayType, dayTypeNote: note });
+              }}
+              style={{
+                flex: 1,
+                border: '1px solid rgba(0,0,0,0.1)',
+                background: '#fff',
+                borderRadius: 8,
+                padding: '4px 8px',
+                fontSize: 11.5,
+                outline: 'none'
+              }}
+            />
+          </div>
+        )}
       </div>
 
       <div style={{ maxWidth: 1200, margin: '0 auto', padding: '16px' }}>
-        {setupMode ? (
+        {dayType !== 'work' ? (
+          <motion.div
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            style={{
+              maxWidth: 640,
+              margin: '20px auto',
+              background: '#fff',
+              borderRadius: 24,
+              padding: '36px 24px',
+              textAlign: 'center',
+              boxShadow: '0 10px 25px -5px rgba(0,0,0,0.06)',
+              border: dayType === 'off' ? '2px solid #FCA5A5' : dayType === 'leave' ? '2px solid #FCD34D' : '2px solid #A5B4FC'
+            }}
+          >
+            <div style={{ fontSize: 54, marginBottom: 12 }}>
+              {dayType === 'off' ? '🏖️' : dayType === 'leave' ? '🌴' : '🎉'}
+            </div>
+            <h2 style={{ fontSize: 22, fontWeight: 900, color: '#0F172A', margin: '0 0 8px 0' }}>
+              {dayType === 'off' ? 'Weekly Off-Day' : dayType === 'leave' ? 'On Leave' : 'Public Holiday'}
+            </h2>
+            <p style={{ fontSize: 14, color: '#64748B', maxWidth: 400, margin: '0 auto 20px auto', lineHeight: 1.5 }}>
+              {dayTypeNote ? `"${dayTypeNote}"` : (
+                dayType === 'off'
+                  ? 'Enjoy your rest day! Production targets are paused and dynamically spread to other working days.'
+                  : dayType === 'leave'
+                    ? 'Approved leave recorded. Monthly target remains balanced across remaining workdays.'
+                    : 'Holiday celebrated! Monthly quota dynamically recalculates.'
+              )}
+            </p>
+
+            <div style={{
+              display: 'inline-flex',
+              flexDirection: 'column',
+              gap: 8,
+              padding: '14px 20px',
+              background: '#F8FAFC',
+              borderRadius: 16,
+              border: '1px solid #E2E8F0',
+              marginBottom: 24,
+              textAlign: 'left'
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#0369A1', textTransform: 'uppercase' }}>
+                📊 Monthly Dynamic Impact
+              </div>
+              <div style={{ fontSize: 12.5, color: '#334155', display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+                <span>Scheduled Workdays:</span>
+                <b>{productionMetrics.effectiveTotalWorkDays} days</b>
+              </div>
+              <div style={{ fontSize: 12.5, color: '#334155', display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+                <span>Remaining Workdays:</span>
+                <b>{productionMetrics.workDaysRemaining} days</b>
+              </div>
+              <div style={{ fontSize: 12.5, color: '#16A34A', display: 'flex', justifyContent: 'space-between', gap: 20 }}>
+                <span>Adjusted Daily Target:</span>
+                <b>{productionMetrics.dynamicSuggestedDailyTarget} {unit}/day</b>
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDayType('work');
+                  setDayTypeNote('');
+                  const newMarked = { ...markedDays, [selectedDate]: { type: 'work', note: '' } };
+                  setMarkedDays(newMarked);
+                  try { localStorage.setItem('shiftTracker_markedDays', JSON.stringify(newMarked)); } catch {}
+                  save(blocks, { dayType: 'work', dayTypeNote: '' });
+                }}
+                style={{
+                  padding: '10px 20px',
+                  background: '#10B981',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: 14,
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: 'pointer'
+                }}
+              >
+                💼 Switch to Work Day & Start Shift
+              </button>
+            </div>
+          </motion.div>
+        ) : setupMode ? (
           <motion.div initial={{ y: 20 }} animate={{ y: 0 }} style={{ maxWidth: 640, margin: '0 auto', background: '#fff', padding: 24, borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
             <h3 style={{ marginTop: 0 }}>⚙️ Setup Shift</h3>
 
@@ -2947,8 +3376,23 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                   );
                 }
 
+                const isMissed = !b.isBreak && b.logged && b.actual < b.target;
+                const hasReason = Boolean(b.missReason?.trim());
+
                 return (
-                  <motion.div key={i} layout style={{ position: 'relative', background: clockStatus === 'break' && isActiveTime ? '#FFF4E5' : '#fff', padding: 16, borderRadius: 16, borderLeft: `6px solid ${clockStatus === 'break' && isActiveTime ? currentBreakType.color : statusColor}`, boxShadow: isActiveTime ? '0 4px 12px rgba(28,176,246,0.1)' : '0 1px 4px rgba(0,0,0,0.05)', display: 'flex', alignItems: 'center', gap: 10, opacity: (clockStatus === 'break' && isActiveTime) ? 0.8 : 1 }}>
+                  <motion.div key={i} layout style={{
+                    position: 'relative',
+                    background: clockStatus === 'break' && isActiveTime ? '#FFF4E5' : '#fff',
+                    padding: 16,
+                    borderRadius: 16,
+                    borderLeft: `6px solid ${clockStatus === 'break' && isActiveTime ? currentBreakType.color : statusColor}`,
+                    boxShadow: isMissed && !hasReason ? '0 4px 14px rgba(239, 68, 68, 0.18)' : isActiveTime ? '0 4px 12px rgba(28,176,246,0.1)' : '0 1px 4px rgba(0,0,0,0.05)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                    opacity: (clockStatus === 'break' && isActiveTime) ? 0.8 : 1,
+                    border: isMissed && !hasReason ? '1.5px solid #FCA5A5' : '1px solid transparent'
+                  }}>
                     {/* StarMaker Snake Beam & 3s Emote Overlay */}
                     <AnimatePresence>
                       {activeEmote?.blockId === b.id && (
@@ -2959,39 +3403,158 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                       )}
                     </AnimatePresence>
 
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, color: '#888', fontWeight: 700 }}>
-                        {b.shiftLabel && <span style={{ color: '#0284C7', background: '#E0F2FE', padding: '1px 6px', borderRadius: 4, marginRight: 6, fontSize: 11 }}>{b.shiftLabel}</span>}
-                        {fmt12h(b.start)} - {fmt12h(b.end)}
-                        {isActiveTime && clockStatus === 'active' && <span style={{ color: '#1CB0F6' }}> • Active</span>}
-                        {isActiveTime && clockStatus === 'break' && <span style={{ color: currentBreakType.color }}> • {currentBreakType.icon} {currentBreakType.label}</span>}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 12, color: '#888', fontWeight: 700 }}>
+                          {b.shiftLabel && <span style={{ color: '#0284C7', background: '#E0F2FE', padding: '1px 6px', borderRadius: 4, marginRight: 6, fontSize: 11 }}>{b.shiftLabel}</span>}
+                          {fmt12h(b.start)} - {fmt12h(b.end)}
+                          {isActiveTime && clockStatus === 'active' && <span style={{ color: '#1CB0F6' }}> • Active</span>}
+                          {isActiveTime && clockStatus === 'break' && <span style={{ color: currentBreakType.color }}> • {currentBreakType.icon} {currentBreakType.label}</span>}
+                          {isMissed && (
+                            <span style={{ marginLeft: 6, color: hasReason ? '#D97706' : '#EF4444', background: hasReason ? '#FEF3C7' : '#FEE2E2', padding: '1px 7px', borderRadius: 6, fontSize: 10.5, fontWeight: 800 }}>
+                              {hasReason ? '⚠️ Deficit Explained' : '🚨 Reason Required'}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 600 }}>Block Target: {b.target.toFixed(1)}</div>
+                        {blockBreakMins > 0 && <div style={{ fontSize: 11, color: '#F97316', fontWeight: 600 }}>☕ {blockBreakMins}m break · target adjusted</div>}
+                        {b.logged && <div style={{ fontSize: 12, color: '#888' }}>Block Prod: {b.actual}</div>}
                       </div>
-                      <div style={{ fontSize: 14, fontWeight: 600 }}>Block Target: {b.target.toFixed(1)}</div>
-                      {blockBreakMins > 0 && <div style={{ fontSize: 11, color: '#F97316', fontWeight: 600 }}>☕ {blockBreakMins}m break · target adjusted</div>}
-                      {b.logged && <div style={{ fontSize: 12, color: '#888' }}>Block Prod: {b.actual}</div>}
+                      {b.logged ? (
+                        <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 10 }}>
+                           <button onClick={() => resetBlock(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: 4, color: '#888' }} title="Edit Block">✏️</button>
+                           <div>
+                             <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', fontWeight: 700 }}>Total Run</div>
+                             <div style={{ fontSize: 18, fontWeight: 800, color: statusColor }}>{b.cumulative}</div>
+                           </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                          <div style={{ fontSize: 10, color: '#888', fontWeight: 600 }}>ENTER TOTAL (↵ NEXT)</div>
+                          <input
+                            ref={el => { if (el) blockInputRefs.current[b.id] = el; }}
+                            data-block-idx={i}
+                            type="number"
+                            placeholder="Total"
+                            onBlur={(e) => { if(e.target.value) logCumulative(i, e.target.value) }}
+                            style={{ width: 80, padding: 8, borderRadius: 8, border: '2px solid #e0e0e0', textAlign: 'center', fontSize: 16, fontWeight: 700, outline: 'none' }}
+                            onFocus={(e) => e.target.style.borderColor = '#1CB0F6'}
+                            onMouseLeave={(e) => { if(document.activeElement !== e.target) e.target.style.borderColor = '#e0e0e0' }}
+                          />
+                        </div>
+                      )}
                     </div>
-                    {b.logged ? (
-                      <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 10 }}>
-                         <button onClick={() => resetBlock(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: 4, color: '#888' }} title="Edit Block">✏️</button>
-                         <div>
-                           <div style={{ fontSize: 10, color: '#888', textTransform: 'uppercase', fontWeight: 700 }}>Total Run</div>
-                           <div style={{ fontSize: 18, fontWeight: 800, color: statusColor }}>{b.cumulative}</div>
-                         </div>
-                      </div>
-                    ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-                        <div style={{ fontSize: 10, color: '#888', fontWeight: 600 }}>ENTER TOTAL (↵ NEXT)</div>
-                        <input
-                          ref={el => { if (el) blockInputRefs.current[b.id] = el; }}
-                          data-block-idx={i}
-                          type="number"
-                          placeholder="Total"
-                          onBlur={(e) => { if(e.target.value) logCumulative(i, e.target.value) }}
-                          style={{ width: 80, padding: 8, borderRadius: 8, border: '2px solid #e0e0e0', textAlign: 'center', fontSize: 16, fontWeight: 700, outline: 'none' }}
-                          onFocus={(e) => e.target.style.borderColor = '#1CB0F6'}
-                          onMouseLeave={(e) => { if(document.activeElement !== e.target) e.target.style.borderColor = '#e0e0e0' }}
-                        />
-                      </div>
+
+                    {/* INLINE REASON EXPANSION WHEN TARGET MISSED */}
+                    {isMissed && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
+                        style={{
+                          marginTop: 6,
+                          padding: '10px 12px',
+                          background: hasReason ? '#F8FAFC' : '#FFF1F2',
+                          borderRadius: 12,
+                          border: `1.5px solid ${hasReason ? '#E2E8F0' : '#FDA4AF'}`,
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 8,
+                          width: '100%',
+                          boxSizing: 'border-box'
+                        }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+                          <span style={{ fontSize: 12, fontWeight: 800, color: hasReason ? '#334155' : '#BE123C', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span>⚠️</span> <span>Deficit Reason ({b.actual} / {b.target.toFixed(1)}):</span>
+                            {!hasReason && <span style={{ color: '#E11D48', fontWeight: 900 }}>*Mandatory</span>}
+                          </span>
+                          {hasReason && (
+                            <button
+                              type="button"
+                              onClick={() => updateBlockMissReason(i, '')}
+                              style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: 11, cursor: 'pointer', fontWeight: 700, padding: '2px 4px' }}>
+                              Change / Clear
+                            </button>
+                          )}
+                        </div>
+
+                        {/* If reason is already selected, only show the selected reason cleanly */}
+                        {hasReason ? (
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            padding: '8px 12px',
+                            background: '#fff',
+                            borderRadius: 8,
+                            border: '1px solid #CBD5E1',
+                            gap: 8
+                          }}>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#0F172A', wordBreak: 'break-word' }}>
+                              📌 {b.missReason}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => updateBlockMissReason(i, '')}
+                              title="Edit reason"
+                              style={{ background: '#F1F5F9', border: 'none', borderRadius: 6, padding: '3px 8px', fontSize: 11, fontWeight: 700, color: '#475569', cursor: 'pointer', flexShrink: 0 }}
+                            >
+                              Edit ✏️
+                            </button>
+                          </div>
+                        ) : (
+                          /* If reason is not selected yet, show clean Dropdown + Custom Reason Text Input */
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                            {/* Preset Dropdown */}
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val) updateBlockMissReason(i, val);
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: 8,
+                                border: '1.5px solid #F43F5E',
+                                fontSize: 12,
+                                fontWeight: 600,
+                                background: '#fff',
+                                color: '#334155',
+                                outline: 'none',
+                                boxSizing: 'border-box',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <option value="" disabled>-- Select Reason from Presets --</option>
+                              {customMissedReasons.map((reasonOpt, rOptIdx) => (
+                                <option key={rOptIdx} value={reasonOpt}>{reasonOpt}</option>
+                              ))}
+                            </select>
+
+                            {/* Or type specific custom reason */}
+                            <input
+                              type="text"
+                              placeholder="Or type custom reason here (spaces allowed)..."
+                              defaultValue=""
+                              onKeyDown={(e) => e.stopPropagation()}
+                              onKeyUp={(e) => e.stopPropagation()}
+                              onKeyPress={(e) => e.stopPropagation()}
+                              onBlur={(e) => {
+                                if (e.target.value.trim()) updateBlockMissReason(i, e.target.value);
+                              }}
+                              style={{
+                                width: '100%',
+                                padding: '8px 10px',
+                                borderRadius: 8,
+                                border: '1px solid #CBD5E1',
+                                fontSize: 12,
+                                background: '#fff',
+                                color: '#1E293B',
+                                outline: 'none',
+                                boxSizing: 'border-box'
+                              }}
+                            />
+                          </div>
+                        )}
+                      </motion.div>
                     )}
                   </motion.div>
                 );
@@ -3000,6 +3563,18 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
             {/* Save to Report Button */}
             <button onClick={() => {
+              const missedWithoutReason = blocks.findIndex(b => !b.isBreak && b.logged && b.actual < b.target && !b.missReason?.trim());
+              if (missedWithoutReason >= 0) {
+                playSound('missed');
+                setCustomAlert({
+                  isOpen: true,
+                  type: 'alert',
+                  title: '⚠️ Reason Required',
+                  message: `Block ${missedWithoutReason + 1} (${fmt12h(blocks[missedWithoutReason].start)} - ${fmt12h(blocks[missedWithoutReason].end)}) missed target. Please provide a reason for all missed blocks before saving to report.`,
+                  onConfirm: null
+                });
+                return;
+              }
               const totalProd = blocks.reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0);
               save(blocks);
               playSound('success');
@@ -3048,8 +3623,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
               });
             }} style={{ width: '100%', padding: 14, background: '#FFF4E5', color: '#FFB020', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 10 }}>Clear Entered Data</button>
 
-            {/* Limited edit during running shift — preserves blocks */}
-            {isToday && clockStatus !== 'idle' ? (
+            {/* Quick Edit or Reset Setup */}
+            {isToday ? (
               <ShiftQuickEdit
                 target={target} unit={unit} shiftStart={shiftStart} shiftEnd={shiftEnd}
                 onApply={(newTarget, newUnit, newStart, newEnd) => {
@@ -3086,21 +3661,20 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     const firstBlockStart = timeToMinutes(nb[0].start);
                     const addUpTo = Math.min(firstBlockStart, oldStartMin);
                     if (newStartMin < addUpTo) {
-                      let cur = new Date(`1970-01-01T${newStart}:00`);
-                      const endDate = new Date(`1970-01-01T${String(Math.floor(addUpTo / 60)).padStart(2, '0')}:${String(addUpTo % 60).padStart(2, '0')}:00`);
-                      let blockId = Math.max(...nb.map(b => b.id)) + 1;
+                      let curMin = newStartMin;
+                      let blockId = Math.max(0, ...nb.map(b => b.id)) + 1;
                       const firstShiftLabel = nb[0].shiftLabel || '';
                       const newBlocks = [];
-                      while (cur < endDate) {
-                        const bEnd = new Date(Math.min(cur.getTime() + blockLen * 60000, endDate.getTime()));
+                      while (curMin < addUpTo) {
+                        const bEndMin = Math.min(curMin + blockLen, addUpTo);
                         newBlocks.push({
                           id: blockId++,
-                          start: fmtTime(cur),
-                          end: fmtTime(bEnd),
+                          start: minsToTime(curMin),
+                          end: minsToTime(bEndMin),
                           shiftLabel: firstShiftLabel,
                           actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
                         });
-                        cur = bEnd;
+                        curMin = bEndMin;
                       }
                       nb = [...newBlocks, ...nb];
                     }
@@ -3126,20 +3700,19 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     const lastBlockEnd = timeToMinutes(lastBlock.end);
                     const startFrom = Math.max(lastBlockEnd, oldEndMin);
                     if (newEndMin > startFrom) {
-                      let cur = new Date(`1970-01-01T${String(Math.floor(startFrom / 60)).padStart(2, '0')}:${String(startFrom % 60).padStart(2, '0')}:00`);
-                      const endDate = new Date(`1970-01-01T${newEnd}:00`);
-                      let blockId = Math.max(...nb.map(b => b.id)) + 1;
+                      let curMin = startFrom;
+                      let blockId = Math.max(0, ...nb.map(b => b.id)) + 1;
                       const lastShiftLabel = lastBlock.shiftLabel || '';
-                      while (cur < endDate) {
-                        const bEnd = new Date(Math.min(cur.getTime() + blockLen * 60000, endDate.getTime()));
+                      while (curMin < newEndMin) {
+                        const bEndMin = Math.min(curMin + blockLen, newEndMin);
                         nb.push({
                           id: blockId++,
-                          start: fmtTime(cur),
-                          end: fmtTime(bEnd),
+                          start: minsToTime(curMin),
+                          end: minsToTime(bEndMin),
                           shiftLabel: lastShiftLabel,
                           actual: 0, cumulative: 0, logged: false, target: 0, isBreak: false
                         });
-                        cur = bEnd;
+                        curMin = bEndMin;
                       }
                     }
                   } else if (newEndMin < oldEndMin && nb.length > 0) {
@@ -3161,44 +3734,46 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                   recalcTargets(nb, newTarget, breakHistory);
                   setBlocks(nb);
                   save(nb, { target: newTarget, unit: newUnit, shiftStart: newStart, shiftEnd: newEnd });
+                  playSound('success');
                 }}
               />
-            ) : (
-              <button onClick={() => {
-                setCustomAlert({
-                  isOpen: true,
-                  type: 'confirm',
-                  title: 'Reset Setup',
-                  message: 'This will clear your current shift blocks and logged data. Continue?',
-                  onConfirm: () => {
-                    setSetupMode(true);
-                    setBlocks([]);
-                    setClockStatus('idle');
-                    setShiftStartMs(null);
-                    setTotalAccumulatedMs(0);
-                    setElapsedShiftSec(0);
-                    setEarnedBreak(0);
-                    setEarnedBreakReason('');
-                    setTotalBreakAccumulatedMs(0);
-                    setBreakHistory([]);
-                    // Persist empty blocks to storage & Firestore so refresh won't restore deleted blocks
-                    save([], {
-                      blocks: [],
-                      setupMode: true,
-                      clockStatus: 'idle',
-                      shiftStartMs: null,
-                      totalAccumulatedMs: 0,
-                      earnedBreak: 0,
-                      earnedBreakReason: '',
-                      totalBreakAccumulatedMs: 0,
-                      breakHistory: []
-                    });
-                    playSound('trash');
-                    setCustomAlert({ isOpen: false });
-                  }
-                });
-              }} style={{ width: '100%', padding: 14, background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 10 }}>Edit Shift Setup</button>
-            )}
+            ) : null}
+
+            {/* Reset / Edit Shift Setup */}
+            <button onClick={() => {
+              setCustomAlert({
+                isOpen: true,
+                type: 'confirm',
+                title: 'Reset Setup',
+                message: 'This will clear your current shift blocks and logged data. Continue?',
+                onConfirm: () => {
+                  setSetupMode(true);
+                  setBlocks([]);
+                  setClockStatus('idle');
+                  setShiftStartMs(null);
+                  setTotalAccumulatedMs(0);
+                  setElapsedShiftSec(0);
+                  setEarnedBreak(0);
+                  setEarnedBreakReason('');
+                  setTotalBreakAccumulatedMs(0);
+                  setBreakHistory([]);
+                  // Persist empty blocks to storage & Firestore so refresh won't restore deleted blocks
+                  save([], {
+                    blocks: [],
+                    setupMode: true,
+                    clockStatus: 'idle',
+                    shiftStartMs: null,
+                    totalAccumulatedMs: 0,
+                    earnedBreak: 0,
+                    earnedBreakReason: '',
+                    totalBreakAccumulatedMs: 0,
+                    breakHistory: []
+                  });
+                  playSound('trash');
+                  setCustomAlert({ isOpen: false });
+                }
+              });
+            }} style={{ width: '100%', padding: 14, background: '#f0f0f0', color: '#555', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, marginTop: 10 }}>Edit Shift Setup</button>
             </div>{/* END OF RIGHT COLUMN */}
           </div>
         )}
@@ -3221,13 +3796,13 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
               </div>
 
               {/* Navigation Tabs */}
-              <div style={{ display: 'flex', gap: 6, marginBottom: 16, background: '#F1F5F9', padding: 4, borderRadius: 12 }}>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 16, background: '#F1F5F9', padding: 4, borderRadius: 12, overflowX: 'auto' }}>
                 <button
                   type="button"
                   onClick={() => setSettingsTab('shortcuts')}
                   style={{
-                    flex: 1, padding: '8px 10px', borderRadius: 8, border: 'none',
-                    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                    flex: 1, padding: '7px 8px', borderRadius: 8, border: 'none',
+                    fontWeight: 700, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap',
                     background: settingsTab === 'shortcuts' ? '#fff' : 'none',
                     color: settingsTab === 'shortcuts' ? '#0284C7' : '#64748B',
                     boxShadow: settingsTab === 'shortcuts' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
@@ -3239,8 +3814,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                   type="button"
                   onClick={() => setSettingsTab('defaults')}
                   style={{
-                    flex: 1, padding: '8px 10px', borderRadius: 8, border: 'none',
-                    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                    flex: 1, padding: '7px 8px', borderRadius: 8, border: 'none',
+                    fontWeight: 700, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap',
                     background: settingsTab === 'defaults' ? '#fff' : 'none',
                     color: settingsTab === 'defaults' ? '#0284C7' : '#64748B',
                     boxShadow: settingsTab === 'defaults' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
@@ -3250,16 +3825,42 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 </button>
                 <button
                   type="button"
+                  onClick={() => setSettingsTab('offdays')}
+                  style={{
+                    flex: 1, padding: '7px 8px', borderRadius: 8, border: 'none',
+                    fontWeight: 700, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap',
+                    background: settingsTab === 'offdays' ? '#fff' : 'none',
+                    color: settingsTab === 'offdays' ? '#0284C7' : '#64748B',
+                    boxShadow: settingsTab === 'offdays' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                  }}
+                >
+                  🏖️ Offdays
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab('reasons')}
+                  style={{
+                    flex: 1, padding: '7px 8px', borderRadius: 8, border: 'none',
+                    fontWeight: 700, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap',
+                    background: settingsTab === 'reasons' ? '#fff' : 'none',
+                    color: settingsTab === 'reasons' ? '#0284C7' : '#64748B',
+                    boxShadow: settingsTab === 'reasons' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
+                  }}
+                >
+                  ⚠️ Chips
+                </button>
+                <button
+                  type="button"
                   onClick={() => setSettingsTab('preferences')}
                   style={{
-                    flex: 1, padding: '8px 10px', borderRadius: 8, border: 'none',
-                    fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                    flex: 1, padding: '7px 8px', borderRadius: 8, border: 'none',
+                    fontWeight: 700, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap',
                     background: settingsTab === 'preferences' ? '#fff' : 'none',
                     color: settingsTab === 'preferences' ? '#0284C7' : '#64748B',
                     boxShadow: settingsTab === 'preferences' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
                   }}
                 >
-                  ⚡ Preferences
+                  ⚡ Prefs
                 </button>
               </div>
 
@@ -3351,6 +3952,156 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                       />
                     </label>
                   </div>
+                </div>
+              )}
+
+              {settingsTab === 'offdays' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Weekly Regular Off-Days
+                  </div>
+                  <p style={{ fontSize: 12, color: '#64748B', margin: 0 }}>
+                    Select regular rest days each week. These days are automatically marked as Off-Days and excluded from production quotas.
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                    {[
+                      { day: 0, label: 'Sun' },
+                      { day: 1, label: 'Mon' },
+                      { day: 2, label: 'Tue' },
+                      { day: 3, label: 'Wed' },
+                      { day: 4, label: 'Thu' },
+                      { day: 5, label: 'Fri' },
+                      { day: 6, label: 'Sat' }
+                    ].map(item => {
+                      const isOff = weeklyOffDays.includes(item.day);
+                      return (
+                        <button
+                          key={item.day}
+                          type="button"
+                          onClick={() => {
+                            const newDays = isOff
+                              ? weeklyOffDays.filter(d => d !== item.day)
+                              : [...weeklyOffDays, item.day];
+                            setWeeklyOffDays(newDays);
+                            try { localStorage.setItem('shiftTracker_weeklyOffDays', JSON.stringify(newDays)); } catch {}
+                          }}
+                          style={{
+                            padding: '10px 4px',
+                            borderRadius: 10,
+                            border: isOff ? '2px solid #EF4444' : '1px solid #CBD5E1',
+                            background: isOff ? '#FEE2E2' : '#F8FAFC',
+                            color: isOff ? '#DC2626' : '#475569',
+                            fontWeight: 800,
+                            fontSize: 12.5,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                        >
+                          <span>{item.label}</span>
+                          <span style={{ fontSize: 10 }}>{isOff ? '🏖️ OFF' : '💼 WORK'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#0284C7', background: '#F0F9FF', padding: 10, borderRadius: 10, border: '1px solid #BAE6FD' }}>
+                    💡 <b>Tip:</b> Changes to weekly offdays take effect immediately and dynamically redistribute remaining monthly targets.
+                  </div>
+                </div>
+              )}
+
+              {settingsTab === 'reasons' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      Missed Target Quick Reasons Preset
+                    </div>
+                    <p style={{ fontSize: 12, color: '#64748B', margin: '4px 0 10px 0' }}>
+                      These appear in the quick dropdown inside any shift block that misses its target. Changes save locally and sync to Firestore.
+                    </p>
+                  </div>
+
+                  {/* Add Reason Input */}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Add custom reason preset..."
+                      value={newReasonInput}
+                      onChange={(e) => setNewReasonInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          const val = newReasonInput.trim();
+                          if (val && !customMissedReasons.includes(val)) {
+                            const updated = [...customMissedReasons, val];
+                            setCustomMissedReasons(updated);
+                            try { localStorage.setItem('shiftTracker_missedReasons', JSON.stringify(updated)); } catch {}
+                            save(blocks, { missedReasons: updated });
+                            setNewReasonInput('');
+                          }
+                        }
+                      }}
+                      style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 13, outline: 'none' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const val = newReasonInput.trim();
+                        if (val && !customMissedReasons.includes(val)) {
+                          const updated = [...customMissedReasons, val];
+                          setCustomMissedReasons(updated);
+                          try { localStorage.setItem('shiftTracker_missedReasons', JSON.stringify(updated)); } catch {}
+                          save(blocks, { missedReasons: updated });
+                          setNewReasonInput('');
+                        }
+                      }}
+                      style={{ padding: '0 16px', background: '#0284C7', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                    >
+                      + Add
+                    </button>
+                  </div>
+
+                  {/* Existing Chips List */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {customMissedReasons.map((reason, rIdx) => (
+                      <div key={rIdx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#F8FAFC', borderRadius: 10, border: '1px solid #E2E8F0' }}>
+                        <span style={{ fontSize: 13, color: '#334155', fontWeight: 600 }}>{reason}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = customMissedReasons.filter((_, idx) => idx !== rIdx);
+                            setCustomMissedReasons(updated);
+                            try { localStorage.setItem('shiftTracker_missedReasons', JSON.stringify(updated)); } catch {}
+                            save(blocks, { missedReasons: updated });
+                          }}
+                          style={{ background: 'none', border: 'none', color: '#EF4444', fontWeight: 700, fontSize: 13, cursor: 'pointer', padding: 4 }}
+                          title="Delete chip"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    {customMissedReasons.length === 0 && (
+                      <div style={{ fontSize: 12, color: '#94A3B8', textAlign: 'center', padding: '10px 0' }}>
+                        No quick reason chips created yet. Add one above!
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomMissedReasons(DEFAULT_MISSED_REASONS);
+                      try { localStorage.setItem('shiftTracker_missedReasons', JSON.stringify(DEFAULT_MISSED_REASONS)); } catch {}
+                      save(blocks, { missedReasons: DEFAULT_MISSED_REASONS });
+                    }}
+                    style={{ alignSelf: 'flex-start', background: 'none', border: 'none', color: '#0284C7', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                  >
+                    ↺ Reset to Default Chips
+                  </button>
                 </div>
               )}
 
@@ -3573,6 +4324,13 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Effective Workdays in Month:</span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>
+                    {productionMetrics.effectiveTotalWorkDays} days ({productionMetrics.offDaysCount} off, {productionMetrics.leaveDaysCount} leave, {productionMetrics.holidaysCount} hol)
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 12, fontWeight: 600, color: '#475569' }}>Standard Base Daily:</span>
                   <span style={{ fontSize: 13, fontWeight: 800, color: '#0F172A' }}>
                     {productionMetrics.baseDailyTarget} {unit}/day
@@ -3594,7 +4352,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                       🔥 Recommended Daily for Today:
                     </div>
                     <div style={{ fontSize: 10.5, color: '#64748B' }}>
-                      Adjusts automatically based on month progress
+                      Recalculated over {productionMetrics.workDaysRemaining} remaining workdays
                     </div>
                   </div>
                   <span style={{ fontSize: 16, fontWeight: 900, color: '#15803D' }}>
