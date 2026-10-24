@@ -532,7 +532,7 @@ export default function SettingsModal({
       >
         <div
           className={`modal-dialog ${fullPage ? 'm-0 mw-100' : 'modal-dialog-centered'}`}
-          style={fullPage ? undefined : { maxWidth: '820px', width: '92%', margin: '1.25rem auto' }}
+          style={fullPage ? undefined : { maxWidth: '1000px', width: '95%', margin: '1rem auto' }}
           role="document"
         >
           <div className={`modal-content border-0 ${fullPage ? 'rounded-0 min-vh-100' : 'rounded-4 shadow-lg'} overflow-hidden`}>
@@ -551,22 +551,95 @@ export default function SettingsModal({
               />
             </div>
 
-            {/* Body */}
+            {/* Responsive Main Layout Container: Master-Detail Sidebar on md+, Tab bar on mobile */}
             <div
-              id="settingsModalBody"
-              className={`modal-body p-3 p-md-4 bg-light ${fullPage ? 'overflow-auto' : 'overflow-hidden'}`}
-              style={{ maxHeight: fullPage ? 'auto' : '82vh', height: fullPage ? 'auto' : '75vh', flex: fullPage ? '1 1 auto' : undefined }}
+              className={`d-flex flex-column flex-md-row bg-light ${fullPage ? 'overflow-auto' : ''}`}
+              style={{
+                height: fullPage ? 'auto' : '78vh',
+                maxHeight: fullPage ? 'auto' : '82vh'
+              }}
             >
-
-              {/* Custom Alert Banner */}
-              {alertBox.show && (
-                <div
-                  className={`alert alert-${alertBox.type} border-0 rounded-3 py-2 px-3 small d-flex align-items-center gap-2 mb-3 animate-fade-in`}
-                >
-                  <i className={`bi ${alertBox.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill'}`} />
-                  <span>{alertBox.message}</span>
+              {/* Desktop/Tablet Sidebar (Hidden on mobile) */}
+              <div
+                className="d-none d-md-flex flex-column border-end bg-white p-3"
+                style={{ width: '240px', minWidth: '240px', flexShrink: 0, overflowY: 'auto' }}
+              >
+                <div className="text-secondary small fw-bold px-2 mb-2 text-uppercase" style={{ fontSize: '0.7rem', letterSpacing: '0.05em' }}>
+                  Preferences
                 </div>
-              )}
+                <div className="d-flex flex-column gap-1">
+                  {[
+                    ['general', 'General', 'bi-sliders'],
+                    ['appearance', 'Appearance', 'bi-palette'],
+                    ['sounds', 'Sounds', 'bi-volume-up'],
+                    ['notifications', 'Notifications', 'bi-bell'],
+                    ['goals', 'Goals', 'bi-bullseye'],
+                    ['tools', 'Tools', 'bi-tools'],
+                    ['data', 'Data', 'bi-database'],
+                    ['account', 'Account', 'bi-person'],
+                  ].map(([id, label, icon]) => {
+                    const isActive = activeSettingsSection === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`btn text-start d-flex align-items-center gap-2 px-3 py-2 rounded-3 fw-bold border-0 transition-all ${
+                          isActive ? 'text-white shadow-sm' : 'text-dark hover-bg-light'
+                        }`}
+                        style={{
+                          backgroundColor: isActive ? '#075E54' : 'transparent',
+                          fontSize: '0.875rem'
+                        }}
+                        onClick={() => setActiveSettingsSection(id)}
+                      >
+                        <i className={`bi ${icon} fs-5`} style={{ color: isActive ? '#fff' : '#075E54' }} />
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right Panel (Content) */}
+              <div className="d-flex flex-column flex-grow-1 overflow-hidden" style={{ minWidth: 0 }}>
+                {/* Mobile Tab Pills Bar (Hidden on desktop/tablet) */}
+                <div className="d-flex d-md-none gap-2 overflow-auto p-3 pb-2 bg-white border-bottom flex-shrink-0">
+                  {[
+                    ['general', 'General', 'bi-sliders'],
+                    ['appearance', 'Appearance', 'bi-palette'],
+                    ['sounds', 'Sounds', 'bi-volume-up'],
+                    ['notifications', 'Notifications', 'bi-bell'],
+                    ['goals', 'Goals', 'bi-bullseye'],
+                    ['tools', 'Tools', 'bi-tools'],
+                    ['data', 'Data', 'bi-database'],
+                    ['account', 'Account', 'bi-person'],
+                  ].map(([id, label, icon]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`btn btn-sm rounded-pill text-nowrap fw-bold ${activeSettingsSection === id ? 'btn-success' : 'btn-light border'}`}
+                      onClick={() => setActiveSettingsSection(id)}
+                    >
+                      <i className={`bi ${icon} me-1`} />{label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Body Content Area */}
+                <div
+                  id="settingsModalBody"
+                  className="modal-body p-3 p-md-4 overflow-auto flex-grow-1"
+                >
+
+                  {/* Custom Alert Banner */}
+                  {alertBox.show && (
+                    <div
+                      className={`alert alert-${alertBox.type} border-0 rounded-3 py-2 px-3 small d-flex align-items-center gap-2 mb-3 animate-fade-in`}
+                    >
+                      <i className={`bi ${alertBox.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-circle-fill'}`} />
+                      <span>{alertBox.message}</span>
+                    </div>
+                  )}
 
               {/* Custom Import Confirm Popup */}
               {pendingImport && (
@@ -691,28 +764,6 @@ export default function SettingsModal({
                   </div>
                 </div>
               )}
-
-              <div className="d-flex gap-2 overflow-auto pb-2 mb-3 border-bottom">
-                {[
-                  ['general', 'General', 'bi-sliders'],
-                  ['appearance', 'Appearance', 'bi-palette'],
-                  ['sounds', 'Sounds', 'bi-volume-up'],
-                  ['notifications', 'Notifications', 'bi-bell'],
-                  ['goals', 'Goals', 'bi-bullseye'],
-                  ['tools', 'Tools', 'bi-tools'],
-                  ['data', 'Data', 'bi-database'],
-                  ['account', 'Account', 'bi-person'],
-                ].map(([id, label, icon]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className={`btn btn-sm rounded-pill text-nowrap fw-bold ${activeSettingsSection === id ? 'btn-success' : 'btn-light border'}`}
-                    onClick={() => setActiveSettingsSection(id)}
-                  >
-                    <i className={`bi ${icon} me-1`} />{label}
-                  </button>
-                ))}
-              </div>
 
               {/* Audio & Notifications */}
               <div style={settingStyle('sounds')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
@@ -1849,17 +1900,22 @@ export default function SettingsModal({
                 </p>
               </div>
 
+                </div>
+              </div>
             </div>
 
             {/* Footer */}
-            <div className="modal-footer border-0 bg-light pt-0 pb-3 px-4 d-flex justify-content-center">
+            <div className="modal-footer border-0 bg-white border-top py-2.5 px-4 d-flex justify-content-between align-items-center">
+              <span className="text-muted small d-none d-md-inline" style={{ fontSize: '0.8rem' }}>
+                <i className="bi bi-info-circle me-1" />Changes save automatically
+              </span>
               <button
                 type="button"
-                className="btn text-white rounded-pill px-5 py-2 fw-bold shadow-sm hover-scale"
+                className="btn text-white rounded-pill px-4 py-2 fw-bold shadow-sm hover-scale ms-auto"
                 style={{ backgroundColor: '#075E54' }}
                 onClick={onClose}
               >
-                Close Settings
+                Done
               </button>
             </div>
 
