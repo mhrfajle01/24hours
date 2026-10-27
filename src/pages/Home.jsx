@@ -73,9 +73,23 @@ export default function Home() {
   // ── Auth ────────────────────────────────────────────────────────────────
   const [currentUser, setCurrentUser] = useState(() => {
     const u = auth.currentUser;
-    return u ? { uid: u.uid, email: u.email, displayName: u.displayName, photoURL: u.photoURL } : null;
+    if (u) {
+      return { uid: u.uid, email: u.email, displayName: u.displayName, photoURL: u.photoURL };
+    }
+    try {
+      const cached = localStorage.getItem('hourlog_cached_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
   });
-  const [authLoading, setAuthLoading] = useState(() => !auth.currentUser);
+  const [authLoading, setAuthLoading] = useState(() => {
+    if (auth.currentUser) return false;
+    try {
+      if (localStorage.getItem('hourlog_cached_user')) return false;
+    } catch {}
+    return true;
+  });
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
@@ -420,6 +434,11 @@ export default function Home() {
     const unsub = onAuthStateChanged(auth, (user) => {
       clearTimeout(authTimeout);
       if (user) {
+        const userInfo = { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL };
+        try {
+          localStorage.setItem('hourlog_cached_user', JSON.stringify(userInfo));
+        } catch {}
+
         setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
           email: user.email || '',
@@ -444,6 +463,9 @@ export default function Home() {
         }
         previousUid = user.uid;
       } else {
+        try {
+          localStorage.removeItem('hourlog_cached_user');
+        } catch {}
         previousUid = null;
       }
       setCurrentUser(
@@ -1045,6 +1067,9 @@ export default function Home() {
 
   const handleLogout = async () => {
     try {
+      try {
+        localStorage.removeItem('hourlog_cached_user');
+      } catch {}
       await signOut(auth);
       handleCloseModal();
       setUndoStack([]);

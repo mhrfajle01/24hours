@@ -348,21 +348,84 @@ Generate a full, realistic, well-paced day schedule using ONLY raw valid JSON (n
         return;
       }
 
+      const normSingleTime = (t, defaultAmPm = '') => {
+        if (!t && t !== 0) return null;
+        let str = String(t).trim();
+        const match = str.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+        if (!match) return null;
+        let hours = parseInt(match[1], 10);
+        const minutes = match[2] ? match[2] : '00';
+        let ampm = (match[3] || defaultAmPm || '').toUpperCase();
+        if (ampm) {
+          if (ampm === 'PM') {
+            hours = hours === 12 ? 12 : (hours < 12 ? hours + 12 : hours);
+          } else if (ampm === 'AM') {
+            hours = hours === 12 ? 0 : hours;
+          }
+        }
+        return `${String(hours).padStart(2, '0')}:${minutes}`;
+      };
+
+      const parseTimeInterval = (rawStart, rawEnd) => {
+        let sMatch = String(rawStart).trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+        let eMatch = String(rawEnd).trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+        if (!sMatch || !eMatch) return null;
+
+        let sHour = parseInt(sMatch[1], 10);
+        let sMin = sMatch[2] || '00';
+        let sAmPm = sMatch[3] ? sMatch[3].toUpperCase() : '';
+
+        let eHour = parseInt(eMatch[1], 10);
+        let eMin = eMatch[2] || '00';
+        let eAmPm = eMatch[3] ? eMatch[3].toUpperCase() : '';
+
+        // Handle case where AM/PM is only written at the end (e.g. 6:20 - 7:30 AM)
+        if (!sAmPm && eAmPm) {
+          if (eAmPm === 'PM' && sHour === 11 && eHour === 12) {
+            sAmPm = 'AM';
+          } else if (eAmPm === 'AM' && sHour === 11 && eHour === 12) {
+            sAmPm = 'PM';
+          } else {
+            sAmPm = eAmPm;
+          }
+        }
+
+        const s = normSingleTime(`${sHour}:${sMin} ${sAmPm}`.trim());
+        const e = normSingleTime(`${eHour}:${eMin} ${eAmPm}`.trim());
+        if (s && e) return { startTime: s, endTime: e };
+        return null;
+      };
+
       const normalized = blocksArray.map((item, index) => {
         let startTime = '08:00';
         let endTime = '09:00';
 
+        let parsedSlot = null;
         if (item.startTime && item.endTime) {
-          startTime = item.startTime;
-          endTime = item.endTime;
-        } else if (item.hour && typeof item.hour === 'string' && item.hour.includes('-')) {
-          const [s, e] = item.hour.split('-').map(t => t.trim());
-          startTime = s;
-          endTime = e;
+          parsedSlot = parseTimeInterval(item.startTime, item.endTime);
+        }
+
+        const timeRange = item.time || item.slot || item.hour;
+        if (!parsedSlot && typeof timeRange === 'string') {
+          const delim = timeRange.includes('–') ? '–' : (timeRange.includes('to') ? 'to' : (timeRange.includes('-') ? '-' : null));
+          if (delim) {
+            const parts = timeRange.split(delim).map(t => t.trim());
+            if (parts.length === 2) {
+              parsedSlot = parseTimeInterval(parts[0], parts[1]);
+            }
+          }
+        }
+
+        if (parsedSlot) {
+          startTime = parsedSlot.startTime;
+          endTime = parsedSlot.endTime;
         } else if (item.hour !== undefined && !isNaN(parseInt(item.hour, 10))) {
           const h = parseInt(item.hour, 10);
-          startTime = `${String(h).padStart(2, '0')}:00`;
-          endTime = `${String((h + 1) % 24).padStart(2, '0')}:00`;
+          const ampm = item.ampm || (h >= 12 ? 'PM' : 'AM');
+          const s = normSingleTime(h, ampm);
+          const e = normSingleTime((h % 12 || 12) + 1, ampm);
+          startTime = s || `${String(h).padStart(2, '0')}:00`;
+          endTime = e || `${String((h + 1) % 24).padStart(2, '0')}:00`;
         }
 
         let planStr = '';
@@ -450,9 +513,9 @@ Generate a full, realistic, well-paced day schedule using ONLY raw valid JSON (n
     },
     {
       title: "2. Setting Time & Range",
-      desc: "Provide 24-hr format like `09:00 - 10:00` or separate `startTime` and `endTime`.",
+      desc: "Supports any custom time range (e.g. `06:20 - 07:30 AM`, `09:00 - 10:00`, or separate `startTime` & `endTime`).",
       badge: "Time Slots",
-      code: `{\n  "startTime": "09:00",\n  "endTime": "10:00",\n  // or "hour": "09:00 - 10:00"\n}`
+      code: `{\n  "startTime": "06:20",\n  "endTime": "07:30",\n  // or "hour": "6:20 - 7:30 AM"\n}`
     },
     {
       title: "3. Tasks, Checklists & Bullets",

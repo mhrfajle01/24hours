@@ -6,6 +6,27 @@ import { getTodayDateString } from '../utils/helpers';
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const SYNC_INTERVAL_MS = 30 * 1000;
 
+// Maximum seconds that could possibly have elapsed since 12:00 AM today
+const getMaxElapsedTodaySeconds = () => {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+  const diffSec = Math.floor((now.getTime() - startOfDay.getTime()) / 1000);
+  return Math.max(0, Math.min(diffSec + 60, 86400));
+};
+
+const sanitizeSeconds = (val) => {
+  const num = Number.parseInt(val, 10);
+  if (!Number.isFinite(num) || num < 0) return 0;
+  // If value is greater than the total elapsed time since midnight today,
+  // it was corrupted by prior runaway increment bugs. Reset/clamp it!
+  const maxElapsed = getMaxElapsedTodaySeconds();
+  if (num > maxElapsed) {
+    // If it exceeded the day's timeline, clamp to maxElapsed or default reasonable time
+    return maxElapsed;
+  }
+  return num;
+};
+
 const getStorageKey = (uid, date) => `app-usage:${uid}:${date}`;
 
 /**
@@ -31,21 +52,33 @@ export const useAppUsage = (uid) => {
     }
 
     const storageKey = getStorageKey(uid, today);
-    const storedSeconds = Number.parseInt(localStorage.getItem(storageKey) || '0', 10);
-    secondsRef.current = Number.isFinite(storedSeconds) ? storedSeconds : 0;
+    const storedSeconds = sanitizeSeconds(localStorage.getItem(storageKey));
+    secondsRef.current = storedSeconds;
     lastSyncedSecondsRef.current = 0;
     setActiveSeconds(secondsRef.current);
 
     const usageRef = doc(db, 'appUsage', uid, 'days', today);
     const unsubscribe = onSnapshot(usageRef, (snapshot) => {
-      const remoteSeconds = snapshot.exists() ? snapshot.data().activeSeconds || 0 : 0;
-      const localSeconds = Number.parseInt(localStorage.getItem(storageKey) || '0', 10) || 0;
-      const mergedSeconds = Math.max(localSeconds, remoteSeconds);
+      const rawRemote = snapshot.exists() ? snapshot.data().activeSeconds || 0 : 0;
+      const remoteSeconds = sanitizeSeconds(rawRemote);
+      const localSeconds = sanitizeSeconds(localStorage.getItem(storageKey));
+      const maxElapsed = getMaxElapsedTodaySeconds();
+      const mergedSeconds = Math.min(maxElapsed, Math.max(localSeconds, remoteSeconds));
       secondsRef.current = mergedSeconds;
       // Preserve locally accumulated seconds that have not been synced yet.
       lastSyncedSecondsRef.current = Math.max(lastSyncedSecondsRef.current, remoteSeconds);
       setActiveSeconds(mergedSeconds);
       localStorage.setItem(storageKey, String(mergedSeconds));
+
+      // Auto-heal Firestore if remote was corrupted with an impossible value
+      if (rawRemote > maxElapsed) {
+        setDoc(usageRef, {
+          uid,
+          date: today,
+          activeSeconds: mergedSeconds,
+          updatedAt: serverTimestamp(),
+        }, { merge: true }).catch((err) => console.error('Failed to heal remote usage:', err));
+      }
     }, (error) => {
       console.error('Firestore app usage error:', error);
     });
@@ -58,12 +91,13 @@ export const useAppUsage = (uid) => {
 
     const syncUsage = async () => {
       const unsyncedSeconds = secondsRef.current - lastSyncedSecondsRef.current;
-      if (unsyncedSeconds <= 0) return;
+      if (unsyncedSeconds <= 0 && secondsRef.current === lastSyncedSecondsRef.current) return;
       lastSyncedSecondsRef.current = secondsRef.current;
       await setDoc(usageRef, {
         uid,
         date: today,
-        activeSeconds: increment(unsyncedSeconds),
+        // Overwrite Firestore document with sanitized real seconds to cure any prior increment explosion
+        activeSeconds: secondsRef.current,
         updatedAt: serverTimestamp(),
       }, { merge: true });
     };
@@ -94,7 +128,8 @@ export const useAppUsage = (uid) => {
       if (lastTickRef.current !== null && currentlyActive()) {
         const elapsedSeconds = Math.min(Math.floor((now - lastTickRef.current) / 1000), 60);
         if (elapsedSeconds > 0) {
-          secondsRef.current += elapsedSeconds;
+          const maxElapsed = getMaxElapsedTodaySeconds();
+          secondsRef.current = Math.min(maxElapsed, secondsRef.current + elapsedSeconds);
           setActiveSeconds(secondsRef.current);
           localStorage.setItem(storageKey, String(secondsRef.current));
         }

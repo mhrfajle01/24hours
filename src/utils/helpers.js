@@ -38,7 +38,7 @@ export const formatTime12h = (timeStr) => {
  * Formats a duration using only hours and whole minutes.
  */
 export const formatDurationMinutes = (totalSeconds = 0) => {
-  const safeSeconds = Math.max(0, Number(totalSeconds) || 0);
+  const safeSeconds = Math.min(86400, Math.max(0, Number(totalSeconds) || 0));
   const hours = Math.floor(safeSeconds / 3600);
   const minutes = Math.floor((safeSeconds % 3600) / 60);
   if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m`;

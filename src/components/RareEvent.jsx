@@ -1,15 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import './RareEvent.css';
 
-export default function RareEvent({ type = 'box', result = '💎', onClose }) {
-  const [opened, setOpened] = useState(false);
+export default function RareEvent({ type = 'box', result = '💎', onClose, autoOpen = false }) {
+  const [opened, setOpened] = useState(autoOpen);
   const [particles, setParticles] = useState([]);
 
-  const handleInteract = () => {
-    if (opened) return onClose();
-    setOpened(true);
-    
+  const spawnParticles = () => {
     // Choose particle colors based on type
     const colors = 
       type === 'streak' ? ['#ff4500', '#ff8c00', '#ffd700', '#fff'] :
@@ -24,6 +21,18 @@ export default function RareEvent({ type = 'box', result = '💎', onClose }) {
       return { id: i, color: colors[Math.floor(Math.random() * 4)], tx: Math.cos(angle) * velocity, ty: Math.sin(angle) * velocity };
     });
     setParticles(newParticles);
+  };
+
+  useEffect(() => {
+    if (autoOpen) {
+      spawnParticles();
+    }
+  }, [autoOpen]);
+
+  const handleInteract = () => {
+    if (opened) return onClose();
+    setOpened(true);
+    spawnParticles();
   };
 
   return createPortal(

@@ -77,6 +77,8 @@ export default function ConsistencyWidget({
   const [isScanning, setIsScanning] = useState(false);
   const [scanResult, setScanResult] = useState(null);
 
+  const [isClaiming, setIsClaiming] = useState(false);
+
   const getTodayDateString = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -84,10 +86,20 @@ export default function ConsistencyWidget({
   const hasClaimedToday = pointsData?.lastDailyCheckin === getTodayDateString() && streakData?.lastActiveDate === getTodayDateString();
 
   const handleClaimStreak = async () => {
-    if (claimDailyCheckIn && !hasClaimedToday) {
-      const success = await claimDailyCheckIn();
-      if (success) {
-        setShowStreakEvent(true);
+    if (claimDailyCheckIn && !hasClaimedToday && !isClaiming) {
+      // Immediate trigger: launch animation right away so user sees instant feedback
+      setShowStreakEvent(true);
+      setIsClaiming(true);
+      try {
+        const success = await claimDailyCheckIn();
+        if (!success) {
+          setShowStreakEvent(false);
+        }
+      } catch (err) {
+        console.error('Streak claim error:', err);
+        setShowStreakEvent(false);
+      } finally {
+        setIsClaiming(false);
       }
     }
   };
@@ -147,14 +159,26 @@ export default function ConsistencyWidget({
   const circum = 2 * Math.PI * radius;
   const strokeDashoffset = circum - (goalPercent / 100) * circum;
 
-  const minuteProgress = (appUsage.activeSeconds % 60) / 60;
+  const getMaxElapsedTodaySeconds = () => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const diffSec = Math.floor((now.getTime() - startOfDay.getTime()) / 1000);
+    return Math.max(0, Math.min(diffSec + 60, 86400));
+  };
+
+  const rawActiveSeconds = Math.max(0, Number(appUsage?.activeSeconds) || 0);
+  const maxElapsed = getMaxElapsedTodaySeconds();
+  // Cap at actual elapsed time since midnight today so corrupted data never shows unrealistic hours
+  const safeActiveSeconds = Math.min(maxElapsed, rawActiveSeconds);
+  const minuteProgress = (safeActiveSeconds % 60) / 60;
   const usageRingRadius = 18;
   const usageRingCircumference = 2 * Math.PI * usageRingRadius;
   const usageRingOffset = usageRingCircumference * (1 - minuteProgress);
   const formatUsageTime = (totalSeconds) => {
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
+    const safeTotal = Math.min(maxElapsed, Math.max(0, Number(totalSeconds) || 0));
+    const hours = Math.floor(safeTotal / 3600);
+    const minutes = Math.floor((safeTotal % 3600) / 60);
+    const seconds = safeTotal % 60;
     if (hours === 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
     return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
   };
@@ -423,7 +447,7 @@ export default function ConsistencyWidget({
                     }}
                   />
                   <text x="21" y="23" textAnchor="middle" fontSize="9" fontWeight="700" fill="#4338CA">
-                    {String(appUsage.activeSeconds % 60).padStart(2, '0')}
+                    {String(safeActiveSeconds % 60).padStart(2, '0')}
                   </text>
                 </svg>
               </div>
@@ -433,7 +457,7 @@ export default function ConsistencyWidget({
               </div>
             </div>
             <div className="text-end">
-              <div className="fw-extrabold fs-5 text-primary">{formatUsageTime(appUsage.activeSeconds)}</div>
+              <div className="fw-extrabold fs-5 text-primary">{formatUsageTime(safeActiveSeconds)}</div>
               <span className={`badge rounded-pill ${appUsage.isActive ? 'bg-success-subtle text-success' : 'bg-light text-secondary'}`} style={{ fontSize: '0.65rem' }}>
                 <i className={`bi ${appUsage.isActive ? 'bi-circle-fill' : 'bi-pause-fill'} me-1`}></i>
                 {appUsage.isActive ? 'Active now' : 'Paused'}
@@ -527,7 +551,8 @@ export default function ConsistencyWidget({
       </div>
       {showStreakEvent && (
         <RareEvent
-          type="box"
+          type="streak"
+          autoOpen={true}
           result={<div style={{ fontWeight: '900', filter: 'drop-shadow(0 0 20px #FFD700)', lineHeight: '1.2' }}>Streak<br/>Claimed!<br/><span style={{fontSize: '40px', color: '#25D366'}}>🔥 +1 Day</span></div>}
           onClose={() => setShowStreakEvent(false)}
         />

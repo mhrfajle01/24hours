@@ -318,6 +318,7 @@ export default function StreaksPage({ currentUser, onBack, onDailyCheckIn, strea
       {showStreakEvent && (
         <RareEvent
           type="streak"
+          autoOpen={true}
           result={<div style={{ fontWeight: '900', filter: 'drop-shadow(0 0 20px #ff4500)', lineHeight: '1.2' }}>Streak<br/>Protected!<br/><span style={{fontSize: '40px', color: '#ffd700'}}>+20 pts</span></div>}
           onClose={() => setShowStreakEvent(false)}
         />
