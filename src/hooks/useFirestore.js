@@ -1423,6 +1423,89 @@ export const useFirestore = (selectedDate, uid) => {
     return true;
   };
 
+  /** Batch reconcile points and story tokens in a single transaction to prevent freezing/lag */
+  const batchReconcileBlocks = async (items) => {
+    if (!uid || !items || !items.length) return false;
+    const ref = doc(db, 'points', uid);
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(ref);
+      const current = snap.exists() ? snap.data() : { points: 0, history: [] };
+      const states = { ...(current.blockPointStates || {}) };
+      const processedEvents = { ...(current.processedPointEvents || {}) };
+      let currentPoints = current.points || 0;
+      let currentStoryTokens = current.storyTokens || 0;
+      const newHistoryRecords = [];
+
+      for (const { report, newStatus } of items) {
+        if (!report?.id) continue;
+        const oldStatus = report.status;
+        if (oldStatus === newStatus) continue;
+
+        const pts = calculateBlockPoints(report);
+        const desired = newStatus === 'Completed' ? pts : newStatus === 'Missed' ? -Math.max(5, Math.round(pts / 2)) : 0;
+        const previous = states[report.id]?.amount || 0;
+        const delta = desired - previous;
+
+        if (delta !== 0) {
+          const label = newStatus === 'Completed'
+            ? `Completed block (+${pts} pts)`
+            : newStatus === 'Missed'
+              ? `Missed block penalty (-${Math.abs(desired)} pts)`
+              : `Reconciled block status (${delta > 0 ? '+' : ''}${delta} pts)`;
+          newHistoryRecords.push({
+            id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            title: label,
+            amount: delta,
+            date: new Date().toISOString(),
+            type: delta >= 0 ? 'earn' : 'spend',
+            sourceId: report.id,
+          });
+          states[report.id] = { status: newStatus, amount: desired };
+          currentPoints = Math.max(0, currentPoints + delta);
+        }
+
+        // Story tokens reconciliation
+        if (newStatus === 'Completed') {
+          const eventKey = `story-token-${report.id}`;
+          if (!processedEvents[eventKey]) {
+            processedEvents[eventKey] = true;
+            currentStoryTokens += 1;
+            newHistoryRecords.push({
+              id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              title: 'Earned 1 Story Token!',
+              amount: 0,
+              date: new Date().toISOString(),
+              type: 'earn',
+            });
+          }
+        } else if (oldStatus === 'Completed' && newStatus !== 'Completed') {
+          const eventKey = `story-revert-${report.id}`;
+          if (!processedEvents[eventKey]) {
+            processedEvents[eventKey] = true;
+            if (currentStoryTokens > 0) currentStoryTokens -= 1;
+            newHistoryRecords.push({
+              id: `pts_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+              title: 'Reverted: Lost 1 Story Token',
+              amount: 0,
+              date: new Date().toISOString(),
+              type: 'spend',
+            });
+          }
+        }
+      }
+
+      transaction.set(ref, {
+        points: currentPoints,
+        storyTokens: currentStoryTokens,
+        history: [...newHistoryRecords, ...(current.history || [])].slice(0, 50),
+        blockPointStates: states,
+        processedPointEvents: processedEvents,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    });
+    return true;
+  };
+
   const claimDailyCheckIn = async () => {
     if (!uid) return false;
     const today = getTodayDateString();
@@ -1690,6 +1773,7 @@ export const useFirestore = (selectedDate, uid) => {
     pointsData,
     updatePoints,
     reconcileBlockPoints,
+    batchReconcileBlocks,
     claimDailyCheckIn,
     redeemPerk,
     unlockFeature,

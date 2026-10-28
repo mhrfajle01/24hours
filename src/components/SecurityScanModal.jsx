@@ -8,6 +8,7 @@ import React, { useState } from 'react';
 export default function SecurityScanModal({ invalidBlocks, onResolve, dictionaryData = [] }) {
   // formData stores closing details: { [blockId]: { report: '', tag: '', status: 'Completed' } }
   const [formData, setFormData] = useState({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!invalidBlocks || invalidBlocks.length === 0) return null;
 
@@ -32,8 +33,10 @@ export default function SecurityScanModal({ invalidBlocks, onResolve, dictionary
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     const resolvedBlocks = {};
     let allValid = true;
     
@@ -62,7 +65,12 @@ export default function SecurityScanModal({ invalidBlocks, onResolve, dictionary
       return;
     }
 
-    onResolve(resolvedBlocks);
+    try {
+      setIsSubmitting(true);
+      await onResolve(resolvedBlocks);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Get list of tags from tag library dictionaryData
@@ -280,20 +288,22 @@ export default function SecurityScanModal({ invalidBlocks, onResolve, dictionary
 
           <button
             type="submit"
+            disabled={isSubmitting}
             style={{
               width: '100%',
               padding: '12px',
-              backgroundColor: '#f38ba8',
+              backgroundColor: isSubmitting ? '#a6adc8' : '#f38ba8',
               color: '#11111b',
               border: 'none',
               borderRadius: '6px',
               fontWeight: 'bold',
-              cursor: 'pointer',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
               fontSize: '14px',
-              transition: 'background-color 0.2s'
+              transition: 'background-color 0.2s',
+              opacity: isSubmitting ? 0.7 : 1
             }}
           >
-            Submit Resolution Data
+            {isSubmitting ? 'Submitting Resolution Data...' : 'Submit Resolution Data'}
           </button>
         </form>
         

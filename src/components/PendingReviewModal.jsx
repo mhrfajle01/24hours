@@ -8,6 +8,7 @@ import { getIntervalTimes, formatTime12h } from '../utils/helpers';
 export default function PendingReviewModal({ isOpen, onClose, pendingReports, onSave, awayDuration }) {
   // Local state to keep track of changed statuses before saving
   const [updatedStatuses, setUpdatedStatuses] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (isOpen && pendingReports.length > 0) {
@@ -16,6 +17,7 @@ export default function PendingReviewModal({ isOpen, onClose, pendingReports, on
         initial[r.id] = r.status || 'Pending';
       });
       setUpdatedStatuses(initial);
+      setIsSaving(false);
     }
   }, [isOpen, pendingReports]);
 
@@ -30,6 +32,8 @@ export default function PendingReviewModal({ isOpen, onClose, pendingReports, on
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
+    if (isSaving) return;
+
     // Gather all changed reports
     const updates = pendingReports.map((r) => ({
       id: r.id,
@@ -41,8 +45,13 @@ export default function PendingReviewModal({ isOpen, onClose, pendingReports, on
       alert('Please mark all blocks as Completed or Missed. No pending blocks can be skipped / অনুগ্রহ করে সব কয়টি স্লট Completed অথবা Missed হিসেবে চিহ্নিত করুন।');
       return;
     }
-    await onSave(updates);
-    onClose();
+    try {
+      setIsSaving(true);
+      await onSave(updates);
+      onClose();
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -199,10 +208,20 @@ export default function PendingReviewModal({ isOpen, onClose, pendingReports, on
               <div className="modal-footer border-0 bg-white py-3 px-4 d-flex justify-content-end gap-2 shadow-sm">
                 <button
                   type="submit"
+                  disabled={isSaving}
                   className="btn text-white border-0 rounded-pill px-5 py-2 shadow-sm hover-scale fw-bold"
                   style={{ backgroundColor: '#075E54' }}
                 >
-                  <i className="bi bi-check2-all me-1"></i>Save All Changes
+                  {isSaving ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-check2-all me-1"></i>Save All Changes
+                    </>
+                  )}
                 </button>
               </div>
             </form>

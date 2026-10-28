@@ -180,6 +180,7 @@ export default function Home() {
     pointsData,
     updatePoints,
     reconcileBlockPoints,
+    batchReconcileBlocks,
     claimDailyCheckIn,
     redeemPerk,
     unlockFeature,
@@ -392,6 +393,8 @@ export default function Home() {
   const handleResolveSecurityBlocks = async (resolutions) => {
     try {
       const batch = writeBatch(db);
+      const reconcileItems = [];
+
       for (const id of Object.keys(resolutions)) {
         const docRef = doc(db, 'reports', id);
         // Tag closing by updating data-timing-closed attribute logic (or report update)
@@ -402,18 +405,19 @@ export default function Home() {
         });
 
         const reportObj = reports.find(r => r.id === id);
-        if (reportObj) {
-          await processReportPointsChange(
-            reportObj.status,
-            reportObj.report,
-            resolutions[id].status,
-            resolutions[id].report,
-            { ...reportObj, status: resolutions[id].status, report: resolutions[id].report, tag: resolutions[id].tag },
-            false
-          );
+        if (reportObj && reportObj.status !== resolutions[id].status) {
+          reconcileItems.push({
+            report: { ...reportObj, report: resolutions[id].report, tag: resolutions[id].tag },
+            newStatus: resolutions[id].status
+          });
         }
       }
       await batch.commit();
+
+      if (reconcileItems.length > 0) {
+        await batchReconcileBlocks(reconcileItems);
+      }
+
       playSound('points');
       showToast('Timing blocks successfully closed and saved.', 'success');
       setSecurityInvalidBlocks([]);
@@ -1239,17 +1243,23 @@ export default function Home() {
   const handleSavePendingReview = async (updates) => {
     try {
       const batch = writeBatch(db);
+      const reconcileItems = [];
+
       for (const update of updates) {
         const { id, status } = update;
         const docRef = doc(db, 'reports', id);
         batch.update(docRef, { status });
 
         const reportObj = reports.find(r => r.id === id);
-        if (reportObj) {
-          await processReportPointsChange(reportObj.status, reportObj.report, status, reportObj.report, { ...reportObj, status }, false);
+        if (reportObj && reportObj.status !== status) {
+          reconcileItems.push({ report: reportObj, newStatus: status });
         }
       }
       await batch.commit();
+
+      if (reconcileItems.length > 0) {
+        await batchReconcileBlocks(reconcileItems);
+      }
 
       playSound('points');
       showToast('All blocks updated successfully', 'success');

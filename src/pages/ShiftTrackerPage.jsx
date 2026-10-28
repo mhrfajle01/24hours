@@ -20,12 +20,17 @@ const lsGetByDate = (uid, date) => {
 const lsSaveByDate = (uid, date, data) => {
   try { localStorage.setItem(`${LS_KEY}_${uid}_${date}`, JSON.stringify(data)); } catch {}
 };
-const queueSync = (uid, todayDoc, historyDoc, date) => {
+const queueSync = (uid, todayDoc, historyDoc, date, settingsDoc = null) => {
   try {
     const queue = JSON.parse(localStorage.getItem(LS_QUEUE_KEY) || '[]');
-    // Replace existing entry for same uid+date
-    const filtered = queue.filter(q => !(q.uid === uid && q.date === date));
-    filtered.push({ uid, date, todayDoc, historyDoc, ts: Date.now() });
+    // If settingsDoc, replace existing settings queue item or merge
+    let filtered;
+    if (settingsDoc && !todayDoc && !historyDoc) {
+      filtered = queue.filter(q => !(q.uid === uid && q.settingsDoc));
+    } else {
+      filtered = queue.filter(q => !(q.uid === uid && q.date === date));
+    }
+    filtered.push({ uid, date, todayDoc, historyDoc, settingsDoc, ts: Date.now() });
     localStorage.setItem(LS_QUEUE_KEY, JSON.stringify(filtered));
   } catch {}
 };
@@ -41,6 +46,9 @@ const flushSyncQueue = async () => {
         }
         if (item.historyDoc) {
           await setDoc(doc(db, 'shiftTracker', item.uid, 'history', item.date), item.historyDoc, { merge: true });
+        }
+        if (item.settingsDoc) {
+          await setDoc(doc(db, 'shiftTracker', item.uid, 'settings', 'config'), item.settingsDoc, { merge: true });
         }
       } catch { failed.push(item); }
     }
@@ -665,7 +673,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   const [dayType, setDayType] = useState('work'); // 'work' | 'off' | 'leave' | 'holiday'
   const [dayTypeNote, setDayTypeNote] = useState(''); // optional note (e.g. holiday name, leave reason)
   const [weeklyOffDays, setWeeklyOffDays] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('shiftTracker_weeklyOffDays')) || [5]; } catch { return [5]; }
+    try { return JSON.parse(localStorage.getItem('shiftTracker_weeklyOffDays')) || [0]; } catch { return [0]; }
   });
   const [markedDays, setMarkedDays] = useState(() => {
     try { return JSON.parse(localStorage.getItem('shiftTracker_markedDays')) || {}; } catch { return {}; }
@@ -742,6 +750,37 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   });
 
   const blockInputRefs = useRef({});
+
+  // Sync Shift Tracker global settings (offdays, markedDays, defaults) to Firestore
+  const saveShiftSettings = useCallback((updatedSettings = {}) => {
+    if (!currentUser?.uid) return;
+    const settingsPayload = {
+      weeklyOffDays: updatedSettings.weeklyOffDays ?? weeklyOffDays,
+      markedDays: updatedSettings.markedDays ?? markedDays,
+      defaultTarget: updatedSettings.defaultShiftTarget ?? defaultShiftTarget,
+      defaultStart: updatedSettings.defaultShiftStart ?? defaultShiftStart,
+      defaultEnd: updatedSettings.defaultShiftEnd ?? defaultShiftEnd,
+      monthlyTarget: updatedSettings.monthlyTarget ?? monthlyTarget,
+      monthlyWorkDays: updatedSettings.monthlyWorkDays ?? monthlyWorkDays,
+      productionUnit: updatedSettings.productionUnit ?? productionUnit,
+      autoAdvance: updatedSettings.autoAdvance ?? autoAdvance,
+      sound: updatedSettings.soundEnabled ?? soundEnabled,
+      missedReasons: updatedSettings.customMissedReasons ?? customMissedReasons,
+      keybindings: updatedSettings.keybindings ?? keybindings,
+      updatedAt: Date.now()
+    };
+
+    queueSync(currentUser.uid, null, null, null, settingsPayload);
+    if (navigator.onLine && !syncingRef.current) {
+      syncingRef.current = true;
+      flushSyncQueue().finally(() => { syncingRef.current = false; });
+    }
+  }, [
+    currentUser?.uid, weeklyOffDays, markedDays,
+    defaultShiftTarget, defaultShiftStart, defaultShiftEnd,
+    monthlyTarget, monthlyWorkDays, productionUnit,
+    autoAdvance, soundEnabled, customMissedReasons, keybindings
+  ]);
 
   // Global Keyboard Listener (mouse-free production workflow)
   useEffect(() => {
@@ -920,14 +959,87 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
     if (d.breakHistory) setBreakHistory(d.breakHistory);
     if (d.breakType) setBreakType(d.breakType);
-    if (d.dayType) setDayType(d.dayType);
-    if (d.dayTypeNote) setDayTypeNote(d.dayTypeNote);
+
+    // Prioritize markedDays for date or fallback to saved dayType
+    const marked = markedDays[selectedDate];
+    if (marked) {
+      const dt = typeof marked === 'string' ? { type: marked, note: '' } : marked;
+      setDayType(dt.type);
+      setDayTypeNote(dt.note || '');
+    } else if (d.dayType) {
+      setDayType(d.dayType);
+      setDayTypeNote(d.dayTypeNote || '');
+    } else {
+      const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
+      setDayType(dt.type);
+      setDayTypeNote(dt.note || '');
+    }
   };
 
   useEffect(() => {
     if (!currentUser?.uid) return;
 
     const loadData = async () => {
+      // 0. Fetch global shift tracker settings (offdays, markedDays, defaults) if online
+      if (navigator.onLine) {
+        try {
+          const cfgSnap = await getDoc(doc(db, 'shiftTracker', currentUser.uid, 'settings', 'config'));
+          if (cfgSnap.exists()) {
+            const cfg = cfgSnap.data();
+            if (Array.isArray(cfg.weeklyOffDays)) {
+              setWeeklyOffDays(cfg.weeklyOffDays);
+              try { localStorage.setItem('shiftTracker_weeklyOffDays', JSON.stringify(cfg.weeklyOffDays)); } catch {}
+            }
+            if (cfg.markedDays && typeof cfg.markedDays === 'object') {
+              setMarkedDays(cfg.markedDays);
+              try { localStorage.setItem('shiftTracker_markedDays', JSON.stringify(cfg.markedDays)); } catch {}
+            }
+            if (cfg.defaultTarget) {
+              setDefaultShiftTarget(cfg.defaultTarget);
+              try { localStorage.setItem('shiftTracker_defaultTarget', String(cfg.defaultTarget)); } catch {}
+            }
+            if (cfg.defaultStart) {
+              setDefaultShiftStart(cfg.defaultStart);
+              try { localStorage.setItem('shiftTracker_defaultStart', cfg.defaultStart); } catch {}
+            }
+            if (cfg.defaultEnd) {
+              setDefaultShiftEnd(cfg.defaultEnd);
+              try { localStorage.setItem('shiftTracker_defaultEnd', cfg.defaultEnd); } catch {}
+            }
+            if (cfg.monthlyTarget) {
+              setMonthlyTarget(cfg.monthlyTarget);
+              try { localStorage.setItem('shiftTracker_monthlyTarget', String(cfg.monthlyTarget)); } catch {}
+            }
+            if (cfg.monthlyWorkDays) {
+              setMonthlyWorkDays(cfg.monthlyWorkDays);
+              try { localStorage.setItem('shiftTracker_monthlyWorkDays', String(cfg.monthlyWorkDays)); } catch {}
+            }
+            if (cfg.productionUnit) {
+              setProductionUnit(cfg.productionUnit);
+              try { localStorage.setItem('shiftTracker_productionUnit', cfg.productionUnit); } catch {}
+            }
+            if (cfg.autoAdvance !== undefined) {
+              setAutoAdvance(cfg.autoAdvance);
+              try { localStorage.setItem('shiftTracker_autoAdvance', String(cfg.autoAdvance)); } catch {}
+            }
+            if (cfg.sound !== undefined) {
+              setSoundEnabled(cfg.sound);
+              try { localStorage.setItem('shiftTracker_sound', String(cfg.sound)); } catch {}
+            }
+            if (Array.isArray(cfg.missedReasons) && cfg.missedReasons.length > 0) {
+              setCustomMissedReasons(cfg.missedReasons);
+              try { localStorage.setItem('shiftTracker_missedReasons', JSON.stringify(cfg.missedReasons)); } catch {}
+            }
+            if (cfg.keybindings) {
+              setKeybindings(cfg.keybindings);
+              try { localStorage.setItem('shiftTracker_keybindings', JSON.stringify(cfg.keybindings)); } catch {}
+            }
+          }
+        } catch (cfgErr) {
+          console.error('Error fetching shift tracker settings:', cfgErr);
+        }
+      }
+
       if (isToday) {
         // 1. Load from localStorage FIRST (instant, offline-safe)
         const local = lsGet(currentUser.uid);
@@ -975,11 +1087,19 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
           else setSetupMode(true);
           if (local.breakHistory) setBreakHistory(local.breakHistory);
           if (local.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(local.totalBreakAccumulatedMs);
-          if (local.dayType) { setDayType(local.dayType); setDayTypeNote(local.dayTypeNote || ''); }
-          else { const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' }; setDayType(dt.type); setDayTypeNote(dt.note); }
+          const marked = markedDays[selectedDate];
+          if (marked) {
+            const dt = typeof marked === 'string' ? { type: marked, note: '' } : marked;
+            setDayType(dt.type); setDayTypeNote(dt.note || '');
+          } else if (local.dayType) {
+            setDayType(local.dayType); setDayTypeNote(local.dayTypeNote || '');
+          } else {
+            const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
+            setDayType(dt.type); setDayTypeNote(dt.note || '');
+          }
         } else {
           const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
-          setDayType(dt.type); setDayTypeNote(dt.note);
+          setDayType(dt.type); setDayTypeNote(dt.note || '');
         }
         if (navigator.onLine) {
           try {
@@ -1000,25 +1120,34 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 else setSetupMode(true);
                 if (d.breakHistory) setBreakHistory(d.breakHistory);
                 if (d.totalBreakAccumulatedMs) setTotalBreakAccumulatedMs(d.totalBreakAccumulatedMs);
-                if (d.dayType) { setDayType(d.dayType); setDayTypeNote(d.dayTypeNote || ''); }
+                const marked = markedDays[selectedDate];
+                if (marked) {
+                  const dt = typeof marked === 'string' ? { type: marked, note: '' } : marked;
+                  setDayType(dt.type); setDayTypeNote(dt.note || '');
+                } else if (d.dayType) {
+                  setDayType(d.dayType); setDayTypeNote(d.dayTypeNote || '');
+                } else {
+                  const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
+                  setDayType(dt.type); setDayTypeNote(dt.note || '');
+                }
                 lsSaveByDate(currentUser.uid, selectedDate, d);
               }
             } else if (!local) {
               resetState();
               const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
-              setDayType(dt.type); setDayTypeNote(dt.note);
+              setDayType(dt.type); setDayTypeNote(dt.note || '');
             }
           } catch {
             if (!local) {
               resetState();
               const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
-              setDayType(dt.type); setDayTypeNote(dt.note);
+              setDayType(dt.type); setDayTypeNote(dt.note || '');
             }
           }
         } else if (!local) {
           resetState();
           const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
-          setDayType(dt.type); setDayTypeNote(dt.note);
+          setDayType(dt.type); setDayTypeNote(dt.note || '');
         }
         setClockStatus('idle');
         setShiftStartMs(null);
@@ -1070,7 +1199,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
   const resetState = () => {
     setTarget(Number(localStorage.getItem('shiftTracker_defaultTarget')) || 100);
-    setUnit('pieces');
+    setUnit(localStorage.getItem('shiftTracker_productionUnit') || 'pieces');
     setShiftStart(localStorage.getItem('shiftTracker_defaultStart') || '09:00');
     setShiftEnd(localStorage.getItem('shiftTracker_defaultEnd') || '17:00');
     setShiftSlots([]);
@@ -1088,6 +1217,9 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     setBreakHistory([]);
     setBreakType(null);
     setBreakNudgeLevel(0);
+    const dt = getDayTypeForDateRef.current ? getDayTypeForDateRef.current(selectedDate) : { type: 'work', note: '' };
+    setDayType(dt.type);
+    setDayTypeNote(dt.note || '');
   };
 
   // Determine default day type for a date based on weeklyOffDays and markedDays
@@ -2104,6 +2236,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     setMarkedDays(newMarked);
                     try { localStorage.setItem('shiftTracker_markedDays', JSON.stringify(newMarked)); } catch {}
                     save(blocks, { dayType: newType, dayTypeNote });
+                    saveShiftSettings({ markedDays: newMarked });
                     playSound('points');
                   }}
                   style={{
@@ -2154,6 +2287,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 setMarkedDays(newMarked);
                 try { localStorage.setItem('shiftTracker_markedDays', JSON.stringify(newMarked)); } catch {}
                 save(blocks, { dayType, dayTypeNote: note });
+                saveShiftSettings({ markedDays: newMarked });
               }}
               style={{
                 flex: 1,
@@ -2239,6 +2373,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                   setMarkedDays(newMarked);
                   try { localStorage.setItem('shiftTracker_markedDays', JSON.stringify(newMarked)); } catch {}
                   save(blocks, { dayType: 'work', dayTypeNote: '' });
+                  saveShiftSettings({ markedDays: newMarked });
                 }}
                 style={{
                   padding: '10px 20px',
@@ -3922,6 +4057,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         const val = Number(e.target.value);
                         setDefaultShiftTarget(val);
                         localStorage.setItem('shiftTracker_defaultTarget', String(val));
+                        saveShiftSettings({ defaultShiftTarget: val });
                       }}
                       style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14 }}
                     />
@@ -3935,6 +4071,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         onChange={(e) => {
                           setDefaultShiftStart(e.target.value);
                           localStorage.setItem('shiftTracker_defaultStart', e.target.value);
+                          saveShiftSettings({ defaultShiftStart: e.target.value });
                         }}
                         style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14 }}
                       />
@@ -3947,6 +4084,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         onChange={(e) => {
                           setDefaultShiftEnd(e.target.value);
                           localStorage.setItem('shiftTracker_defaultEnd', e.target.value);
+                          saveShiftSettings({ defaultShiftEnd: e.target.value });
                         }}
                         style={{ display: 'block', width: '100%', padding: 10, marginTop: 4, borderRadius: 8, border: '1px solid #CBD5E1', fontSize: 14 }}
                       />
@@ -3984,6 +4122,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                               : [...weeklyOffDays, item.day];
                             setWeeklyOffDays(newDays);
                             try { localStorage.setItem('shiftTracker_weeklyOffDays', JSON.stringify(newDays)); } catch {}
+                            saveShiftSettings({ weeklyOffDays: newDays });
                           }}
                           style={{
                             padding: '10px 4px',
@@ -4255,6 +4394,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                       const v = Number(e.target.value);
                       setMonthlyTarget(v);
                       localStorage.setItem('shiftTracker_monthlyTarget', String(v));
+                      saveShiftSettings({ monthlyTarget: v });
                     }}
                     placeholder="e.g. 2600"
                     style={{
@@ -4277,6 +4417,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         const v = Number(e.target.value);
                         setMonthlyWorkDays(v);
                         localStorage.setItem('shiftTracker_monthlyWorkDays', String(v));
+                        saveShiftSettings({ monthlyWorkDays: v });
                       }}
                       placeholder="e.g. 26"
                       style={{
@@ -4297,6 +4438,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                       onChange={(e) => {
                         setUnit(e.target.value);
                         localStorage.setItem('shiftTracker_productionUnit', e.target.value);
+                        saveShiftSettings({ productionUnit: e.target.value });
                       }}
                       placeholder="e.g. pieces"
                       style={{
