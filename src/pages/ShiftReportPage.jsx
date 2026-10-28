@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../firebase/firebase';
-import { collection, query, getDocs, orderBy, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, getDocs, getDoc, orderBy, doc, setDoc, deleteDoc } from 'firebase/firestore';
 
 // --- OFFLINE SUPPORT HELPERS ---
 const SR_HISTORY_KEY = 'shiftReport_history';
@@ -100,6 +100,12 @@ export default function ShiftReportPage({ currentUser, onBack }) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedDate, setExpandedDate] = useState(null);
+  const [markedDaysMap, setMarkedDaysMap] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('shiftTracker_markedDays')) || {}; } catch { return {}; }
+  });
+  const [weeklyOffDaysList, setWeeklyOffDaysList] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('shiftTracker_weeklyOffDays')) || [0]; } catch { return [0]; }
+  });
 
   // Offline support state
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -324,19 +330,25 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                           JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
         if (liveToday && (liveToday.date === todayStr || !liveToday.date)) {
           const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0);
-          const liveEntry = {
-            date: todayStr,
-            target: Number(liveToday.target) || 0,
-            actual: totalProducedNow,
-            blocks: liveToday.blocks || [],
-            shiftStart: liveToday.shiftStart,
-            shiftEnd: liveToday.shiftEnd,
-            unit: liveToday.unit || 'pieces',
-            totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : 0,
-            totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : 0,
-            breakHistory: liveToday.breakHistory || []
-          };
-          combinedHistory = [liveEntry, ...combinedHistory.filter(h => h.date !== todayStr)];
+          const hasAnyActivity = totalProducedNow > 0 || (liveToday.totalAccumulatedMs || 0) > 0 || (liveToday.blocks || []).some(b => b.logged);
+          // Only include today if shift has actually started (has production or timer activity)
+          if (hasAnyActivity) {
+            const liveEntry = {
+              date: todayStr,
+              target: Number(liveToday.target) || 0,
+              actual: totalProducedNow,
+              blocks: liveToday.blocks || [],
+              shiftStart: liveToday.shiftStart,
+              shiftEnd: liveToday.shiftEnd,
+              unit: liveToday.unit || 'pieces',
+              dayType: liveToday.dayType,
+              dayTypeNote: liveToday.dayTypeNote,
+              totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : 0,
+              totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : 0,
+              breakHistory: liveToday.breakHistory || []
+            };
+            combinedHistory = [liveEntry, ...combinedHistory.filter(h => h.date !== todayStr)];
+          }
         }
       } catch {}
 
@@ -361,22 +373,46 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                                 JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
               if (liveToday) {
                 const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0);
-                mergedData.unshift({
-                  date: todayStr,
-                  target: Number(liveToday.target) || 0,
-                  actual: totalProducedNow,
-                  blocks: liveToday.blocks || [],
-                  shiftStart: liveToday.shiftStart,
-                  shiftEnd: liveToday.shiftEnd,
-                  unit: liveToday.unit || 'pieces',
-                  totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : 0,
-                  totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : 0,
-                  breakHistory: liveToday.breakHistory || []
-                });
+                const hasAnyActivity = totalProducedNow > 0 || (liveToday.totalAccumulatedMs || 0) > 0 || (liveToday.blocks || []).some(b => b.logged);
+                // Only include today if shift has actually started
+                if (hasAnyActivity) {
+                  mergedData.unshift({
+                    date: todayStr,
+                    target: Number(liveToday.target) || 0,
+                    actual: totalProducedNow,
+                    blocks: liveToday.blocks || [],
+                    shiftStart: liveToday.shiftStart,
+                    shiftEnd: liveToday.shiftEnd,
+                    unit: liveToday.unit || 'pieces',
+                    dayType: liveToday.dayType,
+                    dayTypeNote: liveToday.dayTypeNote,
+                    totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : 0,
+                    totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : 0,
+                    breakHistory: liveToday.breakHistory || []
+                  });
+                }
               }
             }
             setHistory(mergedData);
             srSaveHistory(currentUser.uid, mergedData); // Cache locally
+          }
+
+          // Fetch tracker settings (markedDays & weeklyOffDays)
+          try {
+            const cfgSnap = await getDoc(doc(db, 'shiftTracker', currentUser.uid, 'settings', 'config'));
+            if (cfgSnap.exists()) {
+              const cfg = cfgSnap.data();
+              if (cfg.markedDays && typeof cfg.markedDays === 'object') {
+                setMarkedDaysMap(cfg.markedDays);
+                try { localStorage.setItem('shiftTracker_markedDays', JSON.stringify(cfg.markedDays)); } catch {}
+              }
+              if (Array.isArray(cfg.weeklyOffDays)) {
+                setWeeklyOffDaysList(cfg.weeklyOffDays);
+                try { localStorage.setItem('shiftTracker_weeklyOffDays', JSON.stringify(cfg.weeklyOffDays)); } catch {}
+              }
+            }
+          } catch (cfgErr) {
+            console.error("Failed to load shift tracker settings:", cfgErr);
           }
         } catch (err) {
           console.error("Failed to load shift history:", err);
@@ -392,6 +428,59 @@ export default function ShiftReportPage({ currentUser, onBack }) {
     // Consistent Asia/Dhaka (UTC+6) date string
     const d = new Date(Date.now() + 6 * 3600000);
     return d.toISOString().split('T')[0];
+  };
+
+  const getDayInfo = (day) => {
+    let dayType = 'work';
+    let dayTypeNote = '';
+
+    // Priority: 1. markedDays (Firestore settings, source of truth) → 2. history doc dayType → 3. weeklyOffDays
+    const marked = markedDaysMap[day.date];
+    if (marked) {
+      const dt = typeof marked === 'string' ? { type: marked, note: '' } : marked;
+      dayType = dt.type;
+      dayTypeNote = dt.note || '';
+    } else if (day.dayType) {
+      dayType = day.dayType;
+      dayTypeNote = day.dayTypeNote || '';
+    } else if (day.date) {
+      const d = new Date(day.date + 'T00:00:00');
+      if (!isNaN(d) && weeklyOffDaysList.includes(d.getDay())) {
+        dayType = 'off';
+        dayTypeNote = 'Weekly off';
+      }
+    }
+
+    const isNonWorking = dayType && dayType !== 'work';
+    const isOnlySetup = isNonWorking && (day.actual || 0) === 0;
+
+    let label = 'Work Day';
+    let icon = '💼';
+    let badgeBg = 'rgba(16,185,129,0.18)';
+    let badgeColor = '#34D399';
+    let badgeBorder = 'rgba(16,185,129,0.3)';
+
+    if (dayType === 'off') {
+      label = dayTypeNote ? `Offday (${dayTypeNote})` : 'Offday';
+      icon = '🏖️';
+      badgeBg = 'rgba(239,68,68,0.18)';
+      badgeColor = '#F87171';
+      badgeBorder = 'rgba(239,68,68,0.35)';
+    } else if (dayType === 'leave') {
+      label = dayTypeNote ? `Leave (${dayTypeNote})` : 'Leave Day';
+      icon = '🌴';
+      badgeBg = 'rgba(245,158,11,0.18)';
+      badgeColor = '#FBBF24';
+      badgeBorder = 'rgba(245,158,11,0.35)';
+    } else if (dayType === 'holiday') {
+      label = dayTypeNote ? `Holiday (${dayTypeNote})` : 'Holiday';
+      icon = '🎉';
+      badgeBg = 'rgba(99,102,241,0.18)';
+      badgeColor = '#818CF8';
+      badgeBorder = 'rgba(99,102,241,0.35)';
+    }
+
+    return { dayType: dayType || 'work', dayTypeNote, isNonWorking, isOnlySetup, label, icon, badgeBg, badgeColor, badgeBorder };
   };
 
   const getFilteredData = () => {
@@ -449,19 +538,21 @@ export default function ShiftReportPage({ currentUser, onBack }) {
       [''],
       [div],
       ['--- DAILY BREAKDOWN ---'],
-      ['Date', 'Target', 'Actual', 'Completion %', 'Work Time', 'Break Time', 'Efficiency', 'Blocks Detail']
+      ['Date', 'Day Type', 'Target', 'Actual', 'Completion %', 'Work Time', 'Break Time', 'Efficiency', 'Blocks Detail']
     ];
     
     filteredData.forEach(day => {
+      const dayInfo = getDayInfo(day);
       const blocksText = (day.blocks || []).map(b => `${b.start}-${b.end}: ${b.actual}/${Math.round(b.target)}`).join(' | ');
       const pct = day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0;
       const efficiency = day.totalShiftSec > 0 ? ((day.actual / (day.totalShiftSec / 3600)).toFixed(1) + ' / hr') : 'N/A';
       
       rows.push([
         day.date,
+        dayInfo.label,
         day.target,
         day.actual,
-        `${pct}%`,
+        dayInfo.isOnlySetup ? `${dayInfo.label}` : `${pct}%`,
         formatHrs(day.totalShiftSec || 0),
         formatHrs(day.totalBreakSec || 0),
         efficiency,
@@ -535,27 +626,29 @@ export default function ShiftReportPage({ currentUser, onBack }) {
       XLSX.utils.book_append_sheet(wb, summarySheet, 'Summary');
       
       // -- DAILY SHEET --
-      const dailyHeaders = ['Date', 'Target', 'Actual', 'Completion %', 'Efficiency', 'Work Time', 'Break Time'].map(h => ({ v: h, s: headerStyle }));
+      const dailyHeaders = ['Date', 'Day Type', 'Target', 'Actual', 'Completion %', 'Efficiency', 'Work Time', 'Break Time'].map(h => ({ v: h, s: headerStyle }));
       const dailyRows = filteredData.map(day => {
+        const dayInfo = getDayInfo(day);
         const pct = day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0;
         const efficiency = day.totalShiftSec > 0 ? ((day.actual / (day.totalShiftSec / 3600)).toFixed(1) + '/hr') : 'N/A';
         return [
           { v: day.date, s: dataStyle },
+          { v: dayInfo.label, s: dataStyle },
           { v: day.target, s: dataStyle },
           { v: day.actual, s: dataStyle },
-          { v: `${pct}%`, s: dataStyle },
+          { v: dayInfo.isOnlySetup ? dayInfo.label : `${pct}%`, s: dataStyle },
           { v: efficiency, s: dataStyle },
           { v: formatHrs(day.totalShiftSec || 0), s: dataStyle },
           { v: formatHrs(day.totalBreakSec || 0), s: dataStyle }
         ];
       });
       const dailySheet = XLSX.utils.aoa_to_sheet([
-        [{ v: 'DAILY PRODUCTION REPORT', s: titleStyle }, '', '', '', '', '', ''],
-        ['', '', '', '', '', '', ''],
+        [{ v: 'DAILY PRODUCTION REPORT', s: titleStyle }, '', '', '', '', '', '', ''],
+        ['', '', '', '', '', '', '', ''],
         dailyHeaders, 
         ...dailyRows
       ]);
-      dailySheet['!cols'] = [{ wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+      dailySheet['!cols'] = [{ wch: 15 }, { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, dailySheet, 'Daily Report');
       
       // -- INDIVIDUAL DAILY SHEETS --
@@ -735,6 +828,7 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                const dayNumMonth = isNaN(dateObj) ? day.date : dateObj.toLocaleDateString(undefined, { day: '2-digit', month: 'short' });
                const pct = day.target > 0 ? Math.round((day.actual / day.target) * 100) : 0;
                const diff = (day.actual || 0) - (day.target || 0);
+               const dayInfo = getDayInfo(day);
 
                return (
                  <div key={idx} style={{ flexShrink: 0, background: isExpanded ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)', border: isExpanded ? '1px solid rgba(14,165,233,0.4)' : '1px solid rgba(255,255,255,0.04)', borderRadius: 14, overflow: 'hidden', transition: 'all 0.2s' }}>
@@ -748,27 +842,45 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                          <div style={{ fontSize: 13, fontWeight: 800, color: '#F8FAFC' }}>{dayNumMonth}</div>
                        </div>
                        <div style={{ minWidth: 0 }}>
-                         <div style={{ fontSize: 13, fontWeight: 700, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 6 }}>
-                           <span>{day.actual} {day.unit || 'pcs'}</span>
-                           <span style={{ fontSize: 11, fontWeight: 600, color: diff >= 0 ? '#34D399' : '#F87171' }}>
-                             ({diff >= 0 ? `+${diff}` : `${diff}`})
-                           </span>
-                         </div>
-                         <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
-                           Target: {day.target} {day.unit || 'pcs'}
-                         </div>
+                         {dayInfo.isOnlySetup ? (
+                           <div>
+                             <div style={{ fontSize: 13, fontWeight: 700, color: dayInfo.badgeColor, display: 'flex', alignItems: 'center', gap: 6 }}>
+                               <span>{dayInfo.icon} {dayInfo.label}</span>
+                             </div>
+                             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+                               Setup day • No work logged (0 {day.unit || 'pcs'})
+                             </div>
+                           </div>
+                         ) : (
+                           <div>
+                             <div style={{ fontSize: 13, fontWeight: 700, color: '#F8FAFC', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                               <span>{day.actual} {day.unit || 'pcs'}</span>
+                               <span style={{ fontSize: 11, fontWeight: 600, color: diff >= 0 ? '#34D399' : '#F87171' }}>
+                                 ({diff >= 0 ? `+${diff}` : `${diff}`})
+                               </span>
+                               {dayInfo.isNonWorking && (
+                                 <span style={{ fontSize: 10, fontWeight: 700, background: dayInfo.badgeBg, color: dayInfo.badgeColor, border: `1px solid ${dayInfo.badgeBorder}`, padding: '1px 6px', borderRadius: 6 }}>
+                                   {dayInfo.icon} {dayInfo.label}
+                                 </span>
+                               )}
+                             </div>
+                             <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+                               Target: {day.target} {day.unit || 'pcs'}
+                             </div>
+                           </div>
+                         )}
                        </div>
                      </div>
 
                      {/* Right: Completion status badge + Expand caret */}
                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                        <div style={{
-                         background: isSuccess ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.15)',
-                         color: isSuccess ? '#34D399' : '#F87171',
-                         border: `1px solid ${isSuccess ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                         background: dayInfo.isOnlySetup ? dayInfo.badgeBg : (isSuccess ? 'rgba(16,185,129,0.18)' : 'rgba(239,68,68,0.15)'),
+                         color: dayInfo.isOnlySetup ? dayInfo.badgeColor : (isSuccess ? '#34D399' : '#F87171'),
+                         border: `1px solid ${dayInfo.isOnlySetup ? dayInfo.badgeBorder : (isSuccess ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)')}`,
                          padding: '4px 10px', borderRadius: 10, fontSize: 11, fontWeight: 800, textAlign: 'center'
                        }}>
-                         {pct}%
+                         {dayInfo.isOnlySetup ? `${dayInfo.icon} ${dayInfo.label}` : `${pct}%`}
                        </div>
                        <div style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94A3B8' }}>
                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)', transition: '0.2s' }}>
