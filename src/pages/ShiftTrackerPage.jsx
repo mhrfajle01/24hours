@@ -1412,16 +1412,14 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       let nb = blocks.map(b => ({ ...b }));
       if (nb.length > 0 && newStartMin < oldStartMin) {
         const firstBlockStart = timeToMinutes(nb[0].start);
-        const addUpTo = Math.min(firstBlockStart, oldStartMin);
-        if (newStartMin < addUpTo) {
+        if (newStartMin < firstBlockStart) {
           let curMin = newStartMin;
-          let blockId = Math.max(0, ...nb.map(b => b.id)) + 1;
           const firstShiftLabel = nb[0].shiftLabel || '';
           const newBlocks = [];
-          while (curMin < addUpTo) {
-            const bEndMin = Math.min(curMin + blockLen, addUpTo);
+          while (curMin < firstBlockStart) {
+            const bEndMin = Math.min(curMin + blockLen, firstBlockStart);
             newBlocks.push({
-              id: blockId++,
+              id: 0,
               start: minsToTime(curMin),
               end: minsToTime(bEndMin),
               shiftLabel: firstShiftLabel,
@@ -1430,8 +1428,11 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
             curMin = bEndMin;
           }
           nb = [...newBlocks, ...nb];
+        } else if (!nb[0].logged && !nb[0].isBreak) {
+          nb[0] = { ...nb[0], start: newStart };
         }
       }
+      nb = nb.map((b, idx) => ({ ...b, id: idx }));
       recalcTargets(nb, target, breakHistory);
       targetBlocks = nb;
       setBlocks(nb);
@@ -3794,16 +3795,14 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                   // Handle start time change — add blocks before existing start if extending earlier
                   if (newStartMin < oldStartMin && nb.length > 0) {
                     const firstBlockStart = timeToMinutes(nb[0].start);
-                    const addUpTo = Math.min(firstBlockStart, oldStartMin);
-                    if (newStartMin < addUpTo) {
+                    if (newStartMin < firstBlockStart) {
                       let curMin = newStartMin;
-                      let blockId = Math.max(0, ...nb.map(b => b.id)) + 1;
                       const firstShiftLabel = nb[0].shiftLabel || '';
                       const newBlocks = [];
-                      while (curMin < addUpTo) {
-                        const bEndMin = Math.min(curMin + blockLen, addUpTo);
+                      while (curMin < firstBlockStart) {
+                        const bEndMin = Math.min(curMin + blockLen, firstBlockStart);
                         newBlocks.push({
-                          id: blockId++,
+                          id: 0,
                           start: minsToTime(curMin),
                           end: minsToTime(bEndMin),
                           shiftLabel: firstShiftLabel,
@@ -3812,6 +3811,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         curMin = bEndMin;
                       }
                       nb = [...newBlocks, ...nb];
+                    } else if (newStartMin < oldStartMin && !nb[0].logged && !nb[0].isBreak) {
+                      nb[0] = { ...nb[0], start: newStart };
                     }
                   } else if (newStartMin > oldStartMin && nb.length > 0) {
                     // Shrink from the start — remove unlogged blocks that end at or before the new start time
@@ -3833,15 +3834,13 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     // Extend: add new work blocks from old end to new end
                     const lastBlock = nb[nb.length - 1];
                     const lastBlockEnd = timeToMinutes(lastBlock.end);
-                    const startFrom = Math.max(lastBlockEnd, oldEndMin);
-                    if (newEndMin > startFrom) {
-                      let curMin = startFrom;
-                      let blockId = Math.max(0, ...nb.map(b => b.id)) + 1;
+                    if (newEndMin > lastBlockEnd) {
+                      let curMin = lastBlockEnd;
                       const lastShiftLabel = lastBlock.shiftLabel || '';
                       while (curMin < newEndMin) {
                         const bEndMin = Math.min(curMin + blockLen, newEndMin);
                         nb.push({
-                          id: blockId++,
+                          id: 0,
                           start: minsToTime(curMin),
                           end: minsToTime(bEndMin),
                           shiftLabel: lastShiftLabel,
@@ -3849,6 +3848,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         });
                         curMin = bEndMin;
                       }
+                    } else if (!lastBlock.logged && !lastBlock.isBreak) {
+                      nb[nb.length - 1] = { ...lastBlock, end: newEnd };
                     }
                   } else if (newEndMin < oldEndMin && nb.length > 0) {
                     // Shrink: remove unlogged blocks that start at or after the new end time
@@ -3865,6 +3866,9 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                       }
                     }
                   }
+
+                  // Re-index all blocks cleanly so block IDs match array indices exactly
+                  nb = nb.map((b, idx) => ({ ...b, id: idx }));
 
                   recalcTargets(nb, newTarget, breakHistory);
                   setBlocks(nb);

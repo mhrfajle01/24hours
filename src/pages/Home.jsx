@@ -97,16 +97,18 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     const loadAdminRole = async () => {
-      if (!auth.currentUser) {
+      // Use auth.currentUser if available, or fallback to currentUser from auth state
+      const user = auth.currentUser || currentUser;
+      if (!user?.uid) {
         setIsAdmin(false);
         return;
       }
-      if (auth.currentUser.email?.toLowerCase() === PRIMARY_ADMIN_EMAIL) {
+      if (user.email?.toLowerCase() === PRIMARY_ADMIN_EMAIL) {
         setIsAdmin(true);
         return;
       }
       const configuredAdmin = import.meta.env.VITE_ADMIN_UID;
-      if (configuredAdmin && auth.currentUser.uid === configuredAdmin) {
+      if (configuredAdmin && user.uid === configuredAdmin) {
         setIsAdmin(true);
         return;
       }
@@ -118,7 +120,7 @@ export default function Home() {
         }
       } catch {}
       try {
-        const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
+        const userSnap = await getDoc(doc(db, 'users', user.uid));
         const role = userSnap.exists() && userSnap.data().role === 'admin';
         if (!cancelled) setIsAdmin(role);
         try { sessionStorage.setItem('hourlog_admin_role', role ? 'admin' : ''); } catch {}
@@ -129,7 +131,61 @@ export default function Home() {
     };
     loadAdminRole();
     return () => { cancelled = true; };
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, currentUser?.email]);
+
+  useEffect(() => {
+    let previousUid = null;
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const userInfo = { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL };
+        // Update state immediately BEFORE any Firestore writes
+        setCurrentUser(userInfo);
+        setAuthLoading(false);
+
+        // Cache user info for instant next load
+        try {
+          localStorage.setItem('hourlog_cached_user', JSON.stringify(userInfo));
+        } catch {}
+
+        // Fire-and-forget: update user doc in background (non-blocking)
+        setDoc(doc(db, 'users', user.uid), {
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || '',
+          lastSeenAt: serverTimestamp(),
+        }, { merge: true }).catch(() => {});
+        
+        // Only reset route/page state on a fresh login (user changed), not on page refresh
+        if (previousUid !== null && previousUid !== user.uid) {
+          if (window.location.pathname !== '/') {
+            window.history.replaceState({}, '', '/');
+          }
+          setIsAdminOpen(false);
+          setIsFeatureHubOpen(false);
+          setIsJournalOpen(false);
+          setIsStreaksOpen(false);
+          setIsStoriesOpen(false);
+          setIsWalletOpen(false);
+          setIsVirtualIslandOpen(false);
+          setIsInsightsOpen(false);
+          setActiveModal(null);
+        }
+        previousUid = user.uid;
+      } else {
+        try {
+          localStorage.removeItem('hourlog_cached_user');
+          sessionStorage.removeItem('hourlog_admin_role');
+        } catch {}
+        previousUid = null;
+        setCurrentUser(null);
+        setIsAdmin(false);
+        setAuthLoading(false);
+      }
+    });
+    return () => {
+      unsub();
+    };
+  }, []);
 
   useEffect(() => {
     if (!currentUser?.uid) return undefined;
@@ -437,65 +493,6 @@ export default function Home() {
       showToast('Failed to resolve timing blocks.', 'danger');
     }
   };
-
-  useEffect(() => {
-    // Fast auth resolution — show login page within 300ms if no session exists
-    const authTimeout = setTimeout(() => {
-      setAuthLoading(false);
-    }, 300);
-
-    let previousUid = null;
-    const unsub = onAuthStateChanged(auth, (user) => {
-      clearTimeout(authTimeout);
-      if (user) {
-        const userInfo = { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL };
-        // Update state immediately BEFORE any Firestore writes
-        setCurrentUser(userInfo);
-        setAuthLoading(false);
-
-        // Cache user info for instant next load
-        try {
-          localStorage.setItem('hourlog_cached_user', JSON.stringify(userInfo));
-        } catch {}
-
-        // Fire-and-forget: update user doc in background (non-blocking)
-        setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email || '',
-          displayName: user.displayName || '',
-          lastSeenAt: serverTimestamp(),
-        }, { merge: true }).catch(() => {});
-        
-        // Only reset route/page state on a fresh login (user changed), not on page refresh
-        if (previousUid !== null && previousUid !== user.uid) {
-          if (window.location.pathname !== '/') {
-            window.history.replaceState({}, '', '/');
-          }
-          setIsAdminOpen(false);
-          setIsFeatureHubOpen(false);
-          setIsJournalOpen(false);
-          setIsStreaksOpen(false);
-          setIsStoriesOpen(false);
-          setIsWalletOpen(false);
-          setIsVirtualIslandOpen(false);
-          setIsInsightsOpen(false);
-          setActiveModal(null);
-        }
-        previousUid = user.uid;
-      } else {
-        try {
-          localStorage.removeItem('hourlog_cached_user');
-        } catch {}
-        previousUid = null;
-        setCurrentUser(null);
-        setAuthLoading(false);
-      }
-    });
-    return () => {
-      unsub();
-      clearTimeout(authTimeout);
-    };
-  }, []);
 
   useEffect(() => {
     // Listen to foreground FCM messages
