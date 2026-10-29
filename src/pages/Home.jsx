@@ -78,13 +78,15 @@ export default function Home() {
     }
     try {
       const cached = localStorage.getItem('hourlog_cached_user');
-      return cached ? JSON.parse(cached) : null;
-    } catch {
-      return null;
-    }
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return null;
   });
   const [authLoading, setAuthLoading] = useState(() => {
+    // If Firebase already resolved the user synchronously, no loading needed
     if (auth.currentUser) return false;
+    // If we have a cached user from localStorage, show the app instantly
+    // (onAuthStateChanged will correct if the session expired)
     try {
       if (localStorage.getItem('hourlog_cached_user')) return false;
     } catch {}
@@ -108,9 +110,18 @@ export default function Home() {
         setIsAdmin(true);
         return;
       }
+      // Check cached admin role first for speed, then verify from Firestore
+      try {
+        const cachedRole = sessionStorage.getItem('hourlog_admin_role');
+        if (cachedRole === 'admin') {
+          if (!cancelled) setIsAdmin(true);
+        }
+      } catch {}
       try {
         const userSnap = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        if (!cancelled) setIsAdmin(userSnap.exists() && userSnap.data().role === 'admin');
+        const role = userSnap.exists() && userSnap.data().role === 'admin';
+        if (!cancelled) setIsAdmin(role);
+        try { sessionStorage.setItem('hourlog_admin_role', role ? 'admin' : ''); } catch {}
       } catch (error) {
         console.error('Unable to verify administrator role:', error);
         if (!cancelled) setIsAdmin(false);
@@ -428,21 +439,26 @@ export default function Home() {
   };
 
   useEffect(() => {
-    // When cache is cleared, auth.currentUser is initially null until Firebase parses IndexedDB.
-    // Ensure loading spinner clears within 800ms max so login page displays promptly.
+    // Fast auth resolution — show login page within 300ms if no session exists
     const authTimeout = setTimeout(() => {
       setAuthLoading(false);
-    }, 800);
+    }, 300);
 
     let previousUid = null;
     const unsub = onAuthStateChanged(auth, (user) => {
       clearTimeout(authTimeout);
       if (user) {
         const userInfo = { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL };
+        // Update state immediately BEFORE any Firestore writes
+        setCurrentUser(userInfo);
+        setAuthLoading(false);
+
+        // Cache user info for instant next load
         try {
           localStorage.setItem('hourlog_cached_user', JSON.stringify(userInfo));
         } catch {}
 
+        // Fire-and-forget: update user doc in background (non-blocking)
         setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
           email: user.email || '',
@@ -471,13 +487,9 @@ export default function Home() {
           localStorage.removeItem('hourlog_cached_user');
         } catch {}
         previousUid = null;
+        setCurrentUser(null);
+        setAuthLoading(false);
       }
-      setCurrentUser(
-        user
-          ? { uid: user.uid, email: user.email, displayName: user.displayName, photoURL: user.photoURL }
-          : null
-      );
-      setAuthLoading(false);
     });
     return () => {
       unsub();

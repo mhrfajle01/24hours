@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { initializeFirestore, getFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 // Firebase configuration provided by the user
@@ -15,13 +15,19 @@ const firebaseConfig = {
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 
-// Initialize Firestore with Persistent Cache (Offline and Caching support)
-// This will locally cache data to speed up reads and reduce Firestore costs
-const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager()
-  })
-});
+// Initialize Firestore with Persistent Cache, falling back gracefully
+// if IndexedDB is unavailable (e.g. after browser data clear or private browsing)
+let db;
+try {
+  db = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+} catch (e) {
+  console.warn('Persistent cache init failed, using default Firestore:', e.message);
+  db = getFirestore(app);
+}
 
 import { getMessaging } from "firebase/messaging";
 
