@@ -329,7 +329,7 @@ export default function ShiftReportPage({ currentUser, onBack }) {
         const liveToday = JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}_${todayStr}`)) ||
                           JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
         if (liveToday && (liveToday.date === todayStr || !liveToday.date)) {
-          const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0);
+          const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0) || (Number(liveToday.actual) || 0);
           const hasAnyActivity = totalProducedNow > 0 || (liveToday.totalAccumulatedMs || 0) > 0 || (liveToday.blocks || []).some(b => b.logged);
           // Only include today if shift has actually started (has production or timer activity)
           if (hasAnyActivity) {
@@ -343,8 +343,8 @@ export default function ShiftReportPage({ currentUser, onBack }) {
               unit: liveToday.unit || 'pieces',
               dayType: liveToday.dayType,
               dayTypeNote: liveToday.dayTypeNote,
-              totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : 0,
-              totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : 0,
+              totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : (liveToday.totalShiftSec || 0),
+              totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : (liveToday.totalBreakSec || 0),
               breakHistory: liveToday.breakHistory || []
             };
             combinedHistory = [liveEntry, ...combinedHistory.filter(h => h.date !== todayStr)];
@@ -366,31 +366,28 @@ export default function ShiftReportPage({ currentUser, onBack }) {
           if (data.length > 0) {
             // Also merge any today's live entry if not yet committed to history collection
             const todayStr = getTodayDateStr();
-            const hasTodayInRemote = data.some(d => d.date === todayStr);
+            const liveToday = JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}_${todayStr}`)) ||
+                              JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
             let mergedData = [...data];
-            if (!hasTodayInRemote) {
-              const liveToday = JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}_${todayStr}`)) ||
-                                JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
-              if (liveToday) {
-                const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0);
-                const hasAnyActivity = totalProducedNow > 0 || (liveToday.totalAccumulatedMs || 0) > 0 || (liveToday.blocks || []).some(b => b.logged);
-                // Only include today if shift has actually started
-                if (hasAnyActivity) {
-                  mergedData.unshift({
-                    date: todayStr,
-                    target: Number(liveToday.target) || 0,
-                    actual: totalProducedNow,
-                    blocks: liveToday.blocks || [],
-                    shiftStart: liveToday.shiftStart,
-                    shiftEnd: liveToday.shiftEnd,
-                    unit: liveToday.unit || 'pieces',
-                    dayType: liveToday.dayType,
-                    dayTypeNote: liveToday.dayTypeNote,
-                    totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : 0,
-                    totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : 0,
-                    breakHistory: liveToday.breakHistory || []
-                  });
-                }
+            if (liveToday) {
+              const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0) || (Number(liveToday.actual) || 0);
+              const hasAnyActivity = totalProducedNow > 0 || (liveToday.totalAccumulatedMs || 0) > 0 || (liveToday.blocks || []).some(b => b.logged);
+              if (hasAnyActivity) {
+                const liveEntry = {
+                  date: todayStr,
+                  target: Number(liveToday.target) || 0,
+                  actual: totalProducedNow,
+                  blocks: liveToday.blocks || [],
+                  shiftStart: liveToday.shiftStart,
+                  shiftEnd: liveToday.shiftEnd,
+                  unit: liveToday.unit || 'pieces',
+                  dayType: liveToday.dayType,
+                  dayTypeNote: liveToday.dayTypeNote,
+                  totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : (liveToday.totalShiftSec || 0),
+                  totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : (liveToday.totalBreakSec || 0),
+                  breakHistory: liveToday.breakHistory || []
+                };
+                mergedData = [liveEntry, ...mergedData.filter(d => d.date !== todayStr)];
               }
             }
             setHistory(mergedData);

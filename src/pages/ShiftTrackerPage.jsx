@@ -1287,6 +1287,24 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     }
     lsSaveByDate(currentUser.uid, selectedDate, historyDoc);
 
+    // Sync to Shift Report history cache immediately so Shift Report 30-day filter updates dynamically
+    try {
+      const sKey = `shiftReport_history_${currentUser.uid}`;
+      const existingSrHist = JSON.parse(localStorage.getItem(sKey)) || [];
+      const updatedSrHist = [historyDoc, ...existingSrHist.filter(h => h.date !== selectedDate)]
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+      localStorage.setItem(sKey, JSON.stringify(updatedSrHist));
+    } catch {}
+
+    // Update monthly history in-memory if in current month
+    setMonthlyHistory(prev => {
+      const exists = prev.some(h => h.date === selectedDate);
+      if (exists) {
+        return prev.map(h => h.date === selectedDate ? { ...h, ...historyDoc } : h);
+      }
+      return [...prev, historyDoc];
+    });
+
     // 2. Queue for Firestore sync
     queueSync(currentUser.uid, todayDoc, historyDoc, selectedDate);
 
@@ -1944,8 +1962,9 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
   // --- PHASE 2: PRODUCTION ENGINE METRICS (Dynamic Targets & Run-Rate) ---
   const productionMetrics = (() => {
-    // Total produced so far this month
-    const totalMonthProduced = monthlyHistory.reduce((sum, item) => sum + (Number(item.actual) || Number(item.docsCount) || 0), 0) + (isToday ? totalProduced : 0);
+    // Total produced so far this month (exclude selectedDate/today from history to avoid double-counting)
+    const historyWithoutSelected = monthlyHistory.filter(item => item.date !== selectedDate);
+    const totalMonthProduced = historyWithoutSelected.reduce((sum, item) => sum + (Number(item.actual) || Number(item.docsCount) || 0), 0) + totalProduced;
     const mTarget = Math.max(1, monthlyTarget);
 
     // Calculate days passed and remaining working days in current month with Offday/Leave/Holiday awareness
@@ -2001,7 +2020,11 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
     const effectiveTotalWorkDays = Math.max(1, totalScheduledWorkDays || monthlyWorkDays);
     const workDaysPassed = Math.max(1, actualWorkDaysPassed);
-    const workDaysRemaining = Math.max(1, (dayType === 'work' ? 0 : 0) + actualWorkDaysRemaining + (dayType === 'work' ? 1 : 0));
+    // If today is a workday and production has already started / blocks exist, today is being worked.
+    // Remaining future workdays after today is actualWorkDaysRemaining. If today is work and has remaining target, include today if shift not finished.
+    const isTodayWork = dayType === 'work';
+    const hasTodayWorkRemaining = isTodayWork && totalProduced < (Number(target) || 0);
+    const workDaysRemaining = Math.max(1, actualWorkDaysRemaining + (hasTodayWorkRemaining ? 1 : (actualWorkDaysRemaining === 0 ? 1 : 0)));
 
     const monthProgressPct = Math.min(100, Math.round((totalMonthProduced / mTarget) * 100));
 
