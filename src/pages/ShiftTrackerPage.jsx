@@ -698,6 +698,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
   // Custom Modal State
   const [customAlert, setCustomAlert] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null });
+  const [lateClockInPrompt, setLateClockInPrompt] = useState({ isOpen: false, customTime: '' });
+  const [runningBlockInputs, setRunningBlockInputs] = useState({});
   const shiftEndPromptedRef = useRef(false);
   // ----------------------------------------------
 
@@ -1456,13 +1458,14 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       setBlocks(nb);
     }
 
+    const startMs = opts.clockInMs || Date.now();
     setClockStatus('active');
-    setShiftStartMs(Date.now());
+    setShiftStartMs(startMs);
     shiftEndPromptedRef.current = false;
     playSound('success');
     save(targetBlocks, {
       clockStatus: 'active',
-      shiftStartMs: Date.now(),
+      shiftStartMs: startMs,
       shiftStart: targetStart,
       shiftSlots: targetSlots
     });
@@ -1505,6 +1508,15 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
           performClockIn();
           setCustomAlert({ isOpen: false });
         }
+      });
+      return;
+    }
+
+    // Check if user is clocking in late (e.g. >= 2 mins after scheduled shift start)
+    if (effectiveShiftStart && nowMin > startMinutes + 1) {
+      setLateClockInPrompt({
+        isOpen: true,
+        customTime: effectiveShiftStart
       });
       return;
     }
@@ -2794,24 +2806,174 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     </div>
 
                     {/* Current Block Remaining (if actively in a 30m / 60m work block) */}
-                    {currentBlock && !currentBlock.isBreak && (
-                      <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        background: '#FAF5FF',
-                        borderRadius: 12,
-                        padding: '6px 12px',
-                        border: '1px solid #E9D5FF'
-                      }}>
-                        <div style={{ fontSize: 11, fontWeight: 700, color: '#7E22CE' }}>
-                          🎯 Current Block ({fmt12h(currentBlock.start)} – {fmt12h(currentBlock.end)})
+                    {currentBlock && !currentBlock.isBreak && (() => {
+                      const blkId = currentBlock.id;
+                      const runningTotal = runningBlockInputs[blkId] ?? '';
+                      const totalProdNum = parseFloat(runningTotal) || 0;
+                      const hasInput = runningTotal !== '';
+
+                      // Calculate sum of actuals from prior blocks
+                      const priorTotal = blocks
+                        .filter(b => b.id < blkId && !b.isBreak)
+                        .reduce((sum, b) => sum + (parseFloat(b.actual) || 0), 0);
+
+                      // Current block's production is Total - Prior logged
+                      const currentBlockVal = hasInput ? Math.max(0, Math.round((totalProdNum - priorTotal) * 10) / 10) : 0;
+                      const blkTarget = currentBlock.target || 0;
+                      const diff = Math.round((blkTarget - currentBlockVal) * 10) / 10;
+                      const pct = blkTarget > 0 ? Math.min(100, Math.round((currentBlockVal / blkTarget) * 100)) : 0;
+
+                      let cheer = '';
+                      let cheerColor = '#7E22CE';
+                      if (hasInput) {
+                        if (diff <= 0) {
+                          cheer = `🎉 Goal reached! +${Math.abs(diff)} bonus. Amazing!`;
+                          cheerColor = '#16A34A';
+                        } else if (pct >= 75) {
+                          cheer = `🔥 So close! Just ${diff} more to hit block target!`;
+                          cheerColor = '#EA580C';
+                        } else if (pct >= 50) {
+                          cheer = `💪 Halfway there! Keep that flow going!`;
+                          cheerColor = '#2563EB';
+                        } else {
+                          cheer = `🚀 Steady rhythm! ${diff} remaining in this block.`;
+                          cheerColor = '#7E22CE';
+                        }
+                      }
+
+                      return (
+                        <div style={{
+                          background: '#FAF5FF',
+                          borderRadius: 14,
+                          padding: '10px 12px',
+                          border: '1px solid #E9D5FF',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 8
+                        }}>
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                          }}>
+                            <div style={{ fontSize: 11, fontWeight: 700, color: '#7E22CE' }}>
+                              🎯 Current Block ({fmt12h(currentBlock.start)} – {fmt12h(currentBlock.end)})
+                            </div>
+                            <div style={{ fontSize: 12, fontWeight: 800, color: '#6B21A8', fontVariantNumeric: 'tabular-nums' }}>
+                              {formatStopwatch(timingInfo.currentBlockRemainingSec)} left
+                            </div>
+                          </div>
+
+                          {/* Total Production Input & Auto-calculated Current Block */}
+                          <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            background: '#fff',
+                            padding: '6px 10px',
+                            borderRadius: 10,
+                            border: '1px solid #F3E8FF'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>Total Prod:</span>
+                              <input
+                                type="number"
+                                placeholder={priorTotal > 0 ? String(priorTotal) : "0"}
+                                value={runningTotal}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setRunningBlockInputs(prev => ({ ...prev, [blkId]: val }));
+                                }}
+                                style={{
+                                  width: 65,
+                                  padding: '4px 6px',
+                                  fontSize: 12.5,
+                                  fontWeight: 800,
+                                  color: '#0F172A',
+                                  border: '1px solid #CBD5E1',
+                                  borderRadius: 6,
+                                  textAlign: 'center',
+                                  outline: 'none'
+                                }}
+                              />
+                              <div style={{ display: 'flex', gap: 3 }}>
+                                {[1, 5].map(step => (
+                                  <button
+                                    key={step}
+                                    type="button"
+                                    onClick={() => {
+                                      setRunningBlockInputs(prev => {
+                                        const cur = prev[blkId] !== undefined && prev[blkId] !== ''
+                                          ? parseFloat(prev[blkId]) || 0
+                                          : priorTotal;
+                                        return { ...prev, [blkId]: String(cur + step) };
+                                      });
+                                    }}
+                                    style={{
+                                      padding: '2px 5px',
+                                      fontSize: 10.5,
+                                      fontWeight: 700,
+                                      background: '#EDE9FE',
+                                      color: '#6D28D9',
+                                      border: 'none',
+                                      borderRadius: 4,
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    +{step}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: '#6B21A8' }}>
+                                Block: <span style={{ fontSize: 12.5, color: '#0F172A' }}>{hasInput ? currentBlockVal : '—'}</span> / {blkTarget}
+                              </div>
+                              {hasInput && (
+                                <div style={{
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                  color: diff <= 0 ? '#16A34A' : '#DC2626'
+                                }}>
+                                  {diff <= 0 ? `+${Math.abs(diff)} surplus` : `${diff} remaining`}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Progress bar and cheer message */}
+                          {hasInput && (
+                            <div>
+                              <div style={{
+                                height: 5,
+                                background: '#E2E8F0',
+                                borderRadius: 99,
+                                overflow: 'hidden',
+                                marginBottom: 4
+                              }}>
+                                <div style={{
+                                  height: '100%',
+                                  width: `${pct}%`,
+                                  background: diff <= 0 ? '#22C55E' : '#A855F7',
+                                  borderRadius: 99,
+                                  transition: 'width 0.3s ease'
+                                }} />
+                              </div>
+                              <div style={{
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: cheerColor,
+                                textAlign: 'center'
+                              }}>
+                                {cheer}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: '#6B21A8', fontVariantNumeric: 'tabular-nums' }}>
-                          {formatStopwatch(timingInfo.currentBlockRemainingSec)} left
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </motion.div>
                 )}
 
@@ -4559,6 +4721,133 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 >
                   Close
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        {/* Late Clock-in / Match Shift Modal */}
+        {lateClockInPrompt.isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              style={{
+                width: '100%', maxWidth: 440, background: '#fff', borderRadius: 20,
+                padding: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.25)', border: '1px solid #E2E8F0'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 24 }}>⏰</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0F172A' }}>
+                    Forgot to Clock In on Time?
+                  </h3>
+                  <div style={{ fontSize: 12, color: '#64748B' }}>
+                    Shift was scheduled for {fmt12h(effectiveShiftStart)}
+                  </div>
+                </div>
+              </div>
+
+              <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, margin: '0 0 16px 0' }}>
+                Your shift started earlier. Would you like to match your clock time to the scheduled shift start, enter a custom time you started, or clock in right now?
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {/* 1. Match Scheduled Shift Time */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const [h, m] = (effectiveShiftStart || '09:00').split(':').map(Number);
+                    const d = new Date();
+                    d.setHours(h, m, 0, 0);
+                    performClockIn({ clockInMs: d.getTime() });
+                    setLateClockInPrompt({ isOpen: false, customTime: '' });
+                  }}
+                  style={{
+                    padding: '12px 14px', background: '#3B82F6', color: '#fff',
+                    border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 13.5,
+                    cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                  }}
+                >
+                  <span>⚡ Match Shift Start ({fmt12h(effectiveShiftStart)})</span>
+                  <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 99 }}>Recommended</span>
+                </button>
+
+                {/* 2. Custom Start Time */}
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 12, padding: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 8 }}>
+                    Or Enter Custom Start Time:
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      type="time"
+                      value={lateClockInPrompt.customTime}
+                      onChange={(e) => setLateClockInPrompt(p => ({ ...p, customTime: e.target.value }))}
+                      style={{
+                        flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid #CBD5E1',
+                        fontSize: 14, fontWeight: 700, color: '#0F172A', outline: 'none'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={!lateClockInPrompt.customTime}
+                      onClick={() => {
+                        const [h, m] = lateClockInPrompt.customTime.split(':').map(Number);
+                        const d = new Date();
+                        d.setHours(h, m, 0, 0);
+                        const ms = Math.min(d.getTime(), Date.now());
+                        performClockIn({ clockInMs: ms });
+                        setLateClockInPrompt({ isOpen: false, customTime: '' });
+                      }}
+                      style={{
+                        padding: '8px 14px', background: '#0F172A', color: '#fff',
+                        border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13,
+                        cursor: 'pointer', opacity: !lateClockInPrompt.customTime ? 0.5 : 1
+                      }}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Clock In Now */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      performClockIn();
+                      setLateClockInPrompt({ isOpen: false, customTime: '' });
+                    }}
+                    style={{
+                      flex: 1, padding: '10px 12px', background: '#F1F5F9', color: '#334155',
+                      border: '1px solid #E2E8F0', borderRadius: 10, fontWeight: 700, fontSize: 13,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Clock In Right Now ({fmt12h(fmtTime(now))})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLateClockInPrompt({ isOpen: false, customTime: '' })}
+                    style={{
+                      padding: '10px 14px', background: 'transparent', color: '#64748B',
+                      border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 13,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>

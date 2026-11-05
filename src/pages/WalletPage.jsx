@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { db } from '../firebase/firebase';
 import { doc, setDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
@@ -45,11 +45,34 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
   const [isSavingsFormOpen, setIsSavingsFormOpen] = useState(false);
   const [savingsForm, setSavingsForm] = useState({ id: null, name: '', targetAmount: '', category: 'monthly', note: '' });
   const [isSavingsTransferOpen, setIsSavingsTransferOpen] = useState(false);
-  const [savingsTransferForm, setSavingsTransferForm] = useState({ savingId: '', walletId: '', amount: '', type: 'deposit' });
+  const [savingsTransferForm, setSavingsTransferForm] = useState({
+    savingId: '',
+    walletId: '',
+    amount: '',
+    type: 'deposit',
+    mode: 'single', // 'single' | 'split'
+    splitAllocations: {}, // { [walletId]: amount }
+    note: ''
+  });
   const [savingsFilter, setSavingsFilter] = useState('ALL');
   const [confirmDeleteSaving, setConfirmDeleteSaving] = useState(null);
+  const [viewSavingsHistory, setViewSavingsHistory] = useState(null);
   
   // Listen for UI preference changes from Settings Modal
+  const getDistBalance = useCallback((wallet, distId) => {
+    const dist = (wallet?.distributions || []).find(d => d.id === distId);
+    if (!dist) return 0;
+    const distTxns = wallet.transactions || [];
+    const added = distTxns.reduce((sum, t) => {
+      if (t.type === 'deposit' && t.targetId === distId) return sum + t.amount;
+      if (t.type === 'transfer' && t.to === distId) return sum + t.amount;
+      if (t.type === 'transfer' && t.from === distId) return sum - t.amount;
+      return sum;
+    }, 0);
+    const spent = (dist.expenses || []).reduce((sum, e) => sum + e.amount, 0);
+    return dist.amount + added - spent;
+  }, []);
+
   useEffect(() => {
     const handleUiChange = () => setWalletUI(localStorage.getItem('wallet-ui-preference') || 'dropdown');
     window.addEventListener('wallet-ui-changed', handleUiChange);
@@ -211,21 +234,6 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
 
     if (!sourceWallet || !targetWallet) { showToast('Error locating wallets', 'danger'); return; }
 
-    // Calculate dynamic balance for a distribution
-    const getDistBalance = (wallet, distId) => {
-      const dist = (wallet.distributions || []).find(d => d.id === distId);
-      if (!dist) return 0;
-      const distTxns = wallet.transactions || [];
-      const added = distTxns.reduce((sum, t) => {
-        if (t.type === 'deposit' && t.targetId === distId) return sum + t.amount;
-        if (t.type === 'transfer' && t.to === distId) return sum + t.amount;
-        if (t.type === 'transfer' && t.from === distId) return sum - t.amount;
-        return sum;
-      }, 0);
-      const spent = (dist.expenses || []).reduce((sum, e) => sum + e.amount, 0);
-      return dist.amount + added - spent;
-    };
-
     // Check balances
     let sourceBalance = 0;
     if (fromId === 'main') sourceBalance = sourceWallet.amount;
@@ -307,57 +315,173 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
   };
 
   const handleSavingsTransfer = () => {
-    const amt = parseFloat(savingsTransferForm.amount);
-    if (isNaN(amt) || amt <= 0) { showToast('Valid amount required', 'danger'); return; }
-    if (!savingsTransferForm.walletId) { showToast('Please select a wallet', 'danger'); return; }
-
-    const walletIdx = accounts.findIndex(a => a.id === savingsTransferForm.walletId);
+    const isDeposit = savingsTransferForm.type === 'deposit';
+    const isSplit = isDeposit && savingsTransferForm.mode === 'split';
     const savingIdx = savingsList.findIndex(s => s.id === savingsTransferForm.savingId);
-    if (walletIdx === -1 || savingIdx === -1) { showToast('Account not found', 'danger'); return; }
+    if (savingIdx === -1) { showToast('Savings goal not found', 'danger'); return; }
 
+    const txNote = (savingsTransferForm.note || '').trim();
     let newAccounts = JSON.parse(JSON.stringify(accounts));
     let newSavings = JSON.parse(JSON.stringify(savingsList));
 
-    const isDeposit = savingsTransferForm.type === 'deposit';
-
-    if (isDeposit) {
-      if (amt > newAccounts[walletIdx].amount) {
-        showToast('Insufficient wallet balance', 'danger');
+    if (isSplit) {
+      // Split / Multi-Source Deposit (Wallets and Distributions)
+      const allocations = savingsTransferForm.splitAllocations || {};
+      const activeEntries = Object.entries(allocations).filter(([_, val]) => parseFloat(val) > 0);
+      if (activeEntries.length === 0) {
+        showToast('Please allocate an amount to at least one source', 'danger');
         return;
       }
-      newAccounts[walletIdx].amount -= amt;
+
+      let totalAllocated = 0;
+      const sourcesSummary = [];
+
+      for (const [compositeKey, valStr] of activeEntries) {
+        const val = parseFloat(valStr);
+        const [wId, distId] = compositeKey.includes(':') ? compositeKey.split(':') : [compositeKey, 'main'];
+        const wIdx = newAccounts.findIndex(a => a.id === wId);
+        if (wIdx === -1) continue;
+
+        let availableBal = 0;
+        let sourceLabel = '';
+        if (distId === 'main') {
+          availableBal = newAccounts[wIdx].amount;
+          sourceLabel = `${newAccounts[wIdx].name} (Main)`;
+        } else {
+          availableBal = getDistBalance(newAccounts[wIdx], distId);
+          const dObj = (newAccounts[wIdx].distributions || []).find(d => d.id === distId);
+          sourceLabel = `${newAccounts[wIdx].name} ➔ ${dObj?.name || 'Distribution'}`;
+        }
+
+        if (val > availableBal) {
+          showToast(`Insufficient balance in ${sourceLabel}`, 'danger');
+          return;
+        }
+
+        totalAllocated += val;
+        if (distId === 'main') {
+          newAccounts[wIdx].amount -= val;
+        }
+
+        newAccounts[wIdx].transactions = [{
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 4),
+          date: new Date().toISOString(),
+          amount: val,
+          type: 'transfer',
+          from: distId,
+          to: `saving:${newSavings[savingIdx].name}`,
+          note: txNote || `Transfer to Savings from ${sourceLabel}: ${newSavings[savingIdx].name}`
+        }, ...(newAccounts[wIdx].transactions || [])];
+
+        sourcesSummary.push({
+          sourceLabel,
+          amount: val
+        });
+      }
+
+      newSavings[savingIdx].currentAmount = (newSavings[savingIdx].currentAmount || 0) + totalAllocated;
+      const histEntry = {
+        id: Date.now().toString(36),
+        date: new Date().toISOString(),
+        type: 'deposit',
+        amount: totalAllocated,
+        walletName: sourcesSummary.map(s => `${s.sourceLabel} (৳${s.amount})`).join(', '),
+        note: txNote
+      };
+      newSavings[savingIdx].history = [histEntry, ...(newSavings[savingIdx].history || [])];
+
+      saveWallet(newAccounts, newSavings);
+      setSavingsList(newSavings);
+      setIsSavingsTransferOpen(false);
+      showToast(`Transferred ৳${totalAllocated.toLocaleString()} to Savings`);
+      return;
+    }
+
+    // Standard Single Wallet / Distribution Transfer
+    const amt = parseFloat(savingsTransferForm.amount);
+    if (isNaN(amt) || amt <= 0) { showToast('Valid amount required', 'danger'); return; }
+    if (!savingsTransferForm.walletId) { showToast('Please select a source', 'danger'); return; }
+
+    const [wId, distId] = savingsTransferForm.walletId.includes(':')
+      ? savingsTransferForm.walletId.split(':')
+      : [savingsTransferForm.walletId, 'main'];
+
+    const walletIdx = newAccounts.findIndex(a => a.id === wId);
+    if (walletIdx === -1) { showToast('Account not found', 'danger'); return; }
+
+    const isMain = distId === 'main';
+    const distObj = (newAccounts[walletIdx].distributions || []).find(d => d.id === distId);
+    const sourceLabel = isMain ? `${newAccounts[walletIdx].name} (Main)` : `${newAccounts[walletIdx].name} ➔ ${distObj?.name || 'Distribution'}`;
+
+    if (isDeposit) {
+      const availableBal = isMain ? newAccounts[walletIdx].amount : getDistBalance(newAccounts[walletIdx], distId);
+      if (amt > availableBal) {
+        showToast(`Insufficient balance in ${sourceLabel}`, 'danger');
+        return;
+      }
+
+      if (isMain) {
+        newAccounts[walletIdx].amount -= amt;
+      }
+
       newSavings[savingIdx].currentAmount = (newSavings[savingIdx].currentAmount || 0) + amt;
       newAccounts[walletIdx].transactions = [{
         id: Date.now().toString(36),
         date: new Date().toISOString(),
         amount: amt,
         type: 'transfer',
-        from: 'main',
+        from: distId,
         to: `saving:${newSavings[savingIdx].name}`,
-        note: `Transfer to Savings: ${newSavings[savingIdx].name}`
+        note: txNote || `Transfer to Savings from ${sourceLabel}: ${newSavings[savingIdx].name}`
       }, ...(newAccounts[walletIdx].transactions || [])];
+
+      const histEntry = {
+        id: Date.now().toString(36),
+        date: new Date().toISOString(),
+        type: 'deposit',
+        amount: amt,
+        walletId: newAccounts[walletIdx].id,
+        walletName: sourceLabel,
+        note: txNote
+      };
+      newSavings[savingIdx].history = [histEntry, ...(newSavings[savingIdx].history || [])];
     } else {
-      // Withdraw back to wallet
+      // Withdraw back to wallet or distribution
       if (amt > (newSavings[savingIdx].currentAmount || 0)) {
         showToast('Insufficient savings balance', 'danger');
         return;
       }
+
       newSavings[savingIdx].currentAmount -= amt;
-      newAccounts[walletIdx].amount += amt;
+      if (isMain) {
+        newAccounts[walletIdx].amount += amt;
+      }
+
       newAccounts[walletIdx].transactions = [{
         id: Date.now().toString(36),
         date: new Date().toISOString(),
         amount: amt,
         type: 'deposit',
-        targetId: 'main',
-        note: `Withdrawal from Savings: ${newSavings[savingIdx].name}`
+        targetId: distId,
+        note: txNote || `Withdrawal from Savings to ${sourceLabel}: ${newSavings[savingIdx].name}`
       }, ...(newAccounts[walletIdx].transactions || [])];
+
+      const histEntry = {
+        id: Date.now().toString(36),
+        date: new Date().toISOString(),
+        type: 'withdraw',
+        amount: amt,
+        walletId: newAccounts[walletIdx].id,
+        walletName: sourceLabel,
+        note: txNote
+      };
+      newSavings[savingIdx].history = [histEntry, ...(newSavings[savingIdx].history || [])];
     }
 
     saveWallet(newAccounts, newSavings);
     setSavingsList(newSavings);
     setIsSavingsTransferOpen(false);
-    showToast(isDeposit ? 'Transferred to Savings' : 'Withdrawn to Wallet');
+    showToast(isDeposit ? 'Transferred to Savings' : 'Withdrawn from Savings');
   };
 
   const handleDeleteWallet = (walletId) => {
@@ -828,6 +952,13 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
 
                       <div className="d-flex gap-1.5">
                         <button
+                          className="btn btn-sm btn-light border rounded-pill text-primary"
+                          onClick={() => setViewSavingsHistory(s)}
+                          title="View History"
+                        >
+                          <i className="bi bi-clock-history" />
+                        </button>
+                        <button
                           className="btn btn-sm btn-light border rounded-pill fw-semibold text-secondary"
                           onClick={() => {
                             setSavingsForm({ id: s.id, name: s.name, targetAmount: s.targetAmount, category: s.category || 'custom', note: s.note || '' });
@@ -1072,20 +1203,139 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                         </button>
                       </div>
                     </div>
+                    {/* Single vs Split Mode for Deposits */}
+                    {savingsTransferForm.type === 'deposit' && (
+                      <div className="d-flex gap-2">
+                        <button
+                          type="button"
+                          className={`btn btn-xs rounded-pill flex-grow-1 fw-bold border ${savingsTransferForm.mode !== 'split' ? 'btn-success text-white' : 'btn-light text-secondary'}`}
+                          onClick={() => setSavingsTransferForm(f => ({ ...f, mode: 'single' }))}
+                        >
+                          Single Wallet
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-xs rounded-pill flex-grow-1 fw-bold border ${savingsTransferForm.mode === 'split' ? 'btn-success text-white' : 'btn-light text-secondary'}`}
+                          onClick={() => setSavingsTransferForm(f => ({ ...f, mode: 'split' }))}
+                        >
+                          Split Across Wallets
+                        </button>
+                      </div>
+                    )}
+
+                    {savingsTransferForm.type === 'deposit' && savingsTransferForm.mode === 'split' ? (
+                      <div className="card border-0 bg-white p-3 rounded-3 shadow-xs">
+                        <label className="form-label fw-bold text-secondary small mb-2">Allocate from Wallets & Distributions:</label>
+                        <div className="d-flex flex-column gap-2" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                          {accounts.map(a => {
+                            const dists = a.distributions || [];
+                            return (
+                              <div key={a.id} className="border rounded-2 p-2 bg-light">
+                                <div className="d-flex align-items-center justify-content-between gap-2 mb-1.5">
+                                  <div>
+                                    <div className="fw-bold small text-dark">{a.name} (Main)</div>
+                                    <div className="text-secondary" style={{ fontSize: '0.72rem' }}>Bal: ৳{a.amount.toLocaleString()}</div>
+                                  </div>
+                                  <div style={{ width: 100 }}>
+                                    <input
+                                      type="number"
+                                      className="form-control form-control-sm rounded-2 text-end fw-bold"
+                                      placeholder="৳ 0"
+                                      value={savingsTransferForm.splitAllocations?.[`${a.id}:main`] || ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setSavingsTransferForm(f => ({
+                                          ...f,
+                                          splitAllocations: { ...f.splitAllocations, [`${a.id}:main`]: val }
+                                        }));
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {dists.length > 0 && (
+                                  <div className="d-flex flex-column gap-1 ms-2 ps-2 border-start">
+                                    {dists.map(d => {
+                                      const dBal = getDistBalance(a, d.id);
+                                      const compKey = `${a.id}:${d.id}`;
+                                      return (
+                                        <div key={d.id} className="d-flex align-items-center justify-content-between gap-2">
+                                          <div>
+                                            <div className="small text-dark fw-semibold">↳ {d.name}</div>
+                                            <div className="text-secondary" style={{ fontSize: '0.7rem' }}>Avail: ৳{dBal.toLocaleString()}</div>
+                                          </div>
+                                          <div style={{ width: 90 }}>
+                                            <input
+                                              type="number"
+                                              className="form-control form-control-sm rounded-2 text-end"
+                                              placeholder="৳ 0"
+                                              value={savingsTransferForm.splitAllocations?.[compKey] || ''}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setSavingsTransferForm(f => ({
+                                                  ...f,
+                                                  splitAllocations: { ...f.splitAllocations, [compKey]: val }
+                                                }));
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="d-flex justify-content-between align-items-center mt-2 pt-2 border-top">
+                          <span className="small fw-bold text-secondary">Total Deposit:</span>
+                          <span className="fw-bold text-success">
+                            ৳{Object.values(savingsTransferForm.splitAllocations || {}).reduce((s, v) => s + (parseFloat(v) || 0), 0).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <label className="form-label fw-bold text-secondary">
+                            {savingsTransferForm.type === 'deposit' ? 'Select Source (Wallet or Distribution)' : 'Select Target (Wallet or Distribution)'}
+                          </label>
+                          <select
+                            className="form-select rounded-3 shadow-sm border-0"
+                            value={savingsTransferForm.walletId}
+                            onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, walletId: e.target.value })}
+                          >
+                            <option value="">-- Choose Source --</option>
+                            {accounts.map(a => {
+                              const dists = a.distributions || [];
+                              return (
+                                <optgroup key={a.id} label={a.name}>
+                                  <option value={`${a.id}:main`}>
+                                    {a.name} (Main Balance: ৳{a.amount.toLocaleString()})
+                                  </option>
+                                  {dists.map(d => {
+                                    const dBal = getDistBalance(a, d.id);
+                                    return (
+                                      <option key={d.id} value={`${a.id}:${d.id}`}>
+                                        &nbsp;&nbsp;↳ {d.name} (Available: ৳{dBal.toLocaleString()})
+                                      </option>
+                                    );
+                                  })}
+                                </optgroup>
+                              );
+                            })}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="form-label fw-bold text-secondary">Amount (৳)</label>
+                          <input type="number" className="form-control rounded-3 shadow-sm border-0" placeholder="Enter amount" value={savingsTransferForm.amount} onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, amount: e.target.value })} />
+                        </div>
+                      </>
+                    )}
                     <div>
-                      <label className="form-label fw-bold text-secondary">Select Wallet</label>
-                      <select className="form-select rounded-3 shadow-sm border-0" value={savingsTransferForm.walletId} onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, walletId: e.target.value })}>
-                        <option value="">-- Choose a Wallet --</option>
-                        {accounts.map(a => (
-                          <option key={a.id} value={a.id}>
-                            {a.name} (Balance: ৳{a.amount.toLocaleString()})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="form-label fw-bold text-secondary">Amount (৳)</label>
-                      <input type="number" className="form-control rounded-3 shadow-sm border-0" placeholder="Enter amount" value={savingsTransferForm.amount} onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, amount: e.target.value })} />
+                      <label className="form-label fw-bold text-secondary">Note / Reason (Optional)</label>
+                      <input type="text" className="form-control rounded-3 shadow-sm border-0" placeholder="e.g. Salary bonus allocation" value={savingsTransferForm.note || ''} onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, note: e.target.value })} />
                     </div>
                   </div>
                   <div className="modal-footer border-0 bg-light pt-0 pb-4 px-4">
@@ -1093,6 +1343,76 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                     <button className="btn btn-success rounded-pill px-4 py-2 text-white fw-bold shadow-sm" onClick={handleSavingsTransfer}>
                       {savingsTransferForm.type === 'deposit' ? 'Transfer Now' : 'Withdraw Now'}
                     </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Savings Goal History Modal */}
+        {viewSavingsHistory && (
+          <>
+            <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1200 }} onClick={() => setViewSavingsHistory(null)}></div>
+            <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1210 }} tabIndex="-1">
+              <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+                <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                  <div className="modal-header border-0 text-white pb-3" style={{ background: 'linear-gradient(135deg, #128C7E, #075E54)' }}>
+                    <div>
+                      <h5 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                        <i className="bi bi-clock-history"></i> {viewSavingsHistory.name} History
+                      </h5>
+                      <span className="small opacity-75">
+                        Saved: ৳{(viewSavingsHistory.currentAmount || 0).toLocaleString()} / Target: ৳{(viewSavingsHistory.targetAmount || 0).toLocaleString()}
+                      </span>
+                    </div>
+                    <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setViewSavingsHistory(null)}></button>
+                  </div>
+                  <div className="modal-body p-3 bg-light">
+                    {(!viewSavingsHistory.history || viewSavingsHistory.history.length === 0) ? (
+                      <div className="text-center py-4 text-muted">
+                        <i className="bi bi-receipt fs-2 mb-2 d-block"></i>
+                        No transaction history for this savings goal yet.
+                      </div>
+                    ) : (
+                      <div className="d-flex flex-column gap-2">
+                        {viewSavingsHistory.history.map(item => {
+                          const isDep = item.type === 'deposit';
+                          return (
+                            <div key={item.id} className="card border-0 shadow-xs rounded-3 p-2.5 bg-white">
+                              <div className="d-flex justify-content-between align-items-center">
+                                <div className="d-flex align-items-center gap-2">
+                                  <div className={`rounded-circle d-flex align-items-center justify-content-center text-white small ${isDep ? 'bg-success' : 'bg-warning'}`} style={{ width: 30, height: 30 }}>
+                                    <i className={`bi ${isDep ? 'bi-arrow-down-left' : 'bi-arrow-up-right'}`} />
+                                  </div>
+                                  <div>
+                                    <div className="fw-bold text-dark small">
+                                      {isDep ? 'Cash In (Deposit)' : 'Withdrawal'}
+                                    </div>
+                                    <div className="text-secondary" style={{ fontSize: '0.75rem' }}>
+                                      {item.walletName ? `Via ${item.walletName}` : 'Wallet'} • {new Date(item.date).toLocaleDateString()} {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-end">
+                                  <div className={`fw-bold ${isDep ? 'text-success' : 'text-danger'}`}>
+                                    {isDep ? '+' : '-'}৳{item.amount.toLocaleString()}
+                                  </div>
+                                </div>
+                              </div>
+                              {item.note && (
+                                <div className="text-muted small mt-1 pt-1 border-top" style={{ fontSize: '0.75rem' }}>
+                                  💬 {item.note}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                  <div className="modal-footer border-0 bg-light pt-0 pb-3 px-3">
+                    <button className="btn btn-secondary rounded-pill px-4 py-1.5 fw-bold w-100" onClick={() => setViewSavingsHistory(null)}>Close</button>
                   </div>
                 </div>
               </div>
@@ -1399,6 +1719,13 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                           </div>
 
                           <div className="d-flex gap-1.5">
+                            <button
+                              className="btn btn-sm btn-light border rounded-pill text-primary"
+                              onClick={() => setViewSavingsHistory(s)}
+                              title="View History"
+                            >
+                              <i className="bi bi-clock-history" />
+                            </button>
                             <button
                               className="btn btn-sm btn-light border rounded-pill fw-semibold text-secondary"
                               onClick={() => {
@@ -2009,18 +2336,33 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                   </div>
 
                   <div>
-                    <label className="form-label fw-bold text-secondary">Select Wallet</label>
+                    <label className="form-label fw-bold text-secondary">
+                      {savingsTransferForm.type === 'deposit' ? 'Select Source (Wallet or Distribution)' : 'Select Target (Wallet or Distribution)'}
+                    </label>
                     <select 
                       className="form-select rounded-3 shadow-sm border-0" 
                       value={savingsTransferForm.walletId} 
                       onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, walletId: e.target.value })}
                     >
-                      <option value="">-- Choose a Wallet --</option>
-                      {accounts.map(a => (
-                        <option key={a.id} value={a.id}>
-                          {a.name} (Balance: ৳{a.amount.toLocaleString()})
-                        </option>
-                      ))}
+                      <option value="">-- Choose Source / Target --</option>
+                      {accounts.map(a => {
+                        const dists = a.distributions || [];
+                        return (
+                          <optgroup key={a.id} label={a.name}>
+                            <option value={`${a.id}:main`}>
+                              {a.name} (Main Balance: ৳{a.amount.toLocaleString()})
+                            </option>
+                            {dists.map(d => {
+                              const dBal = getDistBalance(a, d.id);
+                              return (
+                                <option key={d.id} value={`${a.id}:${d.id}`}>
+                                  &nbsp;&nbsp;↳ {d.name} (Available: ৳{dBal.toLocaleString()})
+                                </option>
+                              );
+                            })}
+                          </optgroup>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -2032,6 +2374,17 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
                       placeholder="Enter amount" 
                       value={savingsTransferForm.amount} 
                       onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, amount: e.target.value })} 
+                    />
+                  </div>
+
+                  <div>
+                    <label className="form-label fw-bold text-secondary">Note / Reason (Optional)</label>
+                    <input 
+                      type="text" 
+                      className="form-control rounded-3 shadow-sm border-0" 
+                      placeholder="e.g. Salary bonus allocation" 
+                      value={savingsTransferForm.note || ''} 
+                      onChange={(e) => setSavingsTransferForm({ ...savingsTransferForm, note: e.target.value })} 
                     />
                   </div>
                 </div>
