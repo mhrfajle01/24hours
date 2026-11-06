@@ -700,6 +700,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   const [customAlert, setCustomAlert] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null });
   const [lateClockInPrompt, setLateClockInPrompt] = useState({ isOpen: false, customTime: '' });
   const [runningBlockInputs, setRunningBlockInputs] = useState({});
+  const [editTimerModal, setEditTimerModal] = useState({ isOpen: false, hrs: '', mins: '' });
   const shiftEndPromptedRef = useRef(false);
   // ----------------------------------------------
 
@@ -3023,9 +3024,34 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
               {clockStatus === 'idle' ? (
                 <>
-                  <div style={{ fontSize: 14, color: '#888', fontWeight: 600, marginBottom: 8 }}>SHIFT NOT STARTED</div>
-                  <div style={{ fontSize: 40, fontWeight: 800, color: '#ccc', fontVariantNumeric: 'tabular-nums' }}>00:00:00</div>
-                  <button onClick={handleClockIn} style={{ marginTop: 16, width: '100%', padding: 14, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16 }}>Clock In</button>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, color: '#888', fontWeight: 700 }}>
+                      {totalAccumulatedMs > 0 ? 'TODAY WORKED (PAUSED)' : 'SHIFT NOT STARTED'}
+                    </span>
+                    {totalAccumulatedMs > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const totSec = Math.floor(totalAccumulatedMs / 1000);
+                          setEditTimerModal({
+                            isOpen: true,
+                            hrs: String(Math.floor(totSec / 3600)),
+                            mins: String(Math.floor((totSec % 3600) / 60))
+                          });
+                        }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 2 }}
+                        title="Adjust worked time"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 40, fontWeight: 800, color: totalAccumulatedMs > 0 ? '#0F172A' : '#ccc', fontVariantNumeric: 'tabular-nums' }}>
+                    {formatStopwatch(Math.floor(totalAccumulatedMs / 1000))}
+                  </div>
+                  <button onClick={handleClockIn} style={{ marginTop: 16, width: '100%', padding: 14, background: '#1CB0F6', color: '#fff', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16 }}>
+                    {totalAccumulatedMs > 0 ? 'Clock In Next Shift' : 'Clock In'}
+                  </button>
                 </>
               ) : clockStatus === 'active' ? (
                 <>
@@ -3116,7 +3142,26 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         }}
                       />
                     )}
-                    <div style={{ fontSize: 'clamp(32px, 8vw, 44px)', fontWeight: 800, color: '#333', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.5px' }}>{formatStopwatch(elapsedShiftSec)}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                      <div style={{ fontSize: 'clamp(32px, 8vw, 44px)', fontWeight: 800, color: '#333', fontVariantNumeric: 'tabular-nums', letterSpacing: '-0.5px' }}>
+                        {formatStopwatch(elapsedShiftSec)}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const totSec = Math.max(0, elapsedShiftSec);
+                          setEditTimerModal({
+                            isOpen: true,
+                            hrs: String(Math.floor(totSec / 3600)),
+                            mins: String(Math.floor((totSec % 3600) / 60))
+                          });
+                        }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, opacity: 0.65, padding: 2 }}
+                        title="Adjust working time"
+                      >
+                        ✏️
+                      </button>
+                    </div>
                   </div>
 
                   {/* Nudge messages */}
@@ -4848,6 +4893,133 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     Cancel
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        {/* Adjust / Edit Working Time Modal */}
+        {editTimerModal.isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(4px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16
+            }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+              style={{
+                width: '100%', maxWidth: 400, background: '#fff', borderRadius: 20,
+                padding: 24, boxShadow: '0 20px 40px rgba(0,0,0,0.25)', border: '1px solid #E2E8F0'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <span style={{ fontSize: 24 }}>✏️</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#0F172A' }}>Adjust Working Time</h3>
+                  <div style={{ fontSize: 12, color: '#64748B' }}>Correct mistakenly added shift time</div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Hours</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="24"
+                    value={editTimerModal.hrs}
+                    onChange={(e) => setEditTimerModal(m => ({ ...m, hrs: e.target.value }))}
+                    style={{ width: '100%', padding: '10px', borderRadius: 10, border: '1px solid #CBD5E1', fontSize: 16, fontWeight: 800, textAlign: 'center', outline: 'none' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>Minutes</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    value={editTimerModal.mins}
+                    onChange={(e) => setEditTimerModal(m => ({ ...m, mins: e.target.value }))}
+                    style={{ width: '100%', padding: '10px', borderRadius: 10, border: '1px solid #CBD5E1', fontSize: 16, fontWeight: 800, textAlign: 'center', outline: 'none' }}
+                  />
+                </div>
+              </div>
+
+              {/* Quick Stepper Chips */}
+              <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+                {[
+                  { label: '-15m', delta: -15 },
+                  { label: '-30m', delta: -30 },
+                  { label: '-1h', delta: -60 },
+                  { label: '+15m', delta: 15 },
+                  { label: 'Reset 0', delta: 0, reset: true }
+                ].map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      if (chip.reset) {
+                        setEditTimerModal(m => ({ ...m, hrs: '0', mins: '0' }));
+                      } else {
+                        const curH = parseInt(editTimerModal.hrs || '0', 10);
+                        const curM = parseInt(editTimerModal.mins || '0', 10);
+                        const totalM = Math.max(0, (curH * 60 + curM) + chip.delta);
+                        setEditTimerModal(m => ({
+                          ...m,
+                          hrs: String(Math.floor(totalM / 60)),
+                          mins: String(totalM % 60)
+                        }));
+                      }
+                    }}
+                    style={{
+                      flex: 1, padding: '6px 2px', fontSize: 11, fontWeight: 700,
+                      background: chip.reset ? '#FEE2E2' : '#F1F5F9',
+                      color: chip.reset ? '#DC2626' : '#334155',
+                      border: 'none', borderRadius: 8, cursor: 'pointer'
+                    }}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const h = parseInt(editTimerModal.hrs || '0', 10);
+                    const m = parseInt(editTimerModal.mins || '0', 10);
+                    const newTotalMs = Math.max(0, (h * 3600 + m * 60) * 1000);
+
+                    if (clockStatus === 'active') {
+                      setTotalAccumulatedMs(newTotalMs);
+                      setShiftStartMs(Date.now());
+                      setElapsedShiftSec(Math.floor(newTotalMs / 1000));
+                      save(blocks, { totalAccumulatedMs: newTotalMs, shiftStartMs: Date.now() });
+                    } else {
+                      setTotalAccumulatedMs(newTotalMs);
+                      setElapsedShiftSec(Math.floor(newTotalMs / 1000));
+                      save(blocks, { totalAccumulatedMs: newTotalMs });
+                    }
+                    playSound('success');
+                    setEditTimerModal({ isOpen: false, hrs: '', mins: '' });
+                  }}
+                  style={{
+                    flex: 1, padding: 12, background: '#0F172A', color: '#fff',
+                    border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 13.5, cursor: 'pointer'
+                  }}
+                >
+                  Save Time
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditTimerModal({ isOpen: false, hrs: '', mins: '' })}
+                  style={{ padding: '12px 16px', background: '#F1F5F9', color: '#64748B', border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
               </div>
             </motion.div>
           </motion.div>
