@@ -24,6 +24,7 @@ import JournalPage from './JournalPage';
 import StreaksPage from './StreaksPage';
 import StoriesPage from './StoriesPage';
 import TaskPlannerPage from './TaskPlannerPage';
+import ShopFinancePage from './ShopFinancePage';
 import ShiftTrackerPage from './ShiftTrackerPage';
 import ShiftReportPage from './ShiftReportPage';
 import BypassTrackerPage from './BypassTrackerPage';
@@ -305,6 +306,7 @@ export default function Home() {
   const [isProductsLifeOpen, setIsProductsLifeOpen] = useState(false);
   const [isVirtualIslandOpen, setIsVirtualIslandOpen] = useState(false);
   const [isTaskPlannerOpen, setIsTaskPlannerOpen] = useState(false);
+  const [isShopFinanceOpen, setIsShopFinanceOpen] = useState(false);
   const [isShiftTrackerOpen, setIsShiftTrackerOpen] = useState(false);
   const [isShiftReportOpen, setIsShiftReportOpen] = useState(false);
   const [isBypassTrackerOpen, setIsBypassTrackerOpen] = useState(false);
@@ -336,6 +338,7 @@ export default function Home() {
       setIsAdminOpen(path === '/admin');
       setIsProductsLifeOpen(path === '/product-life');
       setIsVirtualIslandOpen(path === '/virtual-island');
+      setIsShopFinanceOpen(path === '/shop-finance');
       setIsTaskPlannerOpen(path === '/task-planner');
       setIsShiftTrackerOpen(path === '/shift-tracker');
       setIsShiftReportOpen(path === '/shift-report');
@@ -1914,6 +1917,19 @@ export default function Home() {
     );
   }
 
+  // ── Shop Finance Page: Full separate page ──────────────────────────────
+  if (isShopFinanceOpen) {
+    return (
+      <ShopFinancePage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsShopFinanceOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
   // ── Shift Tracker Page: Full separate page ──────────────────────────────
   if (isShiftTrackerOpen) {
     return (
@@ -2186,6 +2202,10 @@ export default function Home() {
                     onOpenVirtualIsland={() => {
                       setIsVirtualIslandOpen(true);
                       navigateTo('/virtual-island');
+                    }}
+                    onOpenShopFinance={() => {
+                      setIsShopFinanceOpen(true);
+                      navigateTo('/shop-finance');
                     }}
                     onOpenShiftTracker={() => {
                       setIsShiftTrackerOpen(true);

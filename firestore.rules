@@ -150,6 +150,11 @@ service cloud.firestore {
       allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
     }
 
+    // Rules for Shop Finance
+    match /shopFinance/{userId}/{allSubcollections=**} {
+      allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+    }
+
     // Rules for Shift Tracker
     match /shiftTracker/{userId} {
       allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
