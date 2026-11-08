@@ -6,6 +6,7 @@ import ConsistencyWidget from '../components/ConsistencyWidget';
 import TodoDashboardWidget from '../components/TodoDashboardWidget';
 import TodoAppModal from '../components/TodoAppModal';
 import QuickAccessDashboardWidget from '../components/QuickAccessDashboardWidget';
+import QuickTrackerPage from './QuickTrackerPage';
 import Timeline from '../components/Timeline';
 import PlanningModal from '../components/PlanningModal';
 import ReportModal from '../components/ReportModal';
@@ -307,6 +308,7 @@ export default function Home() {
   const [isVirtualIslandOpen, setIsVirtualIslandOpen] = useState(false);
   const [isTaskPlannerOpen, setIsTaskPlannerOpen] = useState(false);
   const [isShopFinanceOpen, setIsShopFinanceOpen] = useState(false);
+  const [isQuickBazarOpen, setIsQuickBazarOpen] = useState(false);
   const [isShiftTrackerOpen, setIsShiftTrackerOpen] = useState(false);
   const [isShiftReportOpen, setIsShiftReportOpen] = useState(false);
   const [isBypassTrackerOpen, setIsBypassTrackerOpen] = useState(false);
@@ -1930,6 +1932,19 @@ export default function Home() {
     );
   }
 
+  // ── Quick Bazar & Tour: Full separate page ──────────────────────────────
+  if (isQuickBazarOpen) {
+    return (
+      <QuickTrackerPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsQuickBazarOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
   // ── Shift Tracker Page: Full separate page ──────────────────────────────
   if (isShiftTrackerOpen) {
     return (
@@ -2206,6 +2221,9 @@ export default function Home() {
                     onOpenShopFinance={() => {
                       setIsShopFinanceOpen(true);
                       navigateTo('/shop-finance');
+                    }}
+                    onOpenQuickBazar={() => {
+                      setIsQuickBazarOpen(true);
                     }}
                     onOpenShiftTracker={() => {
                       setIsShiftTrackerOpen(true);

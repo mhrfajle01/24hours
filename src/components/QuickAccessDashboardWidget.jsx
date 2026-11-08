@@ -16,6 +16,7 @@ const baseFeatures = [
   { id: 'product-life', title: 'Products', icon: 'bi-box-seam', color: '#0dcaf0' },
   { id: 'virtual-island', title: 'Island', icon: 'bi-tree', color: '#2eb82e' },
   { id: 'shop-finance', title: 'Shop Cash', icon: 'bi-shop-window', color: '#059669' },
+  { id: 'quick-bazar', title: 'Bazar & Tour', icon: 'bi-bag-heart-fill', color: '#10B981' },
   { id: 'task-planner', title: 'Task Planner', icon: 'bi-file-earmark-spreadsheet', color: '#17a2b8' },
   { id: 'shift-tracker', title: 'Shift Tracker', icon: 'bi-stopwatch', color: '#1CB0F6' }
 ];
@@ -34,6 +35,7 @@ export default function QuickAccessDashboardWidget({
   onOpenProductLife,
   onOpenVirtualIsland,
   onOpenShopFinance,
+  onOpenQuickBazar,
   onOpenTaskPlanner,
   onOpenShiftTracker
 }) {
@@ -192,6 +194,7 @@ export default function QuickAccessDashboardWidget({
     if (id === 'product-life') onOpenProductLife?.();
     if (id === 'virtual-island') onOpenVirtualIsland?.();
     if (id === 'shop-finance') onOpenShopFinance?.();
+    if (id === 'quick-bazar') onOpenQuickBazar?.();
     if (id === 'task-planner') onOpenTaskPlanner?.();
     if (id === 'shift-tracker') onOpenShiftTracker?.();
   };

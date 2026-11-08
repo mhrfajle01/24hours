@@ -37,6 +37,14 @@ service cloud.firestore {
         && request.resource.data.role == resource.data.role
       );
       allow delete: if isAdmin();
+
+      // Quick Bazar & Tour sessions and history
+      match /quick_sessions/{sessionId} {
+        allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      }
+      match /quick_active_session/{docId} {
+        allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      }
     }
 
     match /adminAudit/{auditId} {

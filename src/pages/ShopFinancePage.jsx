@@ -80,10 +80,17 @@ export default function ShopFinancePage({ currentUser, onBack }) {
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const [showCelebration, setShowCelebration] = useState(false);
 
-  // Advanced Report Modal & Custom Success Alert state
+  // Wizard Mode State (Interactive Step-by-Step Closing)
+  const [wizardStep, setWizardStep] = useState(0); // 0 = welcome card, 1 = sales, 2 = expenses, 3 = count cash, 4 = summary
+  const [showClassicForm, setShowClassicForm] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportScope, setExportScope] = useState('single'); // 'single' | '7days' | '30days' | 'thisMonth' | 'custom'
   const [exportType, setExportType] = useState('full'); // 'full' | 'itemized' | 'due'
+  const [selectedReportSections, setSelectedReportSections] = useState({
+    summary: true,
+    expenses: true,
+    due: true
+  });
   const [customExportFrom, setCustomExportFrom] = useState(() => getBDDateString());
   const [customExportTo, setCustomExportTo] = useState(() => getBDDateString());
   const [successAlert, setSuccessAlert] = useState(null); // { title, msg, link }
@@ -169,11 +176,12 @@ export default function ShopFinancePage({ currentUser, onBack }) {
           prevDateObj.setDate(prevDateObj.getDate() - 1);
           const prevStr = getBDDateString(prevDateObj);
           const prevSnap = await getDoc(doc(db, 'shopFinance', currentUser.uid, 'dailyEntries', prevStr));
-          setOpeningCash(prevSnap.exists() ? (prevSnap.data().actualCash || prevSnap.data().expectedCash || 0) : 0);
+          const prevCash = prevSnap.exists() ? (prevSnap.data().actualCash ?? prevSnap.data().expectedClosingCash ?? prevSnap.data().expectedCash ?? 0) : 0;
+          setOpeningCash(prevCash);
           setCashSales(0);
           setCreditSales(0);
           setDueCollected(0);
-          setActualCash(0);
+          setActualCash(prevCash);
           setNotes('');
         }
 
@@ -708,25 +716,41 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     let entries = allEntries.filter(e => e.date >= start && e.date <= end);
     let txs = allTransactions.filter(t => t.date >= start && t.date <= end);
 
-    // If single day and not in allEntries yet (unsaved changes in state)
-    if (exportScope === 'single' && entries.length === 0) {
-      entries = [{
-        date: selectedDate,
-        openingCash,
-        cashSales,
-        creditSales,
-        totalSales,
-        dueCollected,
-        totalShopExpenses,
-        totalStockPurchases,
-        totalPersonalDrawings,
-        expectedClosingCash,
-        actualCash,
-        discrepancy,
-        recalculatedProfit: currentDayProfit,
-        notes
-      }];
-      txs = transactions;
+    // Current unsaved state of selected date
+    const currentDayEntry = {
+      date: selectedDate,
+      openingCash,
+      cashSales,
+      creditSales,
+      totalSales,
+      dueCollected,
+      totalShopExpenses,
+      totalStockPurchases,
+      totalPersonalDrawings,
+      expectedClosingCash,
+      actualCash,
+      discrepancy,
+      recalculatedProfit: currentDayProfit,
+      notes
+    };
+
+    if (selectedDate >= start && selectedDate <= end) {
+      const idx = entries.findIndex(e => e.date === selectedDate);
+      if (idx !== -1) {
+        entries[idx] = { ...entries[idx], ...currentDayEntry };
+      } else {
+        entries.push(currentDayEntry);
+        entries.sort((a, b) => b.date.localeCompare(a.date));
+      }
+
+      // Merge current unsaved transactions if selectedDate is in range
+      const existingTxIds = new Set(txs.map(t => t.id));
+      transactions.forEach(t => {
+        if (!existingTxIds.has(t.id)) {
+          txs.push(t);
+        }
+      });
+      txs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     }
 
     return { start, end, entries, txs };
@@ -818,24 +842,80 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     }
 
     // 2. Generate WhatsApp Text
-    let reportText = '';
-    if (exportType === 'due') {
-      const topDueCusts = customers.filter(c => Number(c.totalDue) > 0).slice(0, 10).map((c, i) => `${i + 1}. ${c.name}: ৳${c.totalDue} ${c.phone ? `(${c.phone})` : ''}`).join('\n');
-      reportText = `👥 *দোকানের বাকি খাতার বকেয়া হিসাব*\n📅 তারিখ: ${getBDDateString()}\n━━━━━━━━━━━━━━━━━━━━\n💰 বাজারে মোট বকেয়া বাকি: ৳${totalMarketDue}\n👤 বাকি থাকা মোট কাস্টমার: ${customers.filter(c => Number(c.totalDue) > 0).length} জন\n${topDueCusts ? `━━━━━━━━━━━━━━━━━━━━\nশীর্ষ বাকিদার কাস্টমার তালিকা:\n${topDueCusts}` : ''}`;
-    } else if (exportScope === 'single') {
-      const e = entries[0] || {};
-      const totalDayOut = (Number(e.totalShopExpenses) || 0) + (Number(e.totalStockPurchases) || 0) + (Number(e.totalPersonalDrawings) || 0);
-      reportText = `🏪 *দোকানের দৈনিক ক্যাশ ও আর্থিক হিসাব*\n📅 তারিখ: ${e.date || selectedDate}\n━━━━━━━━━━━━━━━━━━━━\n💰 *ক্যাশ ড্রয়ার হিসাব (Cash In-Flow):*\n• আগের ক্যাশ (Opening): ৳${e.openingCash || 0}\n• নগদ বিক্রয় (Cash Sales): ৳${e.cashSales || 0}\n• বাকি বিক্রয় (Credit Sales): ৳${e.creditSales || 0}\n• মোট বিক্রয় (Total Sales): ৳${e.totalSales || 0}\n• বাকি আদায় (Due Collected): ৳${e.dueCollected || 0}\n━━━━━━━━━━━━━━━━━━━━\n📉 *খরচ ও উত্তোলন (Out-Flow):*\n• দোকানের পরিচালন খরচ: ৳${e.totalShopExpenses || 0}\n• পণ্য স্টক ক্রয়: ৳${e.totalStockPurchases || 0}\n• মালিকের ব্যক্তিগত উত্তোলন: ৳${e.totalPersonalDrawings || 0}\n  (মোট আউট-ফ্লো: ৳${totalDayOut})\n━━━━━━━━━━━━━━━━━━━━\n⚖️ *সমাপনী ক্যাশ ব্যালেন্স:*\n• হিসাব অনুযায়ী ড্রয়ারে ক্যাশ: ৳${e.expectedClosingCash || 0}\n• ড্রয়ারে হাতে গোনা ক্যাশ: ৳${e.actualCash || 0}\n• ক্যাশ গরমিল: ৳${e.discrepancy || 0} ${Number(e.discrepancy) === 0 ? '(✓ নিখুঁত মিলেছে)' : Number(e.discrepancy) < 0 ? '(⚠️ ক্যাশ শর্ট)' : '(অতিরিক্ত ক্যাশ)'}\n━━━━━━━━━━━━━━━━━━━━\n📊 *ব্যবসায়িক লাভ ও বাজার বাকি:*\n• হিসাবকৃত লাভ: ৳${e.recalculatedProfit || currentDayProfit}\n• বাজারে মোট কাস্টমার বাকি: ৳${totalMarketDue}\n${e.notes ? `━━━━━━━━━━━━━━━━━━━━\n📝 *দৈনিক নোট:*\n${e.notes}` : ''}`;
-    } else {
-      const totSales = entries.reduce((s, e) => s + (Number(e.totalSales) || 0), 0);
-      const totCash = entries.reduce((s, e) => s + (Number(e.cashSales) || 0), 0);
-      const totCredit = entries.reduce((s, e) => s + (Number(e.creditSales) || 0), 0);
-      const totDueCol = entries.reduce((s, e) => s + (Number(e.dueCollected) || 0), 0);
-      const totExp = entries.reduce((s, e) => s + (Number(e.totalShopExpenses) || 0), 0);
-      const totStock = entries.reduce((s, e) => s + (Number(e.totalStockPurchases) || 0), 0);
-      const totDraw = entries.reduce((s, e) => s + (Number(e.totalPersonalDrawings) || 0), 0);
-      const totProfit = entries.reduce((s, e) => s + (Number(e.recalculatedProfit || e.estimatedNetProfit) || 0), 0);
-      reportText = `📊 *দোকানের হিসাব ও আর্থিক সারাংশ রিপোর্ট*\n📅 সময়কাল: ${start} ➔ ${end} (${entries.length} কার্যদিবস)\n━━━━━━━━━━━━━━━━━━━━\n💵 মোট বিক্রয়: ৳${totSales}\n• নগদ বিক্রয়: ৳${totCash}\n• বাকি বিক্রয়: ৳${totCredit}\n• বাকি আদায়: ৳${totDueCol}\n━━━━━━━━━━━━━━━━━━━━\n📉 খরচ ও উত্তোলন:\n• দোকান পরিচালন খরচ: ৳${totExp}\n• পণ্য স্টক ক্রয়: ৳${totStock}\n• মালিকের মোট উত্তোলন: ৳${totDraw}\n  (মোট আউট-ফ্লো: ৳${totExp + totStock + totDraw})\n━━━━━━━━━━━━━━━━━━━━\n📈 হিসাব অনুযায়ী নিট লাভ: ৳${totProfit}\n👥 বর্তমান মোট কাস্টমার বাকি: ৳${totalMarketDue}`;
+    // 2. WhatsApp Text Format with Multi-Option Section Selection
+    let sections = [];
+
+    // Section 1: Summary / Cash Register
+    if (selectedReportSections.summary) {
+      if (exportScope === 'single') {
+        const e = entries[0] || {};
+        const totalDayOut = (Number(e.totalShopExpenses) || 0) + (Number(e.totalStockPurchases) || 0) + (Number(e.totalPersonalDrawings) || 0);
+        const calcProfit = profitCalculationBasis === 'margin_based'
+          ? Math.round(((Number(e.totalSales) || 0) * grossMarginPct / 100) - (Number(e.totalShopExpenses) || 0))
+          : ((Number(e.totalSales) || 0) - (Number(e.totalShopExpenses) || 0));
+
+        sections.push(
+          `🏪 *দোকানের দৈনিক ক্যাশ ও আর্থিক হিসাব*\n📅 তারিখ: ${e.date || selectedDate}\n━━━━━━━━━━━━━━━━━━━━\n` +
+          `💰 *ক্যাশ ড্রয়ার (Cash In):*\n• আগের ক্যাশ: ৳${e.openingCash || 0}\n• নগদ বিক্রয়: ৳${e.cashSales || 0}\n• বাকি বিক্রয়: ৳${e.creditSales || 0}\n• মোট বিক্রয়: ৳${e.totalSales || 0}\n• বাকি আদায়: ৳${e.dueCollected || 0}\n` +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `📉 *খরচ ও উত্তোলন (Out):*\n• পরিচালন খরচ: ৳${e.totalShopExpenses || 0}\n• স্টক ক্রয়: ৳${e.totalStockPurchases || 0}\n• মালিকের উত্তোলন: ৳${e.totalPersonalDrawings || 0}\n(মোট আউট-ফ্লো: ৳${totalDayOut})\n` +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `⚖️ *সমাপনী ক্যাশ ব্যালেন্স:*\n• হিসাবকৃত ক্যাশ: ৳${e.expectedClosingCash || 0}\n• ড্রয়ারে আসল ক্যাশ: ৳${e.actualCash || 0}\n• ক্যাশ গরমিল: ৳${e.discrepancy || 0} ${Number(e.discrepancy) === 0 ? '(✓ নিখুঁত)' : Number(e.discrepancy) < 0 ? '(⚠️ ক্যাশ শর্ট)' : '(অতিরিক্ত ক্যাশ)'}\n` +
+          `━━━━━━━━━━━━━━━━━━━━\n` +
+          `📊 হিসাবকৃত লাভ (${profitCalculationBasis === 'margin_based' ? `মার্জিন ${grossMarginPct}%` : 'ক্যাশফ্লো'}): ৳${calcProfit}` +
+          (e.notes ? `\n📝 নোট: ${e.notes}` : '')
+        );
+      } else {
+        const totSales = entries.reduce((s, e) => s + (Number(e.totalSales) || 0), 0);
+        const totCash = entries.reduce((s, e) => s + (Number(e.cashSales) || 0), 0);
+        const totCredit = entries.reduce((s, e) => s + (Number(e.creditSales) || 0), 0);
+        const totDueCol = entries.reduce((s, e) => s + (Number(e.dueCollected) || 0), 0);
+        const totExp = entries.reduce((s, e) => s + (Number(e.totalShopExpenses) || 0), 0);
+        const totStock = entries.reduce((s, e) => s + (Number(e.totalStockPurchases) || 0), 0);
+        const totDraw = entries.reduce((s, e) => s + (Number(e.totalPersonalDrawings) || 0), 0);
+        const totProfit = profitCalculationBasis === 'margin_based'
+          ? Math.round((totSales * grossMarginPct / 100) - totExp)
+          : (totSales - totExp);
+
+        sections.push(
+          `📊 *দোকানের হিসাব ও আর্থিক সারাংশ*\n📅 সময়কাল: ${start} ➔ ${end} (${entries.length} দিন)\n━━━━━━━━━━━━━━━━━━━━\n` +
+          `💵 মোট বিক্রয়: ৳${totSales} (নগদ: ৳${totCash}, বাকি: ৳${totCredit})\n• বাকি আদায়: ৳${totDueCol}\n` +
+          `📉 মোট ব্যয়: ৳${totExp + totStock + totDraw} (খরচ: ৳${totExp}, স্টক: ৳${totStock}, উত্তোলন: ৳${totDraw})\n` +
+          `📈 হিসাবকৃত নিট লাভ: ৳${totProfit}`
+        );
+      }
+    }
+
+    // Section 2: Itemized Expense Breakdown
+    if (selectedReportSections.expenses && txs.length > 0) {
+      const totalAmt = txs.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+      const itemsList = txs.slice(0, 15).map((t, i) => {
+        const typeBadge = t.type === 'shop_expense' ? 'দোকান' : t.type === 'stock_purchase' ? 'স্টক' : 'উত্তোলন';
+        return `${i + 1}. ${t.description || 'খরচ'}: ৳${t.amount} [${typeBadge}]`;
+      }).join('\n');
+
+      sections.push(
+        `🛒 *বিস্তারিত খরচের বিবরণী (${txs.length} টি)*\n` +
+        `মোট আউট-ফ্লো: ৳${totalAmt}\n` +
+        `────────────────────\n` +
+        `${itemsList}${txs.length > 15 ? `\n...আরও ${txs.length - 15}টি খরচ আছে` : ''}`
+      );
+    }
+
+    // Section 3: Due Customers Ledger
+    if (selectedReportSections.due && customers.length > 0) {
+      const dueList = customers.filter(c => Number(c.totalDue) > 0);
+      const topDueCusts = dueList.slice(0, 10).map((c, i) => `${i + 1}. ${c.name}: ৳${c.totalDue}`).join('\n');
+      sections.push(
+        `👥 *বাকি খাতা*\n` +
+        `বাজারে মোট বকেয়া: ৳${totalMarketDue} (${dueList.length} জন কাস্টমার)\n` +
+        (topDueCusts ? `────────────────────\nশীর্ষ বাকিদার:\n${topDueCusts}` : '')
+      );
+    }
+
+    let reportText = sections.join('\n\n━━━━━━━━━━━━━━━━━━━━\n\n');
+    if (!reportText) {
+      reportText = `🏪 *দোকানের হিসাব*\nতারিখ: ${getBDDateString()}\nবাজারে মোট বাকি: ৳${totalMarketDue}`;
     }
 
     navigator.clipboard.writeText(reportText);
@@ -1049,8 +1129,370 @@ export default function ShopFinancePage({ currentUser, onBack }) {
             </div>
           </div>
 
-          {/* Daily Cash Entry Section */}
-          <div className="col-12 col-md-6">
+          {/* Interactive Step-by-Step Cash Drawer Closing Wizard (Animated & Integrated) */}
+          <div className="col-12">
+            {wizardStep === 0 ? (
+              <div className="card border-0 shadow-sm rounded-4 p-3 bg-white mb-2 border-start border-4 border-success">
+                <div className="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <div>
+                    <h6 className="fw-bolder text-dark mb-1 d-flex align-items-center gap-1.5" style={{ fontSize: '0.95rem' }}>
+                      <i className="bi bi-stars text-warning fs-5"></i> ক্যাশ ড্রয়ার হিসাব শুরু করতে চান?
+                    </h6>
+                    <span className="text-secondary fw-semibold d-block" style={{ fontSize: '0.8rem' }}>
+                      সহজ ৪টি ধাপে সেলস, খরচ ও ড্রয়ার ক্যাশ এক জায়গায় মিলিয়ে সংরক্ষণ করুন।
+                    </span>
+                  </div>
+                  <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                    <button 
+                      type="button" 
+                      className="btn btn-success rounded-pill px-3 py-1.5 fw-bold shadow-sm hover-scale text-white"
+                      style={{ fontSize: '0.85rem' }}
+                      onClick={() => setWizardStep(1)}
+                    >
+                      🚀 হিসাব শুরু
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-secondary rounded-pill px-2.5 py-1 fw-medium"
+                      style={{ fontSize: '0.75rem' }}
+                      onClick={() => setShowClassicForm(!showClassicForm)}
+                      title="সরাসরি ফর্ম দেখুন"
+                    >
+                      {showClassicForm ? 'ফর্ম লুকান' : 'ফর্ম দেখুন'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="card border-0 shadow-sm rounded-4 p-3 bg-white mb-3 border-start border-4 border-success animate-slide-up" style={{ animationDuration: '0.25s' }}>
+                {/* Wizard Header & Progress */}
+                <div className="d-flex justify-content-between align-items-center mb-2">
+                  <div className="d-flex align-items-center gap-2">
+                    <span className="badge bg-success rounded-pill px-2.5 py-1 fw-bold">ধাপ {wizardStep}/৪</span>
+                    <strong className="text-dark small">
+                      {wizardStep === 1 && '১. প্রারম্ভিক ক্যাশ ও বিক্রয় এন্ট্রি'}
+                      {wizardStep === 2 && '২. খরচ ও উত্তোলন যোগ করুন'}
+                      {wizardStep === 3 && '৩. ড্রয়ারের আসল ক্যাশ গণনা'}
+                      {wizardStep === 4 && '৪. ক্যাশ গরমিল অডিট ও সংরক্ষণ'}
+                    </strong>
+                  </div>
+                  <button 
+                    type="button" 
+                    className="btn btn-sm btn-link text-muted p-0 text-decoration-none"
+                    style={{ fontSize: '0.72rem' }}
+                    onClick={() => setWizardStep(0)}
+                  >
+                    বন্ধ করুন ✕
+                  </button>
+                </div>
+
+                {/* Progress bar */}
+                <div className="progress rounded-pill mb-3" style={{ height: '6px' }}>
+                  <div 
+                    className="progress-bar bg-success progress-bar-striped progress-bar-animated" 
+                    style={{ width: `${(wizardStep / 4) * 100}%` }}
+                  ></div>
+                </div>
+
+                {/* Wizard Step 1: Opening & Sales */}
+                {wizardStep === 1 && (
+                  <div className="animate-fade-in">
+                    <p className="text-dark fw-semibold small mb-2" style={{ fontSize: '0.78rem' }}>
+                      সকালের আগের ক্যাশ (Opening) এবং আজকের মোট নগদ ও বাকি বিক্রয়ের পরিমাণ লিখুন:
+                    </p>
+                    <div className="row g-2 mb-3">
+                      <div className="col-6">
+                        <label className="form-label text-dark fw-bold small mb-1" style={{ fontSize: '0.74rem' }}>সকালের আগের ক্যাশ</label>
+                        <input
+                          type="number"
+                          className="form-control form-control-sm rounded-3 py-1 fw-bold text-dark border-secondary-subtle"
+                          value={openingCash}
+                          onChange={(e) => setOpeningCash(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-6">
+                        <label className="form-label text-dark fw-bold small mb-1" style={{ fontSize: '0.74rem' }}>নগদ বিক্রয় (Cash)</label>
+                        <input
+                          type="number"
+                          className="form-control form-control-sm rounded-3 py-1 fw-bold text-success border-success-subtle"
+                          value={cashSales}
+                          onChange={(e) => setCashSales(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-6">
+                        <label className="form-label text-dark fw-bold small mb-1" style={{ fontSize: '0.74rem' }}>বাকি বিক্রয় (Credit)</label>
+                        <input
+                          type="number"
+                          className="form-control form-control-sm rounded-3 py-1 fw-bold text-danger border-danger-subtle"
+                          value={creditSales}
+                          onChange={(e) => setCreditSales(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-6">
+                        <label className="form-label text-dark fw-bold small mb-1" style={{ fontSize: '0.74rem' }}>আজকের বাকি আদায়</label>
+                        <input
+                          type="number"
+                          className="form-control form-control-sm rounded-3 py-1 fw-bold text-primary border-primary-subtle"
+                          value={dueCollected}
+                          onChange={(e) => setDueCollected(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="d-flex justify-content-end">
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-success rounded-pill px-4 py-1.5 fw-bold shadow-xs"
+                        onClick={() => setWizardStep(2)}
+                      >
+                        পরবর্তী ধাপ: খরচ ও উত্তোলন ➔
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Wizard Step 2: Integrated Expense Logger directly inside the wizard */}
+                {wizardStep === 2 && (
+                  <div className="animate-fade-in">
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <p className="text-dark fw-semibold small mb-0" style={{ fontSize: '0.78rem' }}>
+                        আজকের খরচগুলো এখান থেকেই যোগ করুন:
+                      </p>
+                      <div className="d-flex gap-1" style={{ fontSize: '0.7rem' }}>
+                        <span className="badge bg-danger text-white rounded-pill px-2 py-1 fw-bold">দোকান: ৳{totalShopExpenses || 0}</span>
+                        <span className="badge bg-primary text-white rounded-pill px-2 py-1 fw-bold">স্টক: ৳{totalStockPurchases || 0}</span>
+                        <span className="badge bg-warning text-dark rounded-pill px-2 py-1 fw-bold">উত্তোলন: ৳{totalPersonalDrawings || 0}</span>
+                      </div>
+                    </div>
+
+                    {/* Mode Selector */}
+                    <div className="d-flex p-1 bg-light rounded-pill mb-2 gap-1 border">
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold ${txType === 'shop_expense' ? 'bg-danger text-white shadow-xs' : 'text-dark'}`}
+                        style={{ fontSize: '0.74rem' }}
+                        onClick={() => { setTxType('shop_expense'); setTxCategory('দোকানের খরচ'); }}
+                      >
+                        দোকান খরচ
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold ${txType === 'stock_purchase' ? 'bg-primary text-white shadow-xs' : 'text-dark'}`}
+                        style={{ fontSize: '0.74rem' }}
+                        onClick={() => { setTxType('stock_purchase'); setTxCategory('পণ্য ক্রয় / স্টক'); }}
+                      >
+                        স্টক ক্রয়
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold ${txType === 'personal_drawing' ? 'bg-warning text-dark shadow-xs' : 'text-dark'}`}
+                        style={{ fontSize: '0.74rem' }}
+                        onClick={() => { setTxType('personal_drawing'); setTxCategory('ব্যক্তিগত / পরিবার'); }}
+                      >
+                        ব্যক্তিগত উত্তোলন
+                      </button>
+                    </div>
+
+                    {/* Quick Preset Chips */}
+                    <div className="d-flex gap-1 overflow-auto pb-1 mb-2 scrollbar-none" style={{ whiteSpace: 'nowrap' }}>
+                      {(txType === 'personal_drawing' ? [
+                        { label: 'বাজার খরচ', cat: 'ব্যক্তিগত / পরিবার' },
+                        { label: 'আম্মা/আব্বু', cat: 'ব্যক্তিগত / পরিবার' },
+                        { label: 'ব্যক্তিগত খরচ', cat: 'ব্যক্তিগত / পরিবার' }
+                      ] : txType === 'stock_purchase' ? [
+                        { label: 'সিগারেট স্টক', cat: 'পণ্য ক্রয় / স্টক' },
+                        { label: 'কোল্ড ড্রিংকস', cat: 'পণ্য ক্রয় / স্টক' },
+                        { label: 'বিস্কুট ও চিপস', cat: 'পণ্য ক্রয় / স্টক' }
+                      ] : [
+                        { label: 'চা ও নাস্তা', cat: 'চা ও আপ্যায়ন' },
+                        { label: 'কলা ও পাউরুটি', cat: 'চা ও আপ্যায়ন' },
+                        { label: 'পলিথিন ব্যাগ', cat: 'দোকানের খরচ' },
+                        { label: 'যাতায়াত', cat: 'পরিবহন / যাতায়াত' }
+                      ]).map((chip, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="btn btn-xs btn-white bg-white border rounded-pill px-2.5 py-1 text-dark fw-bold shadow-2xs"
+                          style={{ fontSize: '0.72rem' }}
+                          onClick={() => {
+                            setTxDesc(chip.label);
+                            setTxCategory(chip.cat);
+                          }}
+                        >
+                          + {chip.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Mini Inline Form */}
+                    <form onSubmit={handleAddTransaction} className="p-2 bg-light rounded-3 mb-2 border">
+                      <div className="row g-1">
+                        <div className="col-5">
+                          <input
+                            type="text"
+                            className="form-control form-control-sm rounded-3 py-1 text-dark fw-semibold"
+                            placeholder="বিবরণ"
+                            value={txDesc}
+                            onChange={(e) => setTxDesc(e.target.value)}
+                          />
+                        </div>
+                        <div className="col-4">
+                          <input
+                            type="number"
+                            required
+                            className="form-control form-control-sm rounded-3 py-1 fw-bold text-end text-dark"
+                            placeholder="৳ টাকা"
+                            value={txAmount}
+                            onChange={(e) => setTxAmount(e.target.value)}
+                          />
+                        </div>
+                        <div className="col-3">
+                          <button type="submit" className="btn btn-sm btn-dark w-100 rounded-3 py-1 fw-bold text-white shadow-xs">
+                            + যোগ
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+
+                    {/* Today's Transactions Quick Ledger */}
+                    <div className="overflow-auto mb-3" style={{ maxHeight: '110px' }}>
+                      {transactions.length === 0 ? (
+                        <div className="text-secondary small text-center py-2 fw-semibold">আজকের কোনো খরচ নেই</div>
+                      ) : (
+                        <div className="d-flex flex-column gap-1">
+                          {transactions.map(tx => (
+                            <div key={tx.id} className="p-1.5 px-2 rounded-2 bg-light d-flex justify-content-between align-items-center border" style={{ fontSize: '0.75rem' }}>
+                              <span>
+                                <span className={`badge me-1 ${tx.type === 'shop_expense' ? 'bg-danger text-white' : tx.type === 'stock_purchase' ? 'bg-primary text-white' : 'bg-warning text-dark'}`} style={{ fontSize: '0.62rem' }}>
+                                  {tx.type === 'shop_expense' ? 'দোকান' : tx.type === 'stock_purchase' ? 'স্টক' : 'উত্তোলন'}
+                                </span>
+                                <strong className="text-dark">{tx.description}</strong>
+                              </span>
+                              <div className="d-flex align-items-center gap-1.5">
+                                <span className="fw-bold text-danger">-৳{tx.amount}</span>
+                                <button type="button" className="btn btn-link text-danger p-0 border-0" onClick={() => handleDeleteTransaction(tx.id)}>
+                                  <i className="bi bi-x-circle-fill"></i>
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="d-flex justify-content-between">
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-light border rounded-pill px-3 py-1 text-dark fw-bold"
+                        onClick={() => setWizardStep(1)}
+                      >
+                        ← পেছনে যান
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-success rounded-pill px-4 py-1.5 fw-bold shadow-xs"
+                        onClick={() => setWizardStep(3)}
+                      >
+                        পরবর্তী ধাপ: ক্যাশ গণনা ➔
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Wizard Step 3: Actual Cash Drawer Count */}
+                {wizardStep === 3 && (
+                  <div className="animate-fade-in">
+                    <div className="d-flex justify-content-between align-items-center mb-2">
+                      <p className="text-dark fw-semibold small mb-0" style={{ fontSize: '0.78rem' }}>
+                        দিন শেষে ক্যাশ ড্রয়ারে গুনে মোট কত টাকা পেলেন?
+                      </p>
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-outline-success rounded-pill px-2.5 py-1 fw-bold"
+                        style={{ fontSize: '0.72rem' }}
+                        onClick={() => setShowDenomModal(true)}
+                      >
+                        <i className="bi bi-calculator me-1"></i>নোট কাউন্টার
+                      </button>
+                    </div>
+                    <div className="p-3 bg-light rounded-4 text-center mb-3 border">
+                      <label className="text-dark fw-bold small d-block mb-1">ড্রয়ারে হাতে গোনা আসল ক্যাশ (৳)</label>
+                      <input
+                        type="number"
+                        className="form-control form-control-lg rounded-pill text-center fw-bold text-success border-2 shadow-xs bg-white"
+                        style={{ fontSize: '1.4rem' }}
+                        placeholder="৳ ০"
+                        value={actualCash}
+                        onChange={(e) => setActualCash(e.target.value)}
+                        autoFocus
+                      />
+                      <div className="mt-1 d-block text-dark small" style={{ fontSize: '0.74rem' }}>
+                        হিসাব অনুযায়ী থাকার কথা: <strong className="text-primary fs-6">৳{expectedClosingCash}</strong>
+                      </div>
+                    </div>
+                    <div className="d-flex justify-content-between">
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-light border rounded-pill px-3 py-1 text-dark fw-bold"
+                        onClick={() => setWizardStep(2)}
+                      >
+                        ← পেছনে যান
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-success rounded-pill px-4 py-1.5 fw-bold shadow-xs"
+                        onClick={() => setWizardStep(4)}
+                      >
+                        ফলাফল ও গরমিল দেখুন ➔
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Wizard Step 4: Summary, Discrepancy & Final Save */}
+                {wizardStep === 4 && (
+                  <div className="animate-fade-in">
+                    <div className={`p-3 rounded-4 text-center mb-3 border shadow-2xs ${discrepancy === 0 ? 'bg-success-subtle border-success' : discrepancy < 0 ? 'bg-danger-subtle border-danger' : 'bg-primary-subtle border-primary'}`}>
+                      <div className="small fw-bold mb-1 text-dark">
+                        {discrepancy === 0 ? '🎉 আলহামদুলিল্লাহ! ক্যাশ ড্রয়ার নিখুঁত মিলেছে!' : discrepancy < 0 ? '⚠️ সতর্কবার্তা: ক্যাশ ড্রয়ারে টাকা শর্ট রয়েছে!' : 'ℹ️ ড্রয়ারে অতিরিক্ত ক্যাশ রয়েছে!'}
+                      </div>
+                      <div className={`fs-3 fw-bold my-1 ${discrepancy === 0 ? 'text-success' : discrepancy < 0 ? 'text-danger' : 'text-primary'}`}>
+                        গরমিল: {discrepancy > 0 ? `+৳${discrepancy}` : `৳${discrepancy}`}
+                      </div>
+                      <div className="text-dark fw-semibold small" style={{ fontSize: '0.75rem' }}>
+                        হিসাবকৃত ক্যাশ: <strong className="text-dark">৳{expectedClosingCash}</strong> | ড্রয়ারে আসল ক্যাশ: <strong className="text-success">৳{actualCash}</strong> | নিট লাভ: <strong className="text-primary">৳{currentDayProfit}</strong>
+                      </div>
+                    </div>
+
+                    <div className="d-flex justify-content-between align-items-center">
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-light border rounded-pill px-3 py-1 text-dark fw-bold"
+                        onClick={() => setWizardStep(3)}
+                      >
+                        ← আবার গণনা
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-dark rounded-pill px-4 py-2 fw-bold shadow-sm d-flex align-items-center gap-1.5 text-white"
+                        onClick={(e) => {
+                          handleSaveDailyEntry(e);
+                          setWizardStep(0);
+                        }}
+                      >
+                        <i className="bi bi-cloud-check-fill text-success"></i> আজকের হিসাব সংরক্ষণ করুন
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Classic Manual Form Section (Only shown if toggled) */}
+          {showClassicForm && (
+            <>
+              {/* Daily Cash Entry Section */}
+              <div className="col-12 col-md-6 animate-fade-in">
             <div className="card shadow-sm border-0 rounded-4 p-3 bg-white h-100">
               <div className="d-flex justify-content-between align-items-center mb-2">
                 <h6 className="fw-bold mb-0 text-dark small d-flex align-items-center gap-1">
@@ -1182,73 +1624,143 @@ export default function ShopFinancePage({ currentUser, onBack }) {
             </div>
           </div>
 
-          {/* Quick Expense Logger (100% Mobile Optimized) */}
+          {/* Quick Expense Logger (Modernized Mobile & Desktop UI) */}
           <div className="col-12 col-md-6">
             <div className="card shadow-sm border-0 rounded-4 p-3 bg-white h-100">
-              <h6 className="fw-bold mb-2 text-dark small d-flex align-items-center gap-1">
-                <i className="bi bi-cart-dash text-danger"></i> খরচ / উত্তোলন যোগ করুন
-              </h6>
-
-              <form onSubmit={handleAddTransaction} className="mb-2">
-                {/* Mobile Friendly Segmented Type Tabs */}
-                <div className="d-flex p-1 bg-light rounded-pill mb-2 gap-1">
-                  <button
-                    type="button"
-                    className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all ${txType === 'shop_expense' ? 'bg-danger text-white shadow-sm' : 'text-muted'}`}
-                    style={{ fontSize: '0.75rem' }}
-                    onClick={() => setTxType('shop_expense')}
-                  >
-                    দোকান খরচ
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all ${txType === 'stock_purchase' ? 'bg-primary text-white shadow-sm' : 'text-muted'}`}
-                    style={{ fontSize: '0.75rem' }}
-                    onClick={() => setTxType('stock_purchase')}
-                  >
-                    স্টক ক্রয়
-                  </button>
-                  <button
-                    type="button"
-                    className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all ${txType === 'personal_drawing' ? 'bg-warning text-dark shadow-sm' : 'text-muted'}`}
-                    style={{ fontSize: '0.75rem' }}
-                    onClick={() => setTxType('personal_drawing')}
-                  >
-                    উত্তোলন
-                  </button>
+              <div className="d-flex justify-content-between align-items-center mb-2">
+                <h6 className="fw-bold text-dark small mb-0 d-flex align-items-center gap-1.5">
+                  <i className="bi bi-wallet2 text-danger"></i> খরচ ও উত্তোলন
+                </h6>
+                <div className="d-flex gap-1" style={{ fontSize: '0.7rem' }}>
+                  <span className="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">
+                    দোকান: ৳{totalShopExpenses || 0}
+                  </span>
+                  <span className="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">
+                    স্টক: ৳{totalStockPurchases || 0}
+                  </span>
+                  <span className="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill">
+                    উত্তোলন: ৳{totalPersonalDrawings || 0}
+                  </span>
                 </div>
+              </div>
 
-                {/* Mobile Touch Optimized Form Grid */}
-                <div className="row g-2 mb-2">
+              {/* Fast Visual Mode Selector */}
+              <div className="d-flex p-1 bg-light rounded-pill mb-2 gap-1 border">
+                <button
+                  type="button"
+                  className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all d-flex align-items-center justify-content-center gap-1 ${txType === 'shop_expense' ? 'bg-danger text-white shadow-sm' : 'text-muted'}`}
+                  style={{ fontSize: '0.74rem' }}
+                  onClick={() => { setTxType('shop_expense'); setTxCategory('দোকানের খরচ'); }}
+                >
+                  <i className="bi bi-shop"></i> দোকান খরচ
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all d-flex align-items-center justify-content-center gap-1 ${txType === 'stock_purchase' ? 'bg-primary text-white shadow-sm' : 'text-muted'}`}
+                  style={{ fontSize: '0.74rem' }}
+                  onClick={() => { setTxType('stock_purchase'); setTxCategory('পণ্য ক্রয় / স্টক'); }}
+                >
+                  <i className="bi bi-box-seam"></i> স্টক ক্রয়
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all d-flex align-items-center justify-content-center gap-1 ${txType === 'personal_drawing' ? 'bg-warning text-dark shadow-sm' : 'text-muted'}`}
+                  style={{ fontSize: '0.74rem' }}
+                  onClick={() => { setTxType('personal_drawing'); setTxCategory('ব্যক্তিগত / পরিবার'); }}
+                >
+                  <i className="bi bi-person-circle"></i> উত্তোলন
+                </button>
+              </div>
+
+              {/* Quick Preset Expense Chips */}
+              <div className="d-flex gap-1 overflow-auto pb-1 mb-2 scrollbar-none" style={{ whiteSpace: 'nowrap' }}>
+                {(txType === 'personal_drawing' ? [
+                  { label: 'বাজার খরচ', cat: 'ব্যক্তিগত / পরিবার' },
+                  { label: 'আম্মা/আব্বু', cat: 'ব্যক্তিগত / পরিবার' },
+                  { label: 'ব্যক্তিগত খরচ', cat: 'ব্যক্তিগত / পরিবার' },
+                  { label: 'বাচ্চাদের খরচ', cat: 'ব্যক্তিগত / পরিবার' }
+                ] : txType === 'stock_purchase' ? [
+                  { label: 'সিগারেট স্টক', cat: 'পণ্য ক্রয় / স্টক' },
+                  { label: 'কোল্ড ড্রিংকস', cat: 'পণ্য ক্রয় / স্টক' },
+                  { label: 'বিস্কুট ও চিপস', cat: 'পণ্য ক্রয় / স্টক' },
+                  { label: 'বেকারি পণ্য', cat: 'পণ্য ক্রয় / স্টক' }
+                ] : [
+                  { label: 'চা ও নাস্তা', cat: 'চা ও আপ্যায়ন' },
+                  { label: 'কলা ও পাউরুটি', cat: 'চা ও আপ্যায়ন' },
+                  { label: 'পলিথিন ব্যাগ', cat: 'দোকানের খরচ' },
+                  { label: 'যাতায়াত ভাড়া', cat: 'পরিবহন / যাতায়াত' },
+                  { label: 'কারেন্ট বিল', cat: 'দোকানের খরচ' }
+                ]).map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className="btn btn-xs btn-light border rounded-pill px-2.5 py-1 text-secondary fw-semibold transition-all hover-scale"
+                    style={{ fontSize: '0.7rem' }}
+                    onClick={() => {
+                      setTxDesc(chip.label);
+                      setTxCategory(chip.cat);
+                    }}
+                  >
+                    + {chip.label}
+                  </button>
+                ))}
+              </div>
+
+              <form onSubmit={handleAddTransaction} className="p-2.5 bg-light rounded-4 mb-2 border">
+                <div className="row g-1.5 align-items-center">
                   <div className="col-7">
-                    <label className="text-muted d-block mb-1" style={{ fontSize: '0.7rem' }}>বিবরণ / কি বাবদ খরচ:</label>
                     <input
                       type="text"
-                      className="form-control form-control-sm rounded-3 py-1"
-                      placeholder="e.g. কলা রুটি / সিগারেট"
+                      className="form-control form-control-sm rounded-3 py-1 bg-white"
+                      placeholder="বিবরণ (e.g. কলা রুটি / বাজার)"
                       value={txDesc}
                       onChange={(e) => setTxDesc(e.target.value)}
                       style={{ fontSize: '0.82rem' }}
                     />
                   </div>
                   <div className="col-5">
-                    <label className="text-muted d-block mb-1" style={{ fontSize: '0.7rem' }}>টাকার পরিমাণ (৳):</label>
                     <input
                       type="number"
                       required
-                      className="form-control form-control-sm rounded-3 py-1 fw-bold text-end"
+                      className="form-control form-control-sm rounded-3 py-1 fw-bold text-end bg-white"
                       placeholder="৳ ০"
                       value={txAmount}
                       onChange={(e) => setTxAmount(e.target.value)}
                       style={{ fontSize: '0.85rem' }}
                     />
                   </div>
+
+                  {/* Quick Amount Badges */}
+                  <div className="col-12 d-flex gap-1 flex-wrap my-1">
+                    {[20, 50, 100, 200, 500, 1000].map(amt => (
+                      <button
+                        key={amt}
+                        type="button"
+                        className="btn btn-xs btn-white bg-white border rounded-pill px-2 py-0 text-muted fw-bold"
+                        style={{ fontSize: '0.68rem' }}
+                        onClick={() => setTxAmount(String((Number(txAmount) || 0) + amt))}
+                      >
+                        +৳{amt}
+                      </button>
+                    ))}
+                    {txAmount && (
+                      <button
+                        type="button"
+                        className="btn btn-xs btn-link text-danger p-0 ms-auto text-decoration-none"
+                        style={{ fontSize: '0.68rem' }}
+                        onClick={() => setTxAmount('')}
+                      >
+                        মুছুন
+                      </button>
+                    )}
+                  </div>
+
                   <div className="col-7">
                     <select
-                      className="form-select form-select-sm rounded-3 py-1"
+                      className="form-select form-select-sm rounded-3 py-1 bg-white"
                       value={txCategory}
                       onChange={(e) => setTxCategory(e.target.value)}
-                      style={{ fontSize: '0.8rem' }}
+                      style={{ fontSize: '0.78rem' }}
                     >
                       {categories.map((cat, idx) => (
                         <option key={idx} value={cat}>{cat}</option>
@@ -1256,58 +1768,78 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                     </select>
                   </div>
                   <div className="col-5">
-                    <button type="submit" className="btn btn-sm btn-dark w-100 rounded-3 py-1 fw-bold shadow-sm" style={{ fontSize: '0.8rem' }}>
-                      <i className="bi bi-plus-lg me-1"></i>যোগ করুন
+                    <button type="submit" className={`btn btn-sm w-100 rounded-3 py-1 fw-bold shadow-xs text-white ${txType === 'shop_expense' ? 'btn-danger' : txType === 'stock_purchase' ? 'btn-primary' : 'btn-dark'}`} style={{ fontSize: '0.8rem' }}>
+                      <i className="bi bi-check2 me-1"></i>যোগ করুন
                     </button>
                   </div>
                 </div>
               </form>
 
-              {/* Transactions List with Clean Mobile Badge & Overflow Protection */}
-              <div className="flex-grow-1 overflow-auto px-1" style={{ maxHeight: '190px' }}>
-                <span className="text-muted fw-bold d-block mb-1" style={{ fontSize: '0.7rem' }}>
-                  আজকের এন্ট্রি তালিকা ({transactions.length})
-                </span>
+              {/* Transactions List with Timeline Cards */}
+              <div className="flex-grow-1 overflow-auto px-1" style={{ maxHeight: '185px' }}>
+                <div className="d-flex justify-content-between align-items-center mb-1">
+                  <span className="text-muted fw-bold" style={{ fontSize: '0.7rem' }}>
+                    আজকের লেনদেন তালিকা ({transactions.length})
+                  </span>
+                  {transactions.length > 0 && (
+                    <span className="text-muted" style={{ fontSize: '0.68rem' }}>
+                      মোট: ৳{transactions.reduce((s, t) => s + (Number(t.amount) || 0), 0)}
+                    </span>
+                  )}
+                </div>
                 {transactions.length === 0 ? (
-                  <div className="text-center text-muted small py-3" style={{ fontSize: '0.75rem' }}>কোনো এন্ট্রি নেই</div>
+                  <div className="text-center text-muted small py-3" style={{ fontSize: '0.75rem' }}>
+                    <i className="bi bi-inbox d-block fs-3 opacity-25 mb-1"></i>
+                    আজকে কোনো খরচ বা উত্তোলন যোগ করা হয়নি
+                  </div>
                 ) : (
-                  <div className="d-flex flex-column gap-1">
-                    {transactions.map((tx) => (
-                      <div 
-                        key={tx.id} 
-                        className="p-2 rounded-3 bg-light d-flex justify-content-between align-items-center"
-                        style={{ minHeight: '40px' }}
-                      >
-                        <div className="text-truncate me-2" style={{ maxWidth: '75%' }}>
-                          <span className={`badge me-1 ${
-                            tx.type === 'shop_expense' ? 'bg-danger-subtle text-danger' : 
-                            tx.type === 'stock_purchase' ? 'bg-primary-subtle text-primary' : 
-                            'bg-warning-subtle text-dark'
-                          }`} style={{ fontSize: '0.65rem' }}>
-                            {tx.type === 'shop_expense' ? 'দোকান' : tx.type === 'stock_purchase' ? 'স্টক' : 'উত্তোলন'}
-                          </span>
-                          <span className="small fw-semibold text-dark">{tx.description}</span>
-                          <small className="text-muted ms-1" style={{ fontSize: '0.68rem' }}>({tx.category})</small>
+                  <div className="d-flex flex-column gap-1.5">
+                    {transactions.map((tx) => {
+                      const isShop = tx.type === 'shop_expense';
+                      const isStock = tx.type === 'stock_purchase';
+                      return (
+                        <div 
+                          key={tx.id} 
+                          className="p-2 rounded-3 bg-light d-flex justify-content-between align-items-center border-start border-3 transition-all"
+                          style={{ borderColor: isShop ? '#dc3545' : isStock ? '#0d6efd' : '#ffc107', minHeight: '40px' }}
+                        >
+                          <div className="text-truncate me-2" style={{ maxWidth: '75%' }}>
+                            <div className="d-flex align-items-center gap-1">
+                              <span className={`badge rounded-pill ${
+                                isShop ? 'bg-danger text-white' : 
+                                isStock ? 'bg-primary text-white' : 
+                                'bg-warning text-dark'
+                              }`} style={{ fontSize: '0.62rem' }}>
+                                {isShop ? 'দোকান' : isStock ? 'স্টক' : 'উত্তোলন'}
+                              </span>
+                              <span className="small fw-bold text-dark text-truncate">{tx.description}</span>
+                            </div>
+                            <small className="text-muted ms-1" style={{ fontSize: '0.68rem' }}>{tx.category}</small>
+                          </div>
+                          <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                            <span className="fw-bold small text-danger">
+                              -৳{tx.amount}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-white bg-white border-0 text-muted p-1 rounded-circle d-flex align-items-center justify-content-center hover-text-danger"
+                              style={{ width: '26px', height: '26px' }}
+                              onClick={() => handleDeleteTransaction(tx.id)}
+                              title="মুছুন"
+                            >
+                              <i className="bi bi-trash3 text-danger" style={{ fontSize: '0.78rem' }}></i>
+                            </button>
+                          </div>
                         </div>
-                        <div className="d-flex align-items-center gap-2 flex-shrink-0">
-                          <span className="fw-bold small text-dark">৳{tx.amount}</span>
-                          <button
-                            type="button"
-                            className="btn btn-sm btn-light border-0 text-danger p-1 rounded-circle d-flex align-items-center justify-content-center"
-                            style={{ width: '26px', height: '26px' }}
-                            onClick={() => handleDeleteTransaction(tx.id)}
-                            title="মুছুন"
-                          >
-                            <i className="bi bi-trash3" style={{ fontSize: '0.8rem' }}></i>
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
             </div>
           </div>
+            </>
+          )}
         </div>
       ) : activeTab === 'due_ledger' ? (
         /* Customer Due Ledger */
@@ -2424,56 +2956,53 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                   </div>
                 )}
 
-                {/* 2. Select Report Type */}
+                {/* 2. Select Report Type & WhatsApp Included Sections */}
                 <label className="text-dark fw-bold d-block mb-1 mt-2" style={{ fontSize: '0.75rem' }}>
-                  ২. কি ধরনের রিপোর্ট চান:
+                  ২. রিপোর্টে যা যা পাঠাতে চান (একাধিক টিক দিন):
                 </label>
                 <div className="d-flex flex-column gap-1 mb-2">
-                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${exportType === 'full' ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
+                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${selectedReportSections.summary ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
                     <input 
-                      type="radio" 
-                      name="exportTypeRadio" 
-                      checked={exportType === 'full'} 
-                      onChange={() => setExportType('full')}
+                      type="checkbox" 
+                      checked={selectedReportSections.summary} 
+                      onChange={(e) => setSelectedReportSections(prev => ({ ...prev, summary: e.target.checked }))}
                       className="form-check-input mt-0"
                     />
                     <div>
-                      <strong className="d-block small text-dark">পূর্ণাঙ্গ ক্যাশ ও লাভ-ক্ষতি হিসাব</strong>
-                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>বিক্রয়, খরচ, উত্তোলন, নিট লাভ ও গরমিল ব্যালেন্স</small>
+                      <strong className="d-block small text-dark">ক্যাশ ড্রয়ার ও সারসংক্ষেপ হিসাব</strong>
+                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>বিক্রয়, ড্রয়ার ব্যালেন্স, নিট লাভ ও গরমিল</small>
                     </div>
                   </label>
 
-                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${exportType === 'itemized' ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
+                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${selectedReportSections.expenses ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
                     <input 
-                      type="radio" 
-                      name="exportTypeRadio" 
-                      checked={exportType === 'itemized'} 
-                      onChange={() => setExportType('itemized')}
+                      type="checkbox" 
+                      checked={selectedReportSections.expenses} 
+                      onChange={(e) => setSelectedReportSections(prev => ({ ...prev, expenses: e.target.checked }))}
                       className="form-check-input mt-0"
                     />
                     <div>
-                      <strong className="d-block small text-dark">বিস্তারিত খরচের খাতা (আইটেম অনুযায়ী)</strong>
-                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>সিগারেট, রুটি, পরিবারের বাজার প্রতিটি খরচের বিবরণ</small>
+                      <strong className="d-block small text-dark">বিস্তারিত খরচের খাতা (আইটেম তালিকা)</strong>
+                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>দোকান পরিচালন, স্টক ক্রয় ও ব্যক্তিগত খরচসমূহ</small>
                     </div>
                   </label>
 
-                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${exportType === 'due' ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
+                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${selectedReportSections.due ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
                     <input 
-                      type="radio" 
-                      name="exportTypeRadio" 
-                      checked={exportType === 'due'} 
-                      onChange={() => setExportType('due')}
+                      type="checkbox" 
+                      checked={selectedReportSections.due} 
+                      onChange={(e) => setSelectedReportSections(prev => ({ ...prev, due: e.target.checked }))}
                       className="form-check-input mt-0"
                     />
                     <div>
                       <strong className="d-block small text-dark">কাস্টমার বাকি খাতার সারসংক্ষেপ</strong>
-                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>কার কত টাকা বাকি আছে তার পূর্ণ তালিকা</small>
+                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>মোট বাজার বাকি ও শীর্ষ বাকিদারদের তালিকা</small>
                     </div>
                   </label>
                 </div>
 
-                {/* 3. Choose Profit Calculation Mode (Only for Full Report) */}
-                {exportType === 'full' && (
+                {/* 3. Choose Profit Calculation Mode */}
+                {selectedReportSections.summary && (
                   <div className="p-2 bg-light rounded-3 mb-3 border">
                     <label className="text-dark fw-bold d-block mb-1" style={{ fontSize: '0.73rem' }}>
                       ৩. লাভ হিসাবের নিয়ম নির্বাচন করুন:
