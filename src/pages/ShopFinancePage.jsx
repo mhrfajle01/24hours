@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import { useSound } from '../contexts/SoundContext';
 
-// Helper for accurate Bangladesh Standard Time (BST: UTC+6) date string (YYYY-MM-DD)
+// Accurate Bangladesh Standard Time (BST: UTC+6) date string (YYYY-MM-DD)
 const getBDDateString = (dateObj = new Date()) => {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Dhaka',
@@ -36,8 +36,7 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     1000: 0, 500: 0, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0, 5: 0, 2: 0, 1: 0
   });
 
-  // User-Configurable Profit/Loss Formula settings
-  // Mode: 'margin_based' (Default retail margin) | 'cashflow' (Total Sales - Expenses)
+  // Profit/Loss Formula settings
   const [profitCalculationBasis, setProfitCalculationBasis] = useState('margin_based');
   const [grossMarginPct, setGrossMarginPct] = useState(12);
   const [deductShopExpense, setDeductShopExpense] = useState(true);
@@ -56,20 +55,38 @@ export default function ShopFinancePage({ currentUser, onBack }) {
   const [custName, setCustName] = useState('');
   const [custPhone, setCustPhone] = useState('');
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [isEditingCust, setIsEditingCust] = useState(false);
+  const [editCustName, setEditCustName] = useState('');
+  const [editCustPhone, setEditCustPhone] = useState('');
   const [dueActionType, setDueActionType] = useState('add_due');
   const [dueAmount, setDueAmount] = useState('');
   const [dueNote, setDueNote] = useState('');
   const [dueRecords, setDueRecords] = useState([]);
+  const [bakiAlert, setBakiAlert] = useState(null); // { type: 'success' | 'error' | 'warning', title: '', message: '', onConfirm?: fn }
+  const [custSearchQuery, setCustSearchQuery] = useState('');
+  const [custFilterTab, setCustFilterTab] = useState('all'); // 'all' | 'due' | 'clear'
 
-  // Reports & Analytics State (Shared Date Filter)
+  // Reports & Analytics State
   const [allEntries, setAllEntries] = useState([]);
+  const [allTransactions, setAllTransactions] = useState([]);
+  const [expandedDate, setExpandedDate] = useState(null);
+  const [reportViewMode, setReportViewMode] = useState('daily'); // 'daily' | 'itemized'
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [sortField, setSortField] = useState('date');
   const [sortAsc, setSortAsc] = useState(false);
-  const [discrepancyFilter, setDiscrepancyFilter] = useState('all'); // 'all' | 'mismatch' | 'perfect'
+  const [discrepancyFilter, setDiscrepancyFilter] = useState('all');
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState(null);
   const [showCelebration, setShowCelebration] = useState(false);
+
+  // Advanced Report Modal & Custom Success Alert state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportScope, setExportScope] = useState('single'); // 'single' | '7days' | '30days' | 'thisMonth' | 'custom'
+  const [exportType, setExportType] = useState('full'); // 'full' | 'itemized' | 'due'
+  const [customExportFrom, setCustomExportFrom] = useState(() => getBDDateString());
+  const [customExportTo, setCustomExportTo] = useState(() => getBDDateString());
+  const [successAlert, setSuccessAlert] = useState(null); // { title, msg, link }
 
   const categories = [
     'দোকানের খরচ',
@@ -83,7 +100,7 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     'অন্যান্য'
   ];
 
-  // Derived calculations for Selected Date
+  // Derived calculations for current selected date
   const totalShopExpenses = transactions
     .filter(t => t.type === 'shop_expense')
     .reduce((acc, t) => acc + (Number(t.amount) || 0), 0);
@@ -109,20 +126,12 @@ export default function ShopFinancePage({ currentUser, onBack }) {
   const discrepancy = (Number(actualCash) || 0) - expectedClosingCash;
   const totalMarketDue = customers.reduce((sum, c) => sum + (Number(c.totalDue) || 0), 0);
 
-  // Dynamic User-Chosen Profit Calculation for current day
   const calculateDayProfit = (sales, shopExp, drawings, stock) => {
-    let baseRevenue = 0;
-    if (profitCalculationBasis === 'margin_based') {
-      baseRevenue = Math.round(sales * (grossMarginPct / 100));
-    } else {
-      baseRevenue = sales;
-    }
-
+    let baseRevenue = profitCalculationBasis === 'margin_based' ? Math.round(sales * (grossMarginPct / 100)) : sales;
     let deductions = 0;
     if (deductShopExpense) deductions += shopExp;
     if (deductPersonalDrawings) deductions += drawings;
     if (deductStockPurchases) deductions += stock;
-
     return baseRevenue - deductions;
   };
 
@@ -156,7 +165,6 @@ export default function ShopFinancePage({ currentUser, onBack }) {
           setNotes(d.notes || '');
           if (d.grossMarginPct) setGrossMarginPct(d.grossMarginPct);
         } else if (isMounted) {
-          // Fetch previous day in BD Time
           const prevDateObj = new Date(selectedDate);
           prevDateObj.setDate(prevDateObj.getDate() - 1);
           const prevStr = getBDDateString(prevDateObj);
@@ -192,17 +200,22 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     return () => { isMounted = false; };
   }, [selectedDate, currentUser]);
 
-  // Load All Entries for Reports
+  // Load All Entries & All Transactions for Reports
   useEffect(() => {
     let isMounted = true;
     async function loadAllEntries() {
       if (!currentUser?.uid || (activeTab !== 'reports' && activeTab !== 'analytics')) return;
       try {
         const snap = await getDocs(collection(db, 'shopFinance', currentUser.uid, 'dailyEntries'));
+        const txSnap = await getDocs(collection(db, 'shopFinance', currentUser.uid, 'transactions'));
         if (isMounted) {
           const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
           list.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
           setAllEntries(list);
+
+          const txList = txSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          txList.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+          setAllTransactions(txList);
         }
       } catch (err) {
         console.error('Reports load error:', err);
@@ -292,7 +305,8 @@ export default function ShopFinancePage({ currentUser, onBack }) {
         createdAt: new Date().toISOString()
       };
       const docRef = await addDoc(collection(db, 'shopFinance', currentUser.uid, 'transactions'), newTx);
-      setTransactions(prev => [newTx, ...prev]);
+      setTransactions(prev => [{ id: docRef.id, ...newTx }, ...prev]);
+      setAllTransactions(prev => [{ id: docRef.id, ...newTx }, ...prev]);
       try { playSound?.('points'); } catch {}
       setTxDesc('');
       setTxAmount('');
@@ -307,6 +321,7 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     try {
       await deleteDoc(doc(db, 'shopFinance', currentUser.uid, 'transactions', id));
       setTransactions(prev => prev.filter(t => t.id !== id));
+      setAllTransactions(prev => prev.filter(t => t.id !== id));
       try { playSound?.('trash'); } catch {}
     } catch (err) {
       console.error('Delete tx failed:', err);
@@ -330,9 +345,18 @@ export default function ShopFinancePage({ currentUser, onBack }) {
       try { playSound?.('points'); } catch {}
       setCustName('');
       setCustPhone('');
+      setBakiAlert({
+        type: 'success',
+        title: 'কাস্টমার যোগ সম্পন্ন',
+        message: `"${created.name}" কাস্টমার সফলভাবে তালিকায় যোগ করা হয়েছে।`
+      });
     } catch (err) {
       console.error('Add customer error:', err);
-      alert('কাস্টমার যোগ করতে সমস্যা: ' + err.message);
+      setBakiAlert({
+        type: 'error',
+        title: 'যোগ করতে ব্যর্থ',
+        message: err.message
+      });
     }
   };
 
@@ -340,10 +364,38 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     e.preventDefault();
     if (!dueAmount || !selectedCustomer || !currentUser?.uid) return;
     const amt = Number(dueAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setBakiAlert({
+        type: 'warning',
+        title: 'সঠিক টাকার পরিমাণ দিন',
+        message: 'টাকার পরিমাণ ০ এর বেশি হতে হবে।'
+      });
+      return;
+    }
+
+    const currentDue = Number(selectedCustomer.totalDue) || 0;
     const isCollect = dueActionType === 'collect_due';
-    const updatedDue = isCollect
-      ? (Number(selectedCustomer.totalDue) || 0) - amt
-      : (Number(selectedCustomer.totalDue) || 0) + amt;
+
+    if (isCollect) {
+      if (currentDue <= 0) {
+        setBakiAlert({
+          type: 'warning',
+          title: 'বকেয়া নেই',
+          message: `${selectedCustomer.name}-এর কোনো বকেয়া বাকি নেই (বাকি ৳০), তাই আদায় নেওয়া সম্ভব নয়।`
+        });
+        return;
+      }
+      if (amt > currentDue) {
+        setBakiAlert({
+          type: 'warning',
+          title: 'অতিরিক্ত আদায় প্রযোজ্য নয়',
+          message: `কাস্টমারের মোট বাকি ৳${currentDue}। আপনি ৳${amt} আদায় করতে পারবেন না (ব্যালেন্স মাইনাস হবে না)। প্রয়োজনে সর্বোচ্চ ৳${currentDue} আদায় করুন।`
+        });
+        return;
+      }
+    }
+
+    const updatedDue = isCollect ? currentDue - amt : currentDue + amt;
 
     try {
       await updateDoc(doc(db, 'shopFinance', currentUser.uid, 'customers', selectedCustomer.id), {
@@ -376,15 +428,104 @@ export default function ShopFinancePage({ currentUser, onBack }) {
       setDueNote('');
     } catch (err) {
       console.error('Due transaction error:', err);
-      alert('লেনদেনে সমস্যা: ' + err.message);
+      setBakiAlert({
+        type: 'error',
+        title: 'লেনদেনে সমস্যা',
+        message: err.message
+      });
     }
   };
 
   const sendCustomerWhatsAppSlip = (cust) => {
     if (!cust) return;
-    const msg = `সালামু আলাইকুম ${cust.name} ভাই,\nদোকানের বাকি খাতার হিসাব অনুযায়ী আপনার মোট বকেয়া ৳${cust.totalDue || 0} টাকা। সুবিধামতো সময়ে পরিশোধের অনুরোধ রইল। ধন্যবাদ!`;
-    const url = `https://wa.me/${cust.phone ? cust.phone.replace(/[^0-9]/g, '') : ''}?text=${encodeURIComponent(msg)}`;
+    let phone = (cust.phone || '').replace(/[^0-9]/g, '');
+    if (!phone) {
+      setBakiAlert({
+        type: 'warning',
+        title: 'মোবাইল নম্বর নেই',
+        message: 'এই কাস্টমারের কোনো মোবাইল নম্বর সংরক্ষণ করা নেই। অনুগ্রহ করে এডিট করে মোবাইল নম্বর যুক্ত করুন।'
+      });
+      return;
+    }
+
+    if (phone.startsWith('0')) {
+      phone = '88' + phone;
+    } else if (phone.length === 10 && phone.startsWith('1')) {
+      phone = '880' + phone;
+    }
+
+    const dueAmountVal = Number(cust.totalDue) || 0;
+    const msg = `আসসালামু আলাইকুম ওয়া রাহমাতুল্লাহ, ${cust.name}।\n\n` +
+      `দোকানের হিসাব অনুযায়ী আপনার পূর্বের বকেয়া বাকি রয়েছে:\n` +
+      `💰 *বকেয়া টাকার পরিমাণ:* ৳${dueAmountVal}/-\n\n` +
+      `অনুগ্রহ করে আপনার সুবিধাজনক সময়ে বকেয়া পরিশোধ করার জন্য বিনীত অনুরোধ জানাচ্ছি।\n` +
+      `জাযাকাল্লাহু খাইরান।`;
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
+  };
+
+  const handleUpdateCustomer = async (e) => {
+    e.preventDefault();
+    if (!editCustName.trim() || !selectedCustomer || !currentUser?.uid) return;
+    try {
+      const updated = {
+        name: editCustName.trim(),
+        phone: editCustPhone.trim()
+      };
+      await updateDoc(doc(db, 'shopFinance', currentUser.uid, 'customers', selectedCustomer.id), updated);
+      setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, ...updated } : c));
+      setSelectedCustomer(prev => ({ ...prev, ...updated }));
+      setIsEditingCust(false);
+      try { playSound?.('points'); } catch {}
+      setBakiAlert({
+        type: 'success',
+        title: 'আপডেট সফল',
+        message: 'কাস্টমার তথ্য সফলভাবে আপডেট করা হয়েছে।'
+      });
+    } catch (err) {
+      console.error('Update customer error:', err);
+      setBakiAlert({
+        type: 'error',
+        title: 'আপডেট ব্যর্থ',
+        message: err.message
+      });
+    }
+  };
+
+  const handleDeleteCustomer = () => {
+    if (!selectedCustomer || !currentUser?.uid) return;
+    if (Number(selectedCustomer.totalDue || 0) > 0) {
+      setBakiAlert({
+        type: 'warning',
+        title: 'বকেয়া বাকি রয়েছে',
+        message: `এই কাস্টমারের এখনও ৳${selectedCustomer.totalDue} বকেয়া বাকি আছে! বকেয়া সম্পূর্ণ আদায় বা শূন্য না করে কাস্টমার মোছা যাবে না।`
+      });
+      return;
+    }
+
+    setBakiAlert({
+      type: 'warning',
+      title: 'কাস্টমার মুছে ফেলবেন?',
+      message: `আপনি কি নিশ্চিত যে "${selectedCustomer.name}"-কে তালিকা থেকে মুছে ফেলতে চান?`,
+      confirmText: 'হ্যাঁ, মুছুন',
+      onConfirm: async () => {
+        try {
+          await deleteDoc(doc(db, 'shopFinance', currentUser.uid, 'customers', selectedCustomer.id));
+          setCustomers(prev => prev.filter(c => c.id !== selectedCustomer.id));
+          setSelectedCustomer(null);
+          setIsEditingCust(false);
+          try { playSound?.('trash'); } catch {}
+        } catch (err) {
+          console.error('Delete customer error:', err);
+          setBakiAlert({
+            type: 'error',
+            title: 'মুছতে ব্যর্থ',
+            message: err.message
+          });
+        }
+      }
+    });
   };
 
   const handleParseNoteLine = async (line) => {
@@ -405,7 +546,8 @@ export default function ShopFinancePage({ currentUser, onBack }) {
         createdAt: new Date().toISOString()
       };
       const docRef = await addDoc(collection(db, 'shopFinance', currentUser.uid, 'transactions'), newTx);
-      setTransactions(prev => [newTx, ...prev]);
+      setTransactions(prev => [{ id: docRef.id, ...newTx }, ...prev]);
+      setAllTransactions(prev => [{ id: docRef.id, ...newTx }, ...prev]);
     } catch (e) {
       console.error('Note parse failed:', e);
     }
@@ -444,35 +586,29 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     }
   };
 
-  // Filtered & Sorted Entries (Reactive to user-selected profit formula)
+  // Filtered & Sorted Entries
   const filteredAndSortedEntries = useMemo(() => {
     let list = [...allEntries];
-
-    // From - To Date Filter
     if (fromDate) list = list.filter(e => e.date >= fromDate);
     if (toDate) list = list.filter(e => e.date <= toDate);
 
-    // Discrepancy filter
     if (discrepancyFilter === 'mismatch') {
       list = list.filter(e => Number(e.discrepancy || 0) !== 0);
     } else if (discrepancyFilter === 'perfect') {
       list = list.filter(e => Number(e.discrepancy || 0) === 0);
     }
 
-    // Recalculate profit per entry using user's chosen formula
     list = list.map(e => {
       const sales = Number(e.totalSales || 0);
       const shopExp = Number(e.totalShopExpenses || 0);
       const drawings = Number(e.totalPersonalDrawings || 0);
       const stock = Number(e.totalStockPurchases || 0);
-      const customProfit = calculateDayProfit(sales, shopExp, drawings, stock);
       return {
         ...e,
-        recalculatedProfit: customProfit
+        recalculatedProfit: calculateDayProfit(sales, shopExp, drawings, stock)
       };
     });
 
-    // Sorting
     list.sort((a, b) => {
       let valA = a[sortField];
       let valB = b[sortField];
@@ -492,7 +628,15 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     return list;
   }, [allEntries, fromDate, toDate, discrepancyFilter, sortField, sortAsc, profitCalculationBasis, grossMarginPct, deductShopExpense, deductPersonalDrawings, deductStockPurchases]);
 
-  // Analytics Totals
+  // Filtered Transactions for Itemized view
+  const filteredTransactions = useMemo(() => {
+    let list = [...allTransactions];
+    if (fromDate) list = list.filter(t => t.date >= fromDate);
+    if (toDate) list = list.filter(t => t.date <= toDate);
+    return list;
+  }, [allTransactions, fromDate, toDate]);
+
+  // Analytics Totals & Breakdown
   const analyticsTotals = useMemo(() => {
     return filteredAndSortedEntries.reduce((acc, curr) => ({
       sales: acc.sales + (Number(curr.totalSales) || 0),
@@ -503,7 +647,17 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     }), { sales: 0, expenses: 0, drawings: 0, stock: 0, profit: 0 });
   }, [filteredAndSortedEntries]);
 
-  // Lightweight SVG Chart Data (Chronological)
+  // Category-wise totals in the filtered range
+  const categoryBreakdown = useMemo(() => {
+    const res = {};
+    filteredTransactions.forEach(t => {
+      const cat = t.category || 'অন্যান্য';
+      res[cat] = (res[cat] || 0) + Number(t.amount || 0);
+    });
+    return Object.entries(res).sort((a, b) => b[1] - a[1]);
+  }, [filteredTransactions]);
+
+  // Chart Data
   const chartData = useMemo(() => {
     const sortedChrono = [...filteredAndSortedEntries].sort((a, b) => new Date(a.date) - new Date(b.date));
     const maxVal = Math.max(...sortedChrono.map(d => Math.max(Number(d.totalSales || 0), Number(d.recalculatedProfit || 0), Number(d.totalShopExpenses || 0))), 100);
@@ -522,25 +676,176 @@ export default function ShopFinancePage({ currentUser, onBack }) {
     }
   };
 
-  const exportToCSV = () => {
-    if (filteredAndSortedEntries.length === 0) return alert('কোনো রেকর্ড নেই!');
-    let csv = 'তারিখ,আগের ক্যাশ,নগদ বিক্রয়,বাকি বিক্রয়,বাকি আদায়,দোকান খরচ,উত্তোলন,মোট বিক্রয়,হিসাব অনুযায়ী লাভ,হাতে ক্যাশ,গরমিল\n';
-    filteredAndSortedEntries.forEach(e => {
-      csv += `${e.date},${e.openingCash || 0},${e.cashSales || 0},${e.creditSales || 0},${e.dueCollected || 0},${e.totalShopExpenses || 0},${e.totalPersonalDrawings || 0},${e.totalSales || 0},${e.recalculatedProfit || 0},${e.actualCash || 0},${e.discrepancy || 0}\n`;
-    });
-    csv += `সর্বমোট,,,,${analyticsTotals.expenses},${analyticsTotals.drawings},${analyticsTotals.sales},${analyticsTotals.profit},,\n`;
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Shop_Finance_${fromDate || 'all'}_to_${toDate || 'all'}.csv`;
-    link.click();
+  // Helper to get entries for requested scope
+  const getScopeData = () => {
+    let start = '';
+    let end = '';
+    const todayStr = getBDDateString();
+
+    if (exportScope === 'single') {
+      start = selectedDate;
+      end = selectedDate;
+    } else if (exportScope === '7days') {
+      const d = new Date();
+      d.setDate(d.getDate() - 6);
+      start = getBDDateString(d);
+      end = todayStr;
+    } else if (exportScope === '30days') {
+      const d = new Date();
+      d.setDate(d.getDate() - 29);
+      start = getBDDateString(d);
+      end = todayStr;
+    } else if (exportScope === 'thisMonth') {
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      start = getBDDateString(startOfMonth);
+      end = todayStr;
+    } else if (exportScope === 'custom') {
+      start = customExportFrom || '1970-01-01';
+      end = customExportTo || todayStr;
+    }
+
+    let entries = allEntries.filter(e => e.date >= start && e.date <= end);
+    let txs = allTransactions.filter(t => t.date >= start && t.date <= end);
+
+    // If single day and not in allEntries yet (unsaved changes in state)
+    if (exportScope === 'single' && entries.length === 0) {
+      entries = [{
+        date: selectedDate,
+        openingCash,
+        cashSales,
+        creditSales,
+        totalSales,
+        dueCollected,
+        totalShopExpenses,
+        totalStockPurchases,
+        totalPersonalDrawings,
+        expectedClosingCash,
+        actualCash,
+        discrepancy,
+        recalculatedProfit: currentDayProfit,
+        notes
+      }];
+      txs = transactions;
+    }
+
+    return { start, end, entries, txs };
   };
 
-  const copyWhatsAppReport = () => {
-    const report = `*দোকানের দৈনিক হিসাব (BD)*\nতারিখ: ${selectedDate}\n--------------------\nআগের ক্যাশ: ৳${openingCash}\nমোট বিক্রয়: ৳${totalSales} (নগদ: ৳${cashSales}, বাকি: ৳${creditSales})\nবাকি আদায়: ৳${dueCollected}\nদোকানের খরচ: ৳${totalShopExpenses}\nপণ্য স্টক ক্রয়: ৳${totalStockPurchases}\nমালিকের উত্তোলন: ৳${totalPersonalDrawings}\n--------------------\nহিসাবকৃত লাভ: ৳${currentDayProfit}\nহিসাব অনুযায়ী শেষ ক্যাশ: ৳${expectedClosingCash}\nহাতে গোনা ক্যাশ: ৳${actualCash}\nগরমিল: ৳${discrepancy}\nবর্তমান বাজার বাকি: ৳${totalMarketDue}\n${notes ? `\nনোট:\n${notes}` : ''}`;
-    navigator.clipboard.writeText(report);
-    alert('হিসাবের সারসংক্ষেপ কপি হয়েছে!');
+  const handleGenerateExport = (mode = 'whatsapp') => {
+    const { start, end, entries, txs } = getScopeData();
+
+    if (mode === 'csv') {
+      // 1. Download CSV
+      if (exportType === 'due') {
+        let csv = 'দোকানের কাস্টমার বাকি খাতার তালিকা\n';
+        csv += `তারিখ:,${getBDDateString()},মোট কাস্টমার:,${customers.length}\n\n`;
+        csv += 'কাস্টমারের নাম,মোবাইল নম্বর,মোট বাকি (৳)\n';
+        customers.forEach(c => {
+          csv += `"${(c.name || '').replace(/"/g, '""')}","${c.phone || ''}",${c.totalDue || 0}\n`;
+        });
+        csv += `\nসর্বমোট বাজার বাকি,,,${totalMarketDue}\n`;
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Shop_Customer_Due_List_${getBDDateString()}.csv`;
+        link.click();
+        setShowExportModal(false);
+        setSuccessAlert({
+          title: 'CSV ডাউনলোড সম্পন্ন হয়েছে!',
+          msg: 'কাস্টমারদের বাকি তালিকার এক্সেল ফাইল আপনার ডিভাইসে সেভ হয়েছে।'
+        });
+        return;
+      }
+
+      if (exportType === 'itemized') {
+        if (txs.length === 0) return alert('এই সময়কালে কোনো খরচের লেনদেন পাওয়া যায়নি!');
+        let csv = 'দোকানের খরচের বিস্তারিত অডিট রিপোর্ট\n';
+        csv += `সময়কাল:,${start} হতে ${end},মোট খরচ আইটেম:,${txs.length} টি\n\n`;
+        csv += 'তারিখ,বিবরণ,ক্যাটাগরি,ধরন,টাকার পরিমাণ (৳)\n';
+        txs.forEach(t => {
+          const typeStr = t.type === 'shop_expense' ? 'দোকান পরিচালন খরচ' : t.type === 'stock_purchase' ? 'পণ্য স্টক ক্রয়' : 'মালিকের ব্যক্তিগত উত্তোলন';
+          csv += `${t.date},"${(t.description || '').replace(/"/g, '""')}","${t.category || ''}","${typeStr}",${t.amount || 0}\n`;
+        });
+        const totalAmt = txs.reduce((s, t) => s + (Number(t.amount) || 0), 0);
+        csv += `\nসর্বমোট খরচ ও উত্তোলন,,,,,${totalAmt}\n`;
+        const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Shop_Expenses_${start}_to_${end}.csv`;
+        link.click();
+        setShowExportModal(false);
+        setSuccessAlert({
+          title: 'CSV ডাউনলোড সম্পন্ন হয়েছে!',
+          msg: 'বিস্তারিত খরচের হিসাব এক্সেল ফাইল আপনার ডিভাইসে সেভ হয়েছে।'
+        });
+        return;
+      }
+
+      // Full daily audit CSV formatted cleanly for Excel / Mobile Sheets
+      if (entries.length === 0) return alert('এই সময়কালে কোনো হিসাব পাওয়া যায়নি!');
+      let csv = 'দোকানের ক্যাশ ও আর্থিক হিসাব অডিট রিপোর্ট\n';
+      csv += `রিপোর্ট সময়কাল:,${start} হতে ${end},মোট দিন:,${entries.length},উৎপন্ন:,${getBDDateString()}\n`;
+      csv += `লাভের হিসাব ভিত্তি:,${profitCalculationBasis === 'margin_based' ? `মার্জিন লাভ (${grossMarginPct}%)` : 'সরাসরি ক্যাশফ্লো (বিক্রয় - খরচ)'}\n\n`;
+      csv += 'তারিখ,আগের ক্যাশ (৳),নগদ বিক্রয় (৳),বাকি বিক্রয় (৳),মোট বিক্রয় (৳),বাকি আদায় (৳),দোকান খরচ (৳),স্টক ক্রয় (৳),উত্তোলন (৳),মোট খরচ (৳),হিসাবকৃত লাভ (৳),শেষ ক্যাশ (৳),হাতে ক্যাশ (৳),গরমিল (৳),দৈনিক নোট\n';
+      entries.forEach(e => {
+        const totalOut = (Number(e.totalShopExpenses) || 0) + (Number(e.totalStockPurchases) || 0) + (Number(e.totalPersonalDrawings) || 0);
+        csv += `${e.date},${e.openingCash || 0},${e.cashSales || 0},${e.creditSales || 0},${e.totalSales || 0},${e.dueCollected || 0},${e.totalShopExpenses || 0},${e.totalStockPurchases || 0},${e.totalPersonalDrawings || 0},${totalOut},${e.recalculatedProfit || e.estimatedNetProfit || 0},${e.expectedClosingCash || 0},${e.actualCash || 0},${e.discrepancy || 0},"${(e.notes || '').replace(/"/g, '""')}"\n`;
+      });
+      const totSales = entries.reduce((s, e) => s + (Number(e.totalSales) || 0), 0);
+      const totCash = entries.reduce((s, e) => s + (Number(e.cashSales) || 0), 0);
+      const totCredit = entries.reduce((s, e) => s + (Number(e.creditSales) || 0), 0);
+      const totDueCol = entries.reduce((s, e) => s + (Number(e.dueCollected) || 0), 0);
+      const totExp = entries.reduce((s, e) => s + (Number(e.totalShopExpenses) || 0), 0);
+      const totStock = entries.reduce((s, e) => s + (Number(e.totalStockPurchases) || 0), 0);
+      const totDraw = entries.reduce((s, e) => s + (Number(e.totalPersonalDrawings) || 0), 0);
+      const totProfit = entries.reduce((s, e) => s + (Number(e.recalculatedProfit || e.estimatedNetProfit) || 0), 0);
+      csv += `\nসর্বমোট হিসাব,,${totCash},${totCredit},${totSales},${totDueCol},${totExp},${totStock},${totDraw},${totExp + totStock + totDraw},${totProfit},,,,\n`;
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Shop_Audit_${start}_to_${end}.csv`;
+      link.click();
+      setShowExportModal(false);
+      setSuccessAlert({
+        title: 'CSV ডাউনলোড সম্পন্ন হয়েছে!',
+        msg: 'দৈনিক পূর্ণাঙ্গ হিসাব অডিট ফাইল আপনার ডিভাইসে সেভ হয়েছে।'
+      });
+      return;
+    }
+
+    // 2. Generate WhatsApp Text
+    let reportText = '';
+    if (exportType === 'due') {
+      const topDueCusts = customers.filter(c => Number(c.totalDue) > 0).slice(0, 10).map((c, i) => `${i + 1}. ${c.name}: ৳${c.totalDue} ${c.phone ? `(${c.phone})` : ''}`).join('\n');
+      reportText = `👥 *দোকানের বাকি খাতার বকেয়া হিসাব*\n📅 তারিখ: ${getBDDateString()}\n━━━━━━━━━━━━━━━━━━━━\n💰 বাজারে মোট বকেয়া বাকি: ৳${totalMarketDue}\n👤 বাকি থাকা মোট কাস্টমার: ${customers.filter(c => Number(c.totalDue) > 0).length} জন\n${topDueCusts ? `━━━━━━━━━━━━━━━━━━━━\nশীর্ষ বাকিদার কাস্টমার তালিকা:\n${topDueCusts}` : ''}`;
+    } else if (exportScope === 'single') {
+      const e = entries[0] || {};
+      const totalDayOut = (Number(e.totalShopExpenses) || 0) + (Number(e.totalStockPurchases) || 0) + (Number(e.totalPersonalDrawings) || 0);
+      reportText = `🏪 *দোকানের দৈনিক ক্যাশ ও আর্থিক হিসাব*\n📅 তারিখ: ${e.date || selectedDate}\n━━━━━━━━━━━━━━━━━━━━\n💰 *ক্যাশ ড্রয়ার হিসাব (Cash In-Flow):*\n• আগের ক্যাশ (Opening): ৳${e.openingCash || 0}\n• নগদ বিক্রয় (Cash Sales): ৳${e.cashSales || 0}\n• বাকি বিক্রয় (Credit Sales): ৳${e.creditSales || 0}\n• মোট বিক্রয় (Total Sales): ৳${e.totalSales || 0}\n• বাকি আদায় (Due Collected): ৳${e.dueCollected || 0}\n━━━━━━━━━━━━━━━━━━━━\n📉 *খরচ ও উত্তোলন (Out-Flow):*\n• দোকানের পরিচালন খরচ: ৳${e.totalShopExpenses || 0}\n• পণ্য স্টক ক্রয়: ৳${e.totalStockPurchases || 0}\n• মালিকের ব্যক্তিগত উত্তোলন: ৳${e.totalPersonalDrawings || 0}\n  (মোট আউট-ফ্লো: ৳${totalDayOut})\n━━━━━━━━━━━━━━━━━━━━\n⚖️ *সমাপনী ক্যাশ ব্যালেন্স:*\n• হিসাব অনুযায়ী ড্রয়ারে ক্যাশ: ৳${e.expectedClosingCash || 0}\n• ড্রয়ারে হাতে গোনা ক্যাশ: ৳${e.actualCash || 0}\n• ক্যাশ গরমিল: ৳${e.discrepancy || 0} ${Number(e.discrepancy) === 0 ? '(✓ নিখুঁত মিলেছে)' : Number(e.discrepancy) < 0 ? '(⚠️ ক্যাশ শর্ট)' : '(অতিরিক্ত ক্যাশ)'}\n━━━━━━━━━━━━━━━━━━━━\n📊 *ব্যবসায়িক লাভ ও বাজার বাকি:*\n• হিসাবকৃত লাভ: ৳${e.recalculatedProfit || currentDayProfit}\n• বাজারে মোট কাস্টমার বাকি: ৳${totalMarketDue}\n${e.notes ? `━━━━━━━━━━━━━━━━━━━━\n📝 *দৈনিক নোট:*\n${e.notes}` : ''}`;
+    } else {
+      const totSales = entries.reduce((s, e) => s + (Number(e.totalSales) || 0), 0);
+      const totCash = entries.reduce((s, e) => s + (Number(e.cashSales) || 0), 0);
+      const totCredit = entries.reduce((s, e) => s + (Number(e.creditSales) || 0), 0);
+      const totDueCol = entries.reduce((s, e) => s + (Number(e.dueCollected) || 0), 0);
+      const totExp = entries.reduce((s, e) => s + (Number(e.totalShopExpenses) || 0), 0);
+      const totStock = entries.reduce((s, e) => s + (Number(e.totalStockPurchases) || 0), 0);
+      const totDraw = entries.reduce((s, e) => s + (Number(e.totalPersonalDrawings) || 0), 0);
+      const totProfit = entries.reduce((s, e) => s + (Number(e.recalculatedProfit || e.estimatedNetProfit) || 0), 0);
+      reportText = `📊 *দোকানের হিসাব ও আর্থিক সারাংশ রিপোর্ট*\n📅 সময়কাল: ${start} ➔ ${end} (${entries.length} কার্যদিবস)\n━━━━━━━━━━━━━━━━━━━━\n💵 মোট বিক্রয়: ৳${totSales}\n• নগদ বিক্রয়: ৳${totCash}\n• বাকি বিক্রয়: ৳${totCredit}\n• বাকি আদায়: ৳${totDueCol}\n━━━━━━━━━━━━━━━━━━━━\n📉 খরচ ও উত্তোলন:\n• দোকান পরিচালন খরচ: ৳${totExp}\n• পণ্য স্টক ক্রয়: ৳${totStock}\n• মালিকের মোট উত্তোলন: ৳${totDraw}\n  (মোট আউট-ফ্লো: ৳${totExp + totStock + totDraw})\n━━━━━━━━━━━━━━━━━━━━\n📈 হিসাব অনুযায়ী নিট লাভ: ৳${totProfit}\n👥 বর্তমান মোট কাস্টমার বাকি: ৳${totalMarketDue}`;
+    }
+
+    navigator.clipboard.writeText(reportText);
+    try { playSound?.('points'); } catch {}
+    setShowExportModal(false);
+    setSuccessAlert({
+      title: 'WhatsApp রিপোর্ট কপি হয়েছে! 🎉',
+      msg: 'রিপোর্টের সারসংক্ষেপ সফলভাবে ক্লিপবোর্ডে কপি হয়েছে। এখন সরাসরি WhatsApp-এ পেস্ট করে পাঠিয়ে দিন।',
+      link: `https://wa.me/?text=${encodeURIComponent(reportText)}`
+    });
   };
 
   return (
@@ -560,57 +865,76 @@ export default function ShopFinancePage({ currentUser, onBack }) {
         </div>
       )}
 
-      {/* Top Mobile-First App Bar */}
-      <div className="card border-0 shadow-sm rounded-4 p-2 mb-2 bg-white">
-        <div className="d-flex align-items-center justify-content-between gap-2">
+      {/* Top Mobile-First App Bar with Stylish Colorful Gradient Header */}
+      <div 
+        className="card border-0 shadow-sm rounded-4 p-3 mb-2 text-white position-relative overflow-hidden"
+        style={{ 
+          background: 'linear-gradient(135deg, #065f46 0%, #059669 45%, #10b981 100%)',
+          boxShadow: '0 8px 24px rgba(5, 150, 105, 0.22)'
+        }}
+      >
+        {/* Subtle decorative circles */}
+        <div style={{ position: 'absolute', right: '-25px', top: '-25px', width: '100px', height: '100px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', right: '40px', bottom: '-35px', width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', pointerEvents: 'none' }} />
+
+        <div className="d-flex align-items-center justify-content-between gap-2 position-relative" style={{ zIndex: 1 }}>
           <div className="d-flex align-items-center gap-2">
             <button 
-              className="btn btn-sm btn-light border-0 rounded-circle d-flex align-items-center justify-content-center"
-              style={{ width: '38px', height: '38px' }}
+              className="btn btn-sm btn-white text-white border border-white border-opacity-25 rounded-circle d-flex align-items-center justify-content-center shadow-sm"
+              style={{ width: '38px', height: '38px', background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)' }}
               onClick={onBack}
             >
               <i className="bi bi-chevron-left fs-5"></i>
             </button>
             <div>
-              <h6 className="mb-0 fw-bold d-flex align-items-center gap-1">
-                <span className="badge bg-success-subtle text-success p-1 px-2 rounded-pill">দোকানের হিসাব</span>
-              </h6>
-              <small className="text-muted" style={{ fontSize: '0.72rem' }}>Dhaka Timezone (BST UTC+6)</small>
+              <div className="d-flex align-items-center gap-2">
+                <h5 className="mb-0 fw-bold tracking-tight text-white d-flex align-items-center gap-1" style={{ letterSpacing: '0.3px', textShadow: '0 2px 4px rgba(0,0,0,0.15)' }}>
+                  <i className="bi bi-shop-window fs-5 text-warning"></i>
+                  <span>দোকানের ক্যাশ হিসাব</span>
+                </h5>
+                <span className="badge rounded-pill bg-warning text-dark fw-bold px-2 py-0" style={{ fontSize: '0.65rem' }}>PRO</span>
+              </div>
+              <small className="text-white text-opacity-75 d-block mt-0" style={{ fontSize: '0.72rem' }}>
+                <i className="bi bi-shield-check me-1"></i>স্মার্ট ক্যাশ খাতা ও লাভ-ক্ষতি ড্যাশবোর্ড
+              </small>
             </div>
           </div>
 
           <div className="d-flex align-items-center gap-1">
             <input
               type="date"
-              className="form-control form-control-sm border-0 bg-light rounded-pill px-2 py-1 text-center fw-semibold text-secondary"
-              style={{ fontSize: '0.8rem', maxWidth: '135px' }}
+              className="form-control form-control-sm border-0 rounded-pill px-2 py-1 text-center fw-bold text-dark shadow-sm"
+              style={{ fontSize: '0.78rem', maxWidth: '130px', background: 'rgba(255,255,255,0.92)' }}
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
             />
             <button 
-              className="btn btn-sm btn-success rounded-circle shadow-sm d-flex align-items-center justify-content-center" 
-              style={{ width: '34px', height: '34px' }}
-              onClick={copyWhatsAppReport} 
-              title="WhatsApp Report"
+              className="btn btn-sm btn-warning text-dark fw-bold rounded-circle shadow d-flex align-items-center justify-content-center" 
+              style={{ width: '36px', height: '36px' }}
+              onClick={() => setShowExportModal(true)} 
+              title="রিপোর্ট তৈরি ও শেয়ার"
             >
-              <i className="bi bi-whatsapp"></i>
+              <i className="bi bi-share-fill" style={{ fontSize: '0.85rem' }}></i>
             </button>
           </div>
         </div>
 
-        {/* Touch-Friendly Segmented Tabs */}
-        <div className="d-flex p-1 bg-light rounded-pill mt-2 gap-1 overflow-auto">
+        {/* Touch-Friendly Glassmorphic Segmented Tabs */}
+        <div 
+          className="d-flex p-1 rounded-pill mt-3 gap-1 overflow-auto position-relative"
+          style={{ background: 'rgba(0, 0, 0, 0.22)', backdropFilter: 'blur(8px)', zIndex: 1 }}
+        >
           {[
             { id: 'register', label: 'ক্যাশ খাতা', icon: 'bi-journal-check' },
             { id: 'due_ledger', label: `বাকি (${customers.length})`, icon: 'bi-person-lines-fill' },
             { id: 'analytics', label: 'লাভ-ক্ষতি ও গ্রাফ', icon: 'bi-graph-up-arrow' },
-            { id: 'reports', label: 'রিপোর্ট ফিল্টার', icon: 'bi-table' }
+            { id: 'reports', label: 'রিপোর্ট ও বিবরণ', icon: 'bi-table' }
           ].map(tab => (
             <button
               key={tab.id}
               type="button"
               className={`btn btn-sm flex-fill rounded-pill py-1 px-2 border-0 fw-bold transition-all text-nowrap d-flex align-items-center justify-content-center gap-1 ${
-                activeTab === tab.id ? 'bg-white text-success shadow-sm' : 'text-muted'
+                activeTab === tab.id ? 'bg-white text-success shadow' : 'text-white text-opacity-80'
               }`}
               style={{ fontSize: '0.78rem', minHeight: '32px' }}
               onClick={() => setActiveTab(tab.id)}
@@ -622,7 +946,7 @@ export default function ShopFinancePage({ currentUser, onBack }) {
         </div>
       </div>
 
-      {/* Shared From - To Date Filter Bar (Shows on both Analytics and Reports tabs) */}
+      {/* Shared From - To Date Filter Bar */}
       {(activeTab === 'analytics' || activeTab === 'reports') && (
         <div className="card border-0 shadow-sm p-2 rounded-4 bg-white mb-2">
           <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -858,7 +1182,7 @@ export default function ShopFinancePage({ currentUser, onBack }) {
             </div>
           </div>
 
-          {/* Quick Expense Logger */}
+          {/* Quick Expense Logger (100% Mobile Optimized) */}
           <div className="col-12 col-md-6">
             <div className="card shadow-sm border-0 rounded-4 p-3 bg-white h-100">
               <h6 className="fw-bold mb-2 text-dark small d-flex align-items-center gap-1">
@@ -866,10 +1190,11 @@ export default function ShopFinancePage({ currentUser, onBack }) {
               </h6>
 
               <form onSubmit={handleAddTransaction} className="mb-2">
-                <div className="btn-group w-100 mb-2">
+                {/* Mobile Friendly Segmented Type Tabs */}
+                <div className="d-flex p-1 bg-light rounded-pill mb-2 gap-1">
                   <button
                     type="button"
-                    className={`btn btn-sm py-1 ${txType === 'shop_expense' ? 'btn-danger' : 'btn-outline-danger'}`}
+                    className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all ${txType === 'shop_expense' ? 'bg-danger text-white shadow-sm' : 'text-muted'}`}
                     style={{ fontSize: '0.75rem' }}
                     onClick={() => setTxType('shop_expense')}
                   >
@@ -877,7 +1202,7 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                   </button>
                   <button
                     type="button"
-                    className={`btn btn-sm py-1 ${txType === 'stock_purchase' ? 'btn-primary' : 'btn-outline-primary'}`}
+                    className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all ${txType === 'stock_purchase' ? 'bg-primary text-white shadow-sm' : 'text-muted'}`}
                     style={{ fontSize: '0.75rem' }}
                     onClick={() => setTxType('stock_purchase')}
                   >
@@ -885,7 +1210,7 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                   </button>
                   <button
                     type="button"
-                    className={`btn btn-sm py-1 ${txType === 'personal_drawing' ? 'btn-warning' : 'btn-outline-warning'}`}
+                    className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold transition-all ${txType === 'personal_drawing' ? 'bg-warning text-dark shadow-sm' : 'text-muted'}`}
                     style={{ fontSize: '0.75rem' }}
                     onClick={() => setTxType('personal_drawing')}
                   >
@@ -893,29 +1218,32 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                   </button>
                 </div>
 
-                <div className="row g-1">
+                {/* Mobile Touch Optimized Form Grid */}
+                <div className="row g-2 mb-2">
                   <div className="col-7">
+                    <label className="text-muted d-block mb-1" style={{ fontSize: '0.7rem' }}>বিবরণ / কি বাবদ খরচ:</label>
                     <input
                       type="text"
                       className="form-control form-control-sm rounded-3 py-1"
-                      placeholder="বিবরণ (e.g. চা-নাস্তা)"
+                      placeholder="e.g. কলা রুটি / সিগারেট"
                       value={txDesc}
                       onChange={(e) => setTxDesc(e.target.value)}
-                      style={{ fontSize: '0.8rem' }}
+                      style={{ fontSize: '0.82rem' }}
                     />
                   </div>
                   <div className="col-5">
+                    <label className="text-muted d-block mb-1" style={{ fontSize: '0.7rem' }}>টাকার পরিমাণ (৳):</label>
                     <input
                       type="number"
                       required
-                      className="form-control form-control-sm rounded-3 py-1"
-                      placeholder="টাকা (৳)"
+                      className="form-control form-control-sm rounded-3 py-1 fw-bold text-end"
+                      placeholder="৳ ০"
                       value={txAmount}
                       onChange={(e) => setTxAmount(e.target.value)}
-                      style={{ fontSize: '0.8rem' }}
+                      style={{ fontSize: '0.85rem' }}
                     />
                   </div>
-                  <div className="col-8">
+                  <div className="col-7">
                     <select
                       className="form-select form-select-sm rounded-3 py-1"
                       value={txCategory}
@@ -927,26 +1255,30 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                       ))}
                     </select>
                   </div>
-                  <div className="col-4">
-                    <button type="submit" className="btn btn-sm btn-dark w-100 rounded-3 py-1 fw-bold" style={{ fontSize: '0.8rem' }}>
-                      + যোগ
+                  <div className="col-5">
+                    <button type="submit" className="btn btn-sm btn-dark w-100 rounded-3 py-1 fw-bold shadow-sm" style={{ fontSize: '0.8rem' }}>
+                      <i className="bi bi-plus-lg me-1"></i>যোগ করুন
                     </button>
                   </div>
                 </div>
               </form>
 
-              {/* Transactions List */}
-              <div className="flex-grow-1 overflow-auto" style={{ maxHeight: '180px' }}>
+              {/* Transactions List with Clean Mobile Badge & Overflow Protection */}
+              <div className="flex-grow-1 overflow-auto px-1" style={{ maxHeight: '190px' }}>
                 <span className="text-muted fw-bold d-block mb-1" style={{ fontSize: '0.7rem' }}>
                   আজকের এন্ট্রি তালিকা ({transactions.length})
                 </span>
                 {transactions.length === 0 ? (
                   <div className="text-center text-muted small py-3" style={{ fontSize: '0.75rem' }}>কোনো এন্ট্রি নেই</div>
                 ) : (
-                  <div className="list-group list-group-flush">
+                  <div className="d-flex flex-column gap-1">
                     {transactions.map((tx) => (
-                      <div key={tx.id} className="list-group-item px-1 py-1 d-flex justify-content-between align-items-center">
-                        <div className="text-truncate me-2">
+                      <div 
+                        key={tx.id} 
+                        className="p-2 rounded-3 bg-light d-flex justify-content-between align-items-center"
+                        style={{ minHeight: '40px' }}
+                      >
+                        <div className="text-truncate me-2" style={{ maxWidth: '75%' }}>
                           <span className={`badge me-1 ${
                             tx.type === 'shop_expense' ? 'bg-danger-subtle text-danger' : 
                             tx.type === 'stock_purchase' ? 'bg-primary-subtle text-primary' : 
@@ -954,16 +1286,19 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                           }`} style={{ fontSize: '0.65rem' }}>
                             {tx.type === 'shop_expense' ? 'দোকান' : tx.type === 'stock_purchase' ? 'স্টক' : 'উত্তোলন'}
                           </span>
-                          <span className="small fw-semibold">{tx.description}</span>
+                          <span className="small fw-semibold text-dark">{tx.description}</span>
+                          <small className="text-muted ms-1" style={{ fontSize: '0.68rem' }}>({tx.category})</small>
                         </div>
-                        <div className="d-flex align-items-center gap-1 flex-shrink-0">
-                          <span className="fw-bold small">৳{tx.amount}</span>
+                        <div className="d-flex align-items-center gap-2 flex-shrink-0">
+                          <span className="fw-bold small text-dark">৳{tx.amount}</span>
                           <button
                             type="button"
-                            className="btn btn-sm text-danger p-0 border-0 ms-1"
+                            className="btn btn-sm btn-light border-0 text-danger p-1 rounded-circle d-flex align-items-center justify-content-center"
+                            style={{ width: '26px', height: '26px' }}
                             onClick={() => handleDeleteTransaction(tx.id)}
+                            title="মুছুন"
                           >
-                            <i className="bi bi-x fs-6"></i>
+                            <i className="bi bi-trash3" style={{ fontSize: '0.8rem' }}></i>
                           </button>
                         </div>
                       </div>
@@ -977,54 +1312,171 @@ export default function ShopFinancePage({ currentUser, onBack }) {
       ) : activeTab === 'due_ledger' ? (
         /* Customer Due Ledger */
         <div className="row g-2">
+          {/* Top Summary Header Banner */}
+          <div className="col-12">
+            <div className="card shadow-sm border-0 rounded-4 p-3 bg-white">
+              <div className="row g-2 text-center">
+                <div className="col-4 border-end">
+                  <small className="text-muted d-block" style={{ fontSize: '0.72rem' }}>মোট বকেয়া বাকি</small>
+                  <span className="fs-5 fw-bold text-danger">৳{totalMarketDue}</span>
+                </div>
+                <div className="col-4 border-end">
+                  <small className="text-muted d-block" style={{ fontSize: '0.72rem' }}>বাকিদার কাস্টমার</small>
+                  <span className="fs-5 fw-bold text-dark">
+                    {customers.filter(c => Number(c.totalDue) > 0).length} <span className="small fw-normal text-muted" style={{ fontSize: '0.7rem' }}>জন</span>
+                  </span>
+                </div>
+                <div className="col-4">
+                  <small className="text-muted d-block" style={{ fontSize: '0.72rem' }}>আজকের আদায়</small>
+                  <span className="fs-5 fw-bold text-success">৳{dueCollected || 0}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="col-12 col-md-5">
             <div className="card shadow-sm border-0 rounded-4 p-3 bg-white">
-              <h6 className="fw-bold mb-2 small">কাস্টমার তালিকা ({customers.length})</h6>
-              
+              {/* Add Customer Form */}
               <form onSubmit={handleAddCustomer} className="mb-2">
                 <div className="input-group input-group-sm">
                   <input
                     type="text"
                     required
                     className="form-control rounded-start-3"
-                    placeholder="নাম"
+                    placeholder="নতুন কাস্টমার নাম"
                     value={custName}
                     onChange={(e) => setCustName(e.target.value)}
                   />
                   <input
-                    type="text"
+                    type="tel"
                     className="form-control"
                     placeholder="মোবাইল"
                     value={custPhone}
                     onChange={(e) => setCustPhone(e.target.value)}
                   />
-                  <button className="btn btn-success rounded-end-3" type="submit">যোগ</button>
+                  <button className="btn btn-dark rounded-end-3 px-3 fw-bold" type="submit">
+                    + যোগ
+                  </button>
                 </div>
               </form>
 
-              <div className="overflow-auto" style={{ maxHeight: '380px' }}>
-                {customers.length === 0 ? (
-                  <div className="text-muted small text-center py-3">কোনো কাস্টমার নেই</div>
-                ) : (
-                  <div className="list-group list-group-flush">
-                    {customers.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => setSelectedCustomer(c)}
-                        className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center rounded-3 mb-1 border-0 p-2 ${selectedCustomer?.id === c.id ? 'bg-success text-white' : 'bg-light'}`}
-                      >
-                        <div className="text-start">
-                          <div className="fw-bold small">{c.name}</div>
-                          {c.phone && <div className="small opacity-75" style={{ fontSize: '0.72rem' }}>{c.phone}</div>}
-                        </div>
-                        <span className={`badge ${selectedCustomer?.id === c.id ? 'bg-white text-dark' : 'bg-danger-subtle text-danger'}`}>
-                          ৳{c.totalDue || 0}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+              {/* Live Search & Filter Bar */}
+              <div className="mb-2">
+                <div className="position-relative mb-2">
+                  <i className="bi bi-search position-absolute text-muted" style={{ left: '10px', top: '7px', fontSize: '0.75rem' }}></i>
+                  <input
+                    type="text"
+                    className="form-control form-control-sm rounded-pill ps-4 py-1"
+                    placeholder="নাম বা মোবাইল দিয়ে খুঁজুন..."
+                    value={custSearchQuery}
+                    onChange={(e) => setCustSearchQuery(e.target.value)}
+                    style={{ fontSize: '0.78rem' }}
+                  />
+                  {custSearchQuery && (
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-link text-muted position-absolute end-0 top-0 text-decoration-none py-1 pe-2"
+                      onClick={() => setCustSearchQuery('')}
+                    >
+                      <i className="bi bi-x"></i>
+                    </button>
+                  )}
+                </div>
+
+                <div className="d-flex p-1 bg-light rounded-pill gap-1">
+                  <button
+                    type="button"
+                    className={`btn btn-sm flex-fill rounded-pill py-0 border-0 fw-bold ${custFilterTab === 'all' ? 'bg-white text-dark shadow-sm' : 'text-muted'}`}
+                    style={{ fontSize: '0.72rem' }}
+                    onClick={() => setCustFilterTab('all')}
+                  >
+                    সব ({customers.length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm flex-fill rounded-pill py-0 border-0 fw-bold ${custFilterTab === 'due' ? 'bg-danger text-white shadow-sm' : 'text-muted'}`}
+                    style={{ fontSize: '0.72rem' }}
+                    onClick={() => setCustFilterTab('due')}
+                  >
+                    বাকি আছে ({customers.filter(c => Number(c.totalDue) > 0).length})
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm flex-fill rounded-pill py-0 border-0 fw-bold ${custFilterTab === 'clear' ? 'bg-success text-white shadow-sm' : 'text-muted'}`}
+                    style={{ fontSize: '0.72rem' }}
+                    onClick={() => setCustFilterTab('clear')}
+                  >
+                    পরিশোধিত ({customers.filter(c => Number(c.totalDue) <= 0).length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Filtered Customer List */}
+              <div className="overflow-auto" style={{ maxHeight: '340px' }}>
+                {(() => {
+                  const query = custSearchQuery.trim().toLowerCase();
+                  const filtered = customers.filter(c => {
+                    const matchesQuery = !query || 
+                      (c.name && c.name.toLowerCase().includes(query)) || 
+                      (c.phone && c.phone.includes(query));
+                    if (!matchesQuery) return false;
+                    const due = Number(c.totalDue) || 0;
+                    if (custFilterTab === 'due') return due > 0;
+                    if (custFilterTab === 'clear') return due <= 0;
+                    return true;
+                  });
+
+                  if (filtered.length === 0) {
+                    return (
+                      <div className="text-muted small text-center py-4">
+                        <i className="bi bi-people d-block fs-3 opacity-50 mb-1"></i>
+                        কোনো কাস্টমার পাওয়া যায়নি
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="list-group list-group-flush gap-1">
+                      {filtered.map((c) => {
+                        const isSelected = selectedCustomer?.id === c.id;
+                        const due = Number(c.totalDue) || 0;
+                        const firstChar = (c.name || 'ক').trim().charAt(0);
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => setSelectedCustomer(c)}
+                            className={`list-group-item list-group-item-action d-flex justify-content-between align-items-center rounded-3 border-0 p-2 transition-all ${
+                              isSelected ? 'bg-dark text-white shadow-sm' : 'bg-light text-dark'
+                            }`}
+                          >
+                            <div className="d-flex align-items-center gap-2 text-start text-truncate">
+                              <div 
+                                className={`rounded-circle d-flex align-items-center justify-content-center fw-bold flex-shrink-0 ${
+                                  isSelected ? 'bg-white text-dark' : due > 0 ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'
+                                }`}
+                                style={{ width: '32px', height: '32px', fontSize: '0.85rem' }}
+                              >
+                                {firstChar}
+                              </div>
+                              <div className="text-truncate">
+                                <div className="fw-bold small text-truncate" style={{ maxWidth: '140px' }}>{c.name}</div>
+                                <div className="small opacity-75" style={{ fontSize: '0.7rem' }}>
+                                  {c.phone ? c.phone : 'মোবাইল নেই'}
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`badge rounded-pill px-2 py-1 ${
+                              isSelected ? 'bg-white text-dark' : due > 0 ? 'bg-danger text-white' : 'bg-success-subtle text-success'
+                            }`} style={{ fontSize: '0.75rem' }}>
+                              ৳{due}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -1033,43 +1485,122 @@ export default function ShopFinancePage({ currentUser, onBack }) {
             <div className="card shadow-sm border-0 rounded-4 p-3 bg-white h-100">
               {selectedCustomer ? (
                 <>
-                  <div className="d-flex justify-content-between align-items-center pb-2 border-bottom mb-2">
-                    <div>
-                      <h6 className="fw-bold mb-0">{selectedCustomer.name}</h6>
-                      <small className="text-muted" style={{ fontSize: '0.75rem' }}>{selectedCustomer.phone || 'মোবাইল নেই'}</small>
-                    </div>
-                    <div className="d-flex align-items-center gap-2">
-                      <div className="text-end">
-                        <small className="text-muted d-block" style={{ fontSize: '0.7rem' }}>মোট বাকি</small>
-                        <span className="fs-5 fw-bold text-danger">৳{selectedCustomer.totalDue || 0}</span>
+                  {/* Customer Profile & Balance Banner */}
+                  <div className={`p-3 rounded-4 mb-3 border ${Number(selectedCustomer.totalDue) > 0 ? 'bg-danger-subtle border-danger-subtle' : 'bg-success-subtle border-success-subtle'}`}>
+                    <div className="d-flex justify-content-between align-items-start">
+                      <div>
+                        <h5 className="fw-bold mb-0 text-dark">{selectedCustomer.name}</h5>
+                        <div className="text-muted small mt-1">
+                          <i className="bi bi-telephone me-1"></i>
+                          {selectedCustomer.phone || 'মোবাইল নম্বর নেই'}
+                        </div>
                       </div>
+                      <div className="text-end">
+                        <small className="text-muted d-block" style={{ fontSize: '0.72rem' }}>বর্তমান বকেয়া</small>
+                        <span className={`fs-4 fw-bold ${Number(selectedCustomer.totalDue) > 0 ? 'text-danger' : 'text-success'}`}>
+                          ৳{selectedCustomer.totalDue || 0}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Quick Action Toolbar */}
+                    <div className="d-flex align-items-center gap-1 mt-2 pt-2 border-top border-black-subtle">
+                      {selectedCustomer.phone && (
+                        <a 
+                          href={`tel:${selectedCustomer.phone}`}
+                          className="btn btn-sm btn-white bg-white text-dark shadow-xs rounded-pill px-2 py-1 text-decoration-none"
+                          style={{ fontSize: '0.72rem' }}
+                        >
+                          <i className="bi bi-telephone-fill text-primary me-1"></i>কল
+                        </a>
+                      )}
                       <button 
-                        className="btn btn-sm btn-outline-success rounded-pill px-2 py-1"
+                        type="button"
+                        className="btn btn-sm btn-white bg-white text-dark shadow-xs rounded-pill px-2 py-1"
+                        style={{ fontSize: '0.72rem' }}
                         onClick={() => sendCustomerWhatsAppSlip(selectedCustomer)}
-                        title="WhatsApp তাগাদা"
                       >
-                        <i className="bi bi-whatsapp"></i>
+                        <i className="bi bi-whatsapp text-success me-1"></i>WhatsApp
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-sm btn-white bg-white text-dark shadow-xs rounded-pill px-2 py-1"
+                        style={{ fontSize: '0.72rem' }}
+                        onClick={() => {
+                          setEditCustName(selectedCustomer.name || '');
+                          setEditCustPhone(selectedCustomer.phone || '');
+                          setIsEditingCust(!isEditingCust);
+                        }}
+                      >
+                        <i className={`bi ${isEditingCust ? 'bi-x' : 'bi-pencil'} me-1`}></i>
+                        {isEditingCust ? 'বাতিল' : 'এডিট'}
+                      </button>
+                      <button 
+                        type="button"
+                        className="btn btn-sm btn-white bg-white text-danger shadow-xs rounded-pill px-2 py-1 ms-auto"
+                        style={{ fontSize: '0.72rem' }}
+                        onClick={handleDeleteCustomer}
+                      >
+                        <i className="bi bi-trash3 me-1"></i>মুছুন
                       </button>
                     </div>
                   </div>
 
-                  <form onSubmit={handleDueTransaction} className="p-2 bg-light rounded-3 mb-2">
-                    <div className="btn-group w-100 mb-2">
+                  {isEditingCust && (
+                    <form onSubmit={handleUpdateCustomer} className="p-2 bg-light rounded-3 mb-2 border">
+                      <div className="row g-1">
+                        <div className="col-6">
+                          <input
+                            type="text"
+                            required
+                            className="form-control form-control-sm rounded-3 py-1"
+                            placeholder="নাম"
+                            value={editCustName}
+                            onChange={(e) => setEditCustName(e.target.value)}
+                          />
+                        </div>
+                        <div className="col-6">
+                          <input
+                            type="tel"
+                            className="form-control form-control-sm rounded-3 py-1"
+                            placeholder="মোবাইল"
+                            value={editCustPhone}
+                            onChange={(e) => setEditCustPhone(e.target.value)}
+                          />
+                        </div>
+                        <div className="col-12 mt-1 d-flex gap-1">
+                          <button type="submit" className="btn btn-sm btn-primary flex-fill rounded-3 py-1 fw-bold">
+                            সেভ করুন
+                          </button>
+                          <button 
+                            type="button" 
+                            className="btn btn-sm btn-outline-secondary rounded-3 py-1"
+                            onClick={() => setIsEditingCust(false)}
+                          >
+                            বাতিল
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
+
+                  <form onSubmit={handleDueTransaction} className="p-2 bg-light rounded-4 mb-3 border">
+                    <div className="d-flex p-1 bg-white rounded-pill mb-2 gap-1 border">
                       <button
                         type="button"
-                        className={`btn btn-sm py-1 ${dueActionType === 'add_due' ? 'btn-danger' : 'btn-outline-danger'}`}
+                        className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold ${dueActionType === 'add_due' ? 'bg-danger text-white shadow-sm' : 'text-muted'}`}
                         style={{ fontSize: '0.75rem' }}
                         onClick={() => setDueActionType('add_due')}
                       >
-                        + নতুন বাকি
+                        + নতুন বাকি দিন
                       </button>
                       <button
                         type="button"
-                        className={`btn btn-sm py-1 ${dueActionType === 'collect_due' ? 'btn-success' : 'btn-outline-success'}`}
+                        className={`btn btn-sm flex-fill rounded-pill py-1 border-0 fw-bold ${dueActionType === 'collect_due' ? 'bg-success text-white shadow-sm' : 'text-muted'}`}
                         style={{ fontSize: '0.75rem' }}
                         onClick={() => setDueActionType('collect_due')}
                       >
-                        ✓ বাকি আদায়
+                        ✓ বাকি আদায় করুন
                       </button>
                     </div>
 
@@ -1078,7 +1609,7 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                         <input
                           type="number"
                           required
-                          className="form-control form-control-sm rounded-3 py-1"
+                          className="form-control form-control-sm rounded-3 py-1 fw-bold text-end"
                           placeholder="টাকা (৳)"
                           value={dueAmount}
                           onChange={(e) => setDueAmount(e.target.value)}
@@ -1093,30 +1624,66 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                           onChange={(e) => setDueNote(e.target.value)}
                         />
                       </div>
+
+                      {/* Quick Amount Chips */}
+                      <div className="col-12 my-1 d-flex gap-1 flex-wrap">
+                        {dueActionType === 'collect_due' && Number(selectedCustomer.totalDue) > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-xs btn-outline-success rounded-pill px-2 py-0 fw-bold"
+                            style={{ fontSize: '0.68rem' }}
+                            onClick={() => setDueAmount(String(selectedCustomer.totalDue))}
+                          >
+                            সব বাকি (৳{selectedCustomer.totalDue})
+                          </button>
+                        )}
+                        {[50, 100, 200, 500, 1000].map(amt => (
+                          <button
+                            key={amt}
+                            type="button"
+                            className="btn btn-xs btn-outline-secondary rounded-pill px-2 py-0"
+                            style={{ fontSize: '0.68rem' }}
+                            onClick={() => setDueAmount(String(amt))}
+                          >
+                            +৳{amt}
+                          </button>
+                        ))}
+                      </div>
+
                       <div className="col-12 mt-1">
-                        <button type="submit" className="btn btn-sm btn-dark w-100 rounded-3 py-1 fw-bold">
+                        <button type="submit" className={`btn btn-sm w-100 rounded-pill py-1 fw-bold ${dueActionType === 'add_due' ? 'btn-danger' : 'btn-success'}`}>
                           {dueActionType === 'add_due' ? 'বাকি লিপিবদ্ধ করুন' : 'আদায় সম্পন্ন করুন'}
                         </button>
                       </div>
                     </div>
                   </form>
 
-                  <div className="flex-grow-1 overflow-auto" style={{ maxHeight: '200px' }}>
-                    <span className="text-muted fw-bold d-block mb-1" style={{ fontSize: '0.7rem' }}>লেনদেন ইতিহাস</span>
+                  {/* Passbook Style Ledger History */}
+                  <div className="flex-grow-1 overflow-auto" style={{ maxHeight: '220px' }}>
+                    <div className="d-flex justify-content-between align-items-center mb-1">
+                      <span className="text-muted fw-bold" style={{ fontSize: '0.72rem' }}>
+                        <i className="bi bi-clock-history me-1"></i>লেজার পাসবুক হিসাব
+                      </span>
+                      <span className="text-muted" style={{ fontSize: '0.7rem' }}>মোট লেনদেন: {dueRecords.length}</span>
+                    </div>
                     {dueRecords.length === 0 ? (
-                      <div className="text-muted small text-center py-2">কোনো ইতিহাস নেই</div>
+                      <div className="text-muted small text-center py-4 bg-light rounded-3">কোনো লেনদেনের রেকর্ড নেই</div>
                     ) : (
-                      <div className="list-group list-group-flush">
+                      <div className="list-group list-group-flush gap-1">
                         {dueRecords.map(r => (
-                          <div key={r.id} className="list-group-item px-1 py-1 d-flex justify-content-between align-items-center">
+                          <div key={r.id} className="p-2 rounded-3 bg-light d-flex justify-content-between align-items-center border-start border-3" style={{ borderColor: r.type === 'add_due' ? '#dc3545' : '#198754' }}>
                             <div>
-                              <span className={`badge me-1 ${r.type === 'add_due' ? 'bg-danger-subtle text-danger' : 'bg-success-subtle text-success'}`} style={{ fontSize: '0.65rem' }}>
-                                {r.type === 'add_due' ? 'বাকি' : 'আদায়'}
-                              </span>
-                              <span className="small">{r.notes || (r.type === 'add_due' ? 'বাকি ক্রয়' : 'বাকি পরিশোধ')}</span>
-                              <small className="text-muted ms-2" style={{ fontSize: '0.7rem' }}>{r.date}</small>
+                              <div className="d-flex align-items-center gap-1">
+                                <span className={`badge ${r.type === 'add_due' ? 'bg-danger text-white' : 'bg-success text-white'}`} style={{ fontSize: '0.62rem' }}>
+                                  {r.type === 'add_due' ? 'বাকি দিল' : 'আদায় নিল'}
+                                </span>
+                                <span className="small fw-semibold text-dark">{r.notes || (r.type === 'add_due' ? 'বাকি ক্রয়' : 'বাকি পরিশোধ')}</span>
+                              </div>
+                              <small className="text-muted d-block mt-1" style={{ fontSize: '0.68rem' }}>
+                                <i className="bi bi-calendar3 me-1"></i>{r.date}
+                              </small>
                             </div>
-                            <span className={`fw-bold small ${r.type === 'add_due' ? 'text-danger' : 'text-success'}`}>
+                            <span className={`fw-bold ${r.type === 'add_due' ? 'text-danger' : 'text-success'}`}>
                               {r.type === 'add_due' ? `+৳${r.amount}` : `-৳${r.amount}`}
                             </span>
                           </div>
@@ -1126,10 +1693,78 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                   </div>
                 </>
               ) : (
-                <div className="text-center text-muted py-4 small">কাস্টমার নির্বাচন করুন</div>
+                <div className="text-center text-muted py-5 small">
+                  <i className="bi bi-person-bounding-box d-block fs-1 opacity-25 mb-2"></i>
+                  বাম পাশের তালিকা থেকে কাস্টমার নির্বাচন করুন
+                </div>
               )}
             </div>
           </div>
+
+          {/* Custom Baki Khata Modal Alert */}
+          {bakiAlert && (
+            <div 
+              className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center p-3"
+              style={{ background: 'rgba(0, 0, 0, 0.45)', zIndex: 1060 }}
+              onClick={() => { if (!bakiAlert.onConfirm) setBakiAlert(null); }}
+            >
+              <div 
+                className="card border-0 shadow-lg rounded-4 p-3 bg-white"
+                style={{ maxWidth: '360px', width: '100%', animation: 'fadeIn 0.15s ease-out' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <div className={`rounded-circle d-flex align-items-center justify-content-center ${
+                    bakiAlert.type === 'success' ? 'bg-success-subtle text-success' :
+                    bakiAlert.type === 'error' ? 'bg-danger-subtle text-danger' :
+                    'bg-warning-subtle text-warning'
+                  }`} style={{ width: '38px', height: '38px' }}>
+                    <i className={`bi ${
+                      bakiAlert.type === 'success' ? 'bi-check-circle-fill' :
+                      bakiAlert.type === 'error' ? 'bi-exclamation-triangle-fill' :
+                      'bi-info-circle-fill'
+                    } fs-5`}></i>
+                  </div>
+                  <h6 className="fw-bold mb-0 text-dark">{bakiAlert.title}</h6>
+                </div>
+                <p className="text-muted small mb-3" style={{ lineHeight: '1.45', whiteSpace: 'pre-line' }}>
+                  {bakiAlert.message}
+                </p>
+                <div className="d-flex justify-content-end gap-2">
+                  {bakiAlert.onConfirm ? (
+                    <>
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-light rounded-pill px-3 py-1 text-muted"
+                        onClick={() => setBakiAlert(null)}
+                      >
+                        বাতিল
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn btn-sm btn-danger rounded-pill px-3 py-1 fw-bold"
+                        onClick={async () => {
+                          const action = bakiAlert.onConfirm;
+                          setBakiAlert(null);
+                          if (action) await action();
+                        }}
+                      >
+                        {bakiAlert.confirmText || 'নিশ্চিত করুন'}
+                      </button>
+                    </>
+                  ) : (
+                    <button 
+                      type="button" 
+                      className="btn btn-sm btn-dark rounded-pill px-4 py-1 fw-bold"
+                      onClick={() => setBakiAlert(null)}
+                    >
+                      ঠিক আছে
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : activeTab === 'analytics' ? (
         /* Analytics View with Configurable Profit Model */
@@ -1142,7 +1777,6 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                 <i className="bi bi-sliders text-success"></i> আপনি যেভাবে লাভ-ক্ষতি দেখতে চান:
               </h6>
 
-              {/* Basis Toggle: Margin-based vs Direct Cashflow */}
               <div className="d-flex gap-2 mb-2">
                 <button
                   type="button"
@@ -1178,7 +1812,6 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                 </div>
               )}
 
-              {/* Expense Deductions Checkboxes */}
               <div className="d-flex flex-wrap gap-3">
                 <label className="d-flex align-items-center gap-1 small text-dark user-select-none" style={{ fontSize: '0.78rem' }}>
                   <input
@@ -1264,7 +1897,6 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                     <line x1="0" y1="80" x2="500" y2="80" stroke="#f0f0f0" strokeDasharray="3,3" />
                     <line x1="0" y1="130" x2="500" y2="130" stroke="#f0f0f0" strokeDasharray="3,3" />
 
-                    {/* Polyline for Sales */}
                     <polyline
                       fill="none"
                       stroke="#0d6efd"
@@ -1276,7 +1908,6 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                       }).join(' ')}
                     />
 
-                    {/* Polyline for Profit */}
                     <polyline
                       fill="none"
                       stroke="#198754"
@@ -1288,7 +1919,6 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                       }).join(' ')}
                     />
 
-                    {/* Polyline for Expenses */}
                     <polyline
                       fill="none"
                       stroke="#dc3545"
@@ -1301,7 +1931,6 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                       }).join(' ')}
                     />
 
-                    {/* Dots */}
                     {chartData.points.map((pt, i) => {
                       const x = (i / (chartData.points.length - 1)) * 480 + 10;
                       const y = 140 - ((Number(pt.totalSales || 0) / chartData.maxVal) * 120);
@@ -1342,89 +1971,307 @@ export default function ShopFinancePage({ currentUser, onBack }) {
           </div>
         </div>
       ) : (
-        /* History & Reports with From-To Date Filtering */
-        <div className="card shadow-sm border-0 rounded-4 p-2 p-md-3 bg-white">
-          <div className="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
-            <div>
-              <h6 className="fw-bold mb-0 small">
-                <i className="bi bi-table me-1 text-primary"></i> সমস্ত দিনের রিপোর্ট ({filteredAndSortedEntries.length})
-              </h6>
-              <small className="text-muted" style={{ fontSize: '0.7rem' }}>
-                {fromDate || toDate ? `ফিল্টার: ${fromDate || 'প্রথম'} হতে ${toDate || 'আজ'}` : 'হেডিংয়ে ক্লিক করে সর্ট করুন'}
-              </small>
-            </div>
+        /* History & Reports with Extended Expense & Drawing Drilldown */
+        <div className="row g-2">
 
-            <div className="d-flex align-items-center gap-1">
-              <select
-                className="form-select form-select-sm py-0 px-2 rounded-pill"
-                style={{ fontSize: '0.75rem' }}
-                value={discrepancyFilter}
-                onChange={(e) => setDiscrepancyFilter(e.target.value)}
-              >
-                <option value="all">সব রেকর্ড</option>
-                <option value="mismatch">শুধুমাত্র গরমিল</option>
-                <option value="perfect">নিখুঁত ক্যাশ (০ গরমিল)</option>
-              </select>
+          {/* Extended Expense & Drawing Summary Header Card */}
+          <div className="col-12">
+            <div className="card shadow-sm border-0 rounded-4 p-3 bg-white">
+              <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                <div className="d-flex p-1 bg-light rounded-pill gap-1 flex-fill flex-sm-grow-0">
+                  <button
+                    type="button"
+                    className={`btn btn-sm rounded-pill py-1 px-3 border-0 fw-bold transition-all flex-fill ${reportViewMode === 'daily' ? 'bg-white text-success shadow-sm' : 'text-muted'}`}
+                    style={{ fontSize: '0.75rem' }}
+                    onClick={() => setReportViewMode('daily')}
+                  >
+                    দৈনিক সারাংশ
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm rounded-pill py-1 px-3 border-0 fw-bold transition-all flex-fill ${reportViewMode === 'itemized' ? 'bg-white text-success shadow-sm' : 'text-muted'}`}
+                    style={{ fontSize: '0.75rem' }}
+                    onClick={() => setReportViewMode('itemized')}
+                  >
+                    খরচের খাতা ({filteredTransactions.length})
+                  </button>
+                </div>
 
-              <button className="btn btn-sm btn-outline-primary rounded-pill px-2 py-1" style={{ fontSize: '0.75rem' }} onClick={exportToCSV}>
-                <i className="bi bi-file-earmark-spreadsheet me-1"></i> CSV
-              </button>
+                <div className="d-flex align-items-center gap-2 ms-auto position-relative">
+                  {reportViewMode === 'daily' && (
+                    <div className="position-relative">
+                      <button 
+                        className="btn btn-sm btn-light border rounded-pill px-2 py-1 text-secondary fw-semibold d-flex align-items-center gap-1 shadow-sm"
+                        type="button" 
+                        onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                        style={{ fontSize: '0.75rem' }}
+                      >
+                        <i className="bi bi-funnel"></i>
+                        <span>
+                          {discrepancyFilter === 'all' ? 'সব রেকর্ড' : discrepancyFilter === 'mismatch' ? 'গরমিল' : 'নিখুঁত'}
+                        </span>
+                        <i className="bi bi-chevron-down" style={{ fontSize: '0.65rem' }}></i>
+                      </button>
+
+                      {showFilterDropdown && (
+                        <>
+                          {/* Invisible backdrop to dismiss on click outside */}
+                          <div 
+                            className="position-fixed top-0 start-0 w-100 h-100" 
+                            style={{ zIndex: 1040 }} 
+                            onClick={() => setShowFilterDropdown(false)}
+                          />
+                          <div 
+                            className="card border-0 shadow-lg rounded-3 py-1 position-absolute end-0 mt-1 bg-white"
+                            style={{ zIndex: 1050, minWidth: '160px' }}
+                          >
+                            <button 
+                              className={`dropdown-item small px-3 py-2 text-start border-0 bg-transparent ${discrepancyFilter === 'all' ? 'text-success fw-bold bg-light' : 'text-dark'}`}
+                              type="button" 
+                              onClick={() => {
+                                setDiscrepancyFilter('all');
+                                setShowFilterDropdown(false);
+                              }}
+                            >
+                              <i className="bi bi-list-ul me-2"></i>সব রেকর্ড
+                            </button>
+                            <button 
+                              className={`dropdown-item small px-3 py-2 text-start border-0 bg-transparent ${discrepancyFilter === 'mismatch' ? 'text-danger fw-bold bg-light' : 'text-dark'}`}
+                              type="button" 
+                              onClick={() => {
+                                setDiscrepancyFilter('mismatch');
+                                setShowFilterDropdown(false);
+                              }}
+                            >
+                              <i className="bi bi-exclamation-triangle-fill text-danger me-2"></i>শুধুমাত্র গরমিল
+                            </button>
+                            <button 
+                              className={`dropdown-item small px-3 py-2 text-start border-0 bg-transparent ${discrepancyFilter === 'perfect' ? 'text-success fw-bold bg-light' : 'text-dark'}`}
+                              type="button" 
+                              onClick={() => {
+                                setDiscrepancyFilter('perfect');
+                                setShowFilterDropdown(false);
+                              }}
+                            >
+                              <i className="bi bi-check-circle-fill text-success me-2"></i>নিখুঁত ক্যাশ (০ গরমিল)
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <button 
+                    className="btn btn-sm btn-outline-success rounded-pill px-3 py-1 shadow-sm fw-semibold d-flex align-items-center gap-1" 
+                    style={{ fontSize: '0.75rem' }} 
+                    onClick={() => {
+                      setExportScope('custom');
+                      setCustomExportFrom(fromDate || getBDDateString());
+                      setCustomExportTo(toDate || getBDDateString());
+                      setShowExportModal(true);
+                    }}
+                    title="রিপোর্ট জেনারেট ও শেয়ার"
+                  >
+                    <i className="bi bi-box-arrow-up-right text-success"></i>
+                    <span>রিপোর্ট শেয়ার</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Expense & Drawing Split Progress Bar */}
+              <div className="row g-2 mt-1">
+                <div className="col-6 col-md-3">
+                  <div className="p-2 bg-light rounded-3">
+                    <small className="text-muted d-block" style={{ fontSize: '0.7rem' }}>মোট দোকান খরচ</small>
+                    <span className="fw-bold text-danger">৳{analyticsTotals.expenses}</span>
+                  </div>
+                </div>
+                <div className="col-6 col-md-3">
+                  <div className="p-2 bg-light rounded-3">
+                    <small className="text-muted d-block" style={{ fontSize: '0.7rem' }}>মোট মালিকের উত্তোলন</small>
+                    <span className="fw-bold text-warning">৳{analyticsTotals.drawings}</span>
+                  </div>
+                </div>
+                <div className="col-6 col-md-3">
+                  <div className="p-2 bg-light rounded-3">
+                    <small className="text-muted d-block" style={{ fontSize: '0.7rem' }}>পণ্য স্টক ক্রয়</small>
+                    <span className="fw-bold text-primary">৳{analyticsTotals.stock}</span>
+                  </div>
+                </div>
+                <div className="col-6 col-md-3">
+                  <div className="p-2 bg-light rounded-3">
+                    <small className="text-muted d-block" style={{ fontSize: '0.7rem' }}>মোট খরচ ও উত্তোলন</small>
+                    <span className="fw-bold text-dark">৳{analyticsTotals.expenses + analyticsTotals.drawings + analyticsTotals.stock}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Top Categories Tags */}
+              {categoryBreakdown.length > 0 && (
+                <div className="d-flex flex-wrap gap-1 mt-2 pt-2 border-top">
+                  <span className="small text-muted me-1" style={{ fontSize: '0.72rem' }}>শীর্ষ খাত:</span>
+                  {categoryBreakdown.slice(0, 5).map(([cat, amt]) => (
+                    <span key={cat} className="badge bg-light text-secondary border px-2 py-1 rounded-pill" style={{ fontSize: '0.7rem' }}>
+                      {cat}: <strong>৳{amt}</strong>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="table-responsive" style={{ maxHeight: '420px' }}>
-            <table className="table table-hover table-sm align-middle text-center small">
-              <thead className="table-light sticky-top">
-                <tr style={{ cursor: 'pointer', userSelect: 'none' }}>
-                  <th onClick={() => toggleSort('date')}>
-                    তারিখ {sortField === 'date' && (sortAsc ? '▲' : '▼')}
-                  </th>
-                  <th onClick={() => toggleSort('totalSales')}>
-                    বিক্রয় {sortField === 'totalSales' && (sortAsc ? '▲' : '▼')}
-                  </th>
-                  <th onClick={() => toggleSort('totalShopExpenses')}>
-                    দোকান খরচ {sortField === 'totalShopExpenses' && (sortAsc ? '▲' : '▼')}
-                  </th>
-                  <th onClick={() => toggleSort('totalPersonalDrawings')}>
-                    উত্তোলন {sortField === 'totalPersonalDrawings' && (sortAsc ? '▲' : '▼')}
-                  </th>
-                  <th onClick={() => toggleSort('recalculatedProfit')}>
-                    লাভ {sortField === 'recalculatedProfit' && (sortAsc ? '▲' : '▼')}
-                  </th>
-                  <th onClick={() => toggleSort('actualCash')}>
-                    হাতে ক্যাশ {sortField === 'actualCash' && (sortAsc ? '▲' : '▼')}
-                  </th>
-                  <th onClick={() => toggleSort('discrepancy')}>
-                    গরমিল {sortField === 'discrepancy' && (sortAsc ? '▲' : '▼')}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAndSortedEntries.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" className="py-4 text-muted">এই তারিখ রেঞ্জে কোনো রেকর্ড পাওয়া যায়নি</td>
-                  </tr>
-                ) : (
-                  filteredAndSortedEntries.map((e) => (
-                    <tr key={e.id} role="button" onClick={() => { setSelectedDate(e.date); setActiveTab('register'); }}>
-                      <td className="fw-bold text-start">{e.date}</td>
-                      <td className="text-primary fw-semibold">৳{e.totalSales || 0}</td>
-                      <td className="text-danger">৳{e.totalShopExpenses || 0}</td>
-                      <td className="text-warning">৳{e.totalPersonalDrawings || 0}</td>
-                      <td className={`fw-bold ${e.recalculatedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
-                        ৳{e.recalculatedProfit || 0}
-                      </td>
-                      <td className="fw-bold">৳{e.actualCash || 0}</td>
-                      <td>
-                        <span className={`badge ${Number(e.discrepancy) === 0 ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>
-                          ৳{e.discrepancy || 0}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          {/* Table View */}
+          <div className="col-12">
+            <div className="card shadow-sm border-0 rounded-4 p-2 p-md-3 bg-white">
+              {reportViewMode === 'daily' ? (
+                /* Daily Entries with Expandable Rows */
+                <div className="table-responsive" style={{ maxHeight: '420px' }}>
+                  <table className="table table-hover table-sm align-middle text-center small mb-0">
+                    <thead className="table-light sticky-top">
+                      <tr style={{ cursor: 'pointer', userSelect: 'none' }}>
+                        <th style={{ width: '30px' }}></th>
+                        <th onClick={() => toggleSort('date')}>
+                          তারিখ {sortField === 'date' && (sortAsc ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => toggleSort('totalSales')}>
+                          বিক্রয় {sortField === 'totalSales' && (sortAsc ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => toggleSort('totalShopExpenses')}>
+                          দোকান খরচ {sortField === 'totalShopExpenses' && (sortAsc ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => toggleSort('totalPersonalDrawings')}>
+                          উত্তোলন {sortField === 'totalPersonalDrawings' && (sortAsc ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => toggleSort('recalculatedProfit')}>
+                          লাভ {sortField === 'recalculatedProfit' && (sortAsc ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => toggleSort('actualCash')}>
+                          হাতে ক্যাশ {sortField === 'actualCash' && (sortAsc ? '▲' : '▼')}
+                        </th>
+                        <th onClick={() => toggleSort('discrepancy')}>
+                          গরমিল {sortField === 'discrepancy' && (sortAsc ? '▲' : '▼')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredAndSortedEntries.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" className="py-4 text-muted">কোনো রেকর্ড পাওয়া যায়নি</td>
+                        </tr>
+                      ) : (
+                        filteredAndSortedEntries.map((e) => {
+                          const isExpanded = expandedDate === e.date;
+                          const dayTx = allTransactions.filter(t => t.date === e.date);
+                          return (
+                            <React.Fragment key={e.id}>
+                              <tr role="button" onClick={() => setExpandedDate(isExpanded ? null : e.date)}>
+                                <td>
+                                  <i className={`bi ${isExpanded ? 'bi-chevron-down text-success' : 'bi-chevron-right text-muted'}`}></i>
+                                </td>
+                                <td className="fw-bold text-start">{e.date}</td>
+                                <td className="text-primary fw-semibold">৳{e.totalSales || 0}</td>
+                                <td className="text-danger">৳{e.totalShopExpenses || 0}</td>
+                                <td className="text-warning">৳{e.totalPersonalDrawings || 0}</td>
+                                <td className={`fw-bold ${e.recalculatedProfit >= 0 ? 'text-success' : 'text-danger'}`}>
+                                  ৳{e.recalculatedProfit || 0}
+                                </td>
+                                <td className="fw-bold">৳{e.actualCash || 0}</td>
+                                <td>
+                                  <span className={`badge ${Number(e.discrepancy) === 0 ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger'}`}>
+                                    ৳{e.discrepancy || 0}
+                                  </span>
+                                </td>
+                              </tr>
+
+                              {/* Accordion Row Drilldown */}
+                              {isExpanded && (
+                                <tr className="bg-light">
+                                  <td colSpan="8" className="p-2 text-start">
+                                    <div className="card border-0 bg-white shadow-sm rounded-3 p-2">
+                                      <div className="d-flex justify-content-between align-items-center mb-1">
+                                        <span className="fw-bold text-dark small">
+                                          <i className="bi bi-list-nested me-1 text-success"></i> {e.date} তারিখের বিস্তারিত খরচ ও উত্তোলন
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="btn btn-sm btn-outline-success py-0 px-2 rounded-pill"
+                                          style={{ fontSize: '0.72rem' }}
+                                          onClick={(ev) => {
+                                            ev.stopPropagation();
+                                            setSelectedDate(e.date);
+                                            setActiveTab('register');
+                                          }}
+                                        >
+                                          খাতা এডিট করুন
+                                        </button>
+                                      </div>
+
+                                      {dayTx.length === 0 ? (
+                                        <div className="text-muted small py-1">এই দিনের কোনো বিস্তারিত খরচের এন্ট্রি নেই</div>
+                                      ) : (
+                                        <div className="table-responsive">
+                                          <table className="table table-sm table-borderless small mb-0" style={{ fontSize: '0.78rem' }}>
+                                            <tbody>
+                                              {dayTx.map((t, idx) => (
+                                                <tr key={t.id || idx} className="border-bottom">
+                                                  <td style={{ width: '80px' }}>
+                                                    <span className={`badge ${t.type === 'shop_expense' ? 'bg-danger-subtle text-danger' : t.type === 'stock_purchase' ? 'bg-primary-subtle text-primary' : 'bg-warning-subtle text-dark'}`}>
+                                                      {t.type === 'shop_expense' ? 'দোকান' : t.type === 'stock_purchase' ? 'স্টক' : 'উত্তোলন'}
+                                                    </span>
+                                                  </td>
+                                                  <td className="fw-semibold">{t.description}</td>
+                                                  <td className="text-muted">({t.category})</td>
+                                                  <td className="text-end fw-bold">৳{t.amount}</td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </div>
+                                      )}
+
+                                      {e.notes && (
+                                        <div className="mt-2 pt-1 border-top text-muted small" style={{ fontSize: '0.75rem' }}>
+                                          <strong>নোট:</strong> {e.notes}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Full Itemized Audit List across Filtered Range (Mobile Friendly Cards/List) */
+                <div className="overflow-auto" style={{ maxHeight: '420px' }}>
+                  {filteredTransactions.length === 0 ? (
+                    <div className="py-4 text-center text-muted small">কোনো খরচের লেনদেন পাওয়া যায়নি</div>
+                  ) : (
+                    <div className="d-flex flex-column gap-1">
+                      {filteredTransactions.map((t) => (
+                        <div key={t.id} className="p-2 bg-light rounded-3 d-flex justify-content-between align-items-center">
+                          <div className="text-truncate me-2" style={{ maxWidth: '75%' }}>
+                            <div className="d-flex align-items-center gap-1 mb-1">
+                              <span className="badge bg-secondary-subtle text-secondary py-0 px-1" style={{ fontSize: '0.65rem' }}>{t.date}</span>
+                              <span className={`badge py-0 px-1 ${t.type === 'shop_expense' ? 'bg-danger-subtle text-danger' : t.type === 'stock_purchase' ? 'bg-primary-subtle text-primary' : 'bg-warning-subtle text-dark'}`} style={{ fontSize: '0.65rem' }}>
+                                {t.type === 'shop_expense' ? 'দোকান' : t.type === 'stock_purchase' ? 'স্টক' : 'উত্তোলন'}
+                              </span>
+                            </div>
+                            <span className="fw-semibold small text-dark d-block text-truncate">{t.description}</span>
+                            <small className="text-muted" style={{ fontSize: '0.68rem' }}>{t.category}</small>
+                          </div>
+                          <span className="text-end fw-bold fs-6 text-dark flex-shrink-0">৳{t.amount}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1499,6 +2346,235 @@ export default function ShopFinancePage({ currentUser, onBack }) {
                 </button>
                 <button type="button" className="btn btn-sm btn-success rounded-pill w-100 fw-bold" onClick={applyDenomTotal}>
                   হাতে ক্যাশে বসান (৳{denomTotal})
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Advanced Interactive Report Generator Modal */}
+      {showExportModal && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1060 }}>
+          <div className="modal-dialog modal-dialog-centered modal-sm" style={{ maxWidth: '420px' }}>
+            <div className="modal-content border-0 shadow-lg rounded-4 overflow-hidden bg-white">
+              <div className="modal-header border-0 pb-1 pt-3 px-3">
+                <div className="d-flex align-items-center gap-2">
+                  <span className="p-2 rounded-3 bg-success bg-opacity-10 text-success">
+                    <i className="bi bi-file-earmark-bar-graph-fill fs-5"></i>
+                  </span>
+                  <div>
+                    <h6 className="modal-title fw-bold text-dark mb-0">রিপোর্ট জেনারেটর</h6>
+                    <small className="text-muted" style={{ fontSize: '0.72rem' }}>কাস্টমাইজড রিপোর্ট ও শেয়ারিং</small>
+                  </div>
+                </div>
+                <button type="button" className="btn-close" onClick={() => setShowExportModal(false)}></button>
+              </div>
+
+              <div className="modal-body p-3">
+                {/* 1. Select Scope */}
+                <label className="text-dark fw-bold d-block mb-1" style={{ fontSize: '0.75rem' }}>
+                  ১. সময়কাল বা তারিখ নির্বাচন করুন:
+                </label>
+                <div className="d-flex flex-wrap gap-1 mb-2">
+                  {[
+                    { id: 'single', label: `আজকের দিন (${selectedDate})` },
+                    { id: '7days', label: 'গত ৭ দিন' },
+                    { id: '30days', label: 'গত ৩০ দিন' },
+                    { id: 'thisMonth', label: 'চলতি মাস' },
+                    { id: 'custom', label: 'কাস্টম রেঞ্জ' }
+                  ].map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className={`btn btn-sm py-1 px-2 rounded-pill border small ${exportScope === s.id ? 'btn-success text-white' : 'btn-light text-secondary'}`}
+                      style={{ fontSize: '0.72rem' }}
+                      onClick={() => setExportScope(s.id)}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Custom Date Inputs if 'custom' selected */}
+                {exportScope === 'custom' && (
+                  <div className="p-2 bg-light rounded-3 mb-3 border">
+                    <div className="row g-1">
+                      <div className="col-6">
+                        <small className="text-muted d-block" style={{ fontSize: '0.68rem' }}>হতে (From):</small>
+                        <input
+                          type="date"
+                          className="form-control form-control-sm py-1 rounded-2"
+                          style={{ fontSize: '0.78rem' }}
+                          value={customExportFrom}
+                          onChange={(e) => setCustomExportFrom(e.target.value)}
+                        />
+                      </div>
+                      <div className="col-6">
+                        <small className="text-muted d-block" style={{ fontSize: '0.68rem' }}>পর্যন্ত (To):</small>
+                        <input
+                          type="date"
+                          className="form-control form-control-sm py-1 rounded-2"
+                          style={{ fontSize: '0.78rem' }}
+                          value={customExportTo}
+                          onChange={(e) => setCustomExportTo(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Select Report Type */}
+                <label className="text-dark fw-bold d-block mb-1 mt-2" style={{ fontSize: '0.75rem' }}>
+                  ২. কি ধরনের রিপোর্ট চান:
+                </label>
+                <div className="d-flex flex-column gap-1 mb-2">
+                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${exportType === 'full' ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="exportTypeRadio" 
+                      checked={exportType === 'full'} 
+                      onChange={() => setExportType('full')}
+                      className="form-check-input mt-0"
+                    />
+                    <div>
+                      <strong className="d-block small text-dark">পূর্ণাঙ্গ ক্যাশ ও লাভ-ক্ষতি হিসাব</strong>
+                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>বিক্রয়, খরচ, উত্তোলন, নিট লাভ ও গরমিল ব্যালেন্স</small>
+                    </div>
+                  </label>
+
+                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${exportType === 'itemized' ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="exportTypeRadio" 
+                      checked={exportType === 'itemized'} 
+                      onChange={() => setExportType('itemized')}
+                      className="form-check-input mt-0"
+                    />
+                    <div>
+                      <strong className="d-block small text-dark">বিস্তারিত খরচের খাতা (আইটেম অনুযায়ী)</strong>
+                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>সিগারেট, রুটি, পরিবারের বাজার প্রতিটি খরচের বিবরণ</small>
+                    </div>
+                  </label>
+
+                  <label className={`p-2 rounded-3 border d-flex align-items-center gap-2 user-select-none cursor-pointer ${exportType === 'due' ? 'border-success bg-success bg-opacity-10' : 'bg-light'}`} style={{ cursor: 'pointer' }}>
+                    <input 
+                      type="radio" 
+                      name="exportTypeRadio" 
+                      checked={exportType === 'due'} 
+                      onChange={() => setExportType('due')}
+                      className="form-check-input mt-0"
+                    />
+                    <div>
+                      <strong className="d-block small text-dark">কাস্টমার বাকি খাতার সারসংক্ষেপ</strong>
+                      <small className="text-muted" style={{ fontSize: '0.68rem' }}>কার কত টাকা বাকি আছে তার পূর্ণ তালিকা</small>
+                    </div>
+                  </label>
+                </div>
+
+                {/* 3. Choose Profit Calculation Mode (Only for Full Report) */}
+                {exportType === 'full' && (
+                  <div className="p-2 bg-light rounded-3 mb-3 border">
+                    <label className="text-dark fw-bold d-block mb-1" style={{ fontSize: '0.73rem' }}>
+                      ৩. লাভ হিসাবের নিয়ম নির্বাচন করুন:
+                    </label>
+                    <div className="d-flex gap-1 mb-2">
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-fill rounded-pill py-1 border small ${profitCalculationBasis === 'margin_based' ? 'btn-success text-white' : 'btn-white bg-white text-secondary'}`}
+                        style={{ fontSize: '0.72rem' }}
+                        onClick={() => setProfitCalculationBasis('margin_based')}
+                      >
+                        মার্জিন লাভ ({grossMarginPct}%)
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn btn-sm flex-fill rounded-pill py-1 border small ${profitCalculationBasis === 'cashflow' ? 'btn-success text-white' : 'btn-white bg-white text-secondary'}`}
+                        style={{ fontSize: '0.72rem' }}
+                        onClick={() => setProfitCalculationBasis('cashflow')}
+                      >
+                        ক্যাশফ্লো (বিক্রয় - খরচ)
+                      </button>
+                    </div>
+
+                    {profitCalculationBasis === 'margin_based' && (
+                      <div className="d-flex align-items-center justify-content-between pt-1 border-top">
+                        <small className="text-muted" style={{ fontSize: '0.7rem' }}>মার্জিন শতাংশ (%):</small>
+                        <select
+                          className="form-select form-select-sm py-0 px-2 rounded-pill"
+                          style={{ width: '85px', fontSize: '0.75rem' }}
+                          value={grossMarginPct}
+                          onChange={(e) => setGrossMarginPct(Number(e.target.value))}
+                        >
+                          {[8, 10, 12, 15, 18, 20, 25].map(m => (
+                            <option key={m} value={m}>{m}%</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 3. Action Buttons */}
+                <div className="row g-2">
+                  <div className="col-6">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-success w-100 py-2 rounded-3 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-1"
+                      onClick={() => handleGenerateExport('whatsapp')}
+                    >
+                      <i className="bi bi-whatsapp"></i>
+                      <span>WhatsApp কপি</span>
+                    </button>
+                  </div>
+                  <div className="col-6">
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-outline-dark w-100 py-2 rounded-3 fw-bold d-flex align-items-center justify-content-center gap-1"
+                      onClick={() => handleGenerateExport('csv')}
+                    >
+                      <i className="bi bi-file-earmark-spreadsheet-fill text-success"></i>
+                      <span>Excel / CSV</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Modern Success Alert Modal */}
+      {successAlert && (
+        <div className="modal show d-block" tabIndex="-1" style={{ backgroundColor: 'rgba(0,0,0,0.55)', zIndex: 1070 }}>
+          <div className="modal-dialog modal-dialog-centered modal-sm" style={{ maxWidth: '360px' }}>
+            <div className="modal-content border-0 shadow-lg rounded-4 text-center p-3 bg-white">
+              <div className="my-2">
+                <span className="p-3 bg-success bg-opacity-10 text-success rounded-circle d-inline-flex align-items-center justify-content-center" style={{ width: '64px', height: '64px' }}>
+                  <i className="bi bi-check-lg fs-1 fw-bold"></i>
+                </span>
+              </div>
+              <h6 className="fw-bold text-dark mt-2 mb-1">{successAlert.title}</h6>
+              <p className="text-muted small mb-3" style={{ fontSize: '0.78rem' }}>{successAlert.msg}</p>
+
+              <div className="d-flex flex-column gap-2">
+                {successAlert.link && (
+                  <a
+                    href={successAlert.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn btn-sm btn-success rounded-pill py-2 fw-bold shadow-sm d-flex align-items-center justify-content-center gap-2"
+                  >
+                    <i className="bi bi-whatsapp fs-6"></i>
+                    <span>সরাসরি WhatsApp খুলুন</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  className="btn btn-sm btn-light border rounded-pill py-2 text-secondary fw-semibold"
+                  onClick={() => setSuccessAlert(null)}
+                >
+                  ঠিক আছে (বন্ধ করুন)
                 </button>
               </div>
             </div>
