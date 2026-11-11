@@ -181,6 +181,11 @@ service cloud.firestore {
       match /bypassRecords/{docId} {
         allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
       }
+
+      // Rules for Doc Records (Doc Tracker)
+      match /docRecords/{docId} {
+        allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      }
     }
   }
 }

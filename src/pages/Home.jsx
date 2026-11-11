@@ -29,6 +29,7 @@ import ShopFinancePage from './ShopFinancePage';
 import ShiftTrackerPage from './ShiftTrackerPage';
 import ShiftReportPage from './ShiftReportPage';
 import BypassTrackerPage from './BypassTrackerPage';
+import DocTrackerPage from './DocTrackerPage';
 import FeatureHubPage from './FeatureHubPage';
 import WalletPage from './WalletPage';
 import AdminPage from './AdminPage';
@@ -312,6 +313,7 @@ export default function Home() {
   const [isShiftTrackerOpen, setIsShiftTrackerOpen] = useState(false);
   const [isShiftReportOpen, setIsShiftReportOpen] = useState(false);
   const [isBypassTrackerOpen, setIsBypassTrackerOpen] = useState(false);
+  const [isDocTrackerOpen, setIsDocTrackerOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(() => {
     try {
       return localStorage.getItem('24hours-tutorial-complete') ? -1 : 0;
@@ -345,6 +347,7 @@ export default function Home() {
       setIsShiftTrackerOpen(path === '/shift-tracker');
       setIsShiftReportOpen(path === '/shift-report');
       setIsBypassTrackerOpen(path === '/bypass-tracker');
+      setIsDocTrackerOpen(path === '/doc-tracker');
       if (path === '/islamic') setTheme('islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
@@ -1960,6 +1963,11 @@ export default function Home() {
           setIsBypassTrackerOpen(true);
           navigateTo('/bypass-tracker');
         }}
+        onOpenDocTracker={() => {
+          setIsShiftTrackerOpen(false);
+          setIsDocTrackerOpen(true);
+          navigateTo('/doc-tracker');
+        }}
         onBack={() => {
           setIsShiftTrackerOpen(false);
           navigateTo('/');
@@ -1989,6 +1997,20 @@ export default function Home() {
         currentUser={currentUser}
         onBack={() => {
           setIsBypassTrackerOpen(false);
+          setIsShiftTrackerOpen(true);
+          navigateTo('/shift-tracker');
+        }}
+      />
+    );
+  }
+
+  // ── Doc Tracker Page ─────────────────────────────────────────────────
+  if (isDocTrackerOpen) {
+    return (
+      <DocTrackerPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsDocTrackerOpen(false);
           setIsShiftTrackerOpen(true);
           navigateTo('/shift-tracker');
         }}

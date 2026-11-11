@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../firebase/firebase';
 import { collection, doc, getDocs, setDoc, deleteDoc, query, orderBy } from 'firebase/firestore';
+import { getCustomShortcuts, matchShortcut } from '../utils/shortcutManager';
 
 // Offline cache helpers
 const LS_KEY = 'bypassReport_data';
@@ -78,6 +79,32 @@ export default function BypassTrackerPage({ currentUser, onBack }) {
     plat: '',
     remarks: ''
   });
+  const searchInputRef = useRef(null);
+
+  // Keyboard shortcut listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const shortcuts = getCustomShortcuts();
+      if (matchShortcut(e, shortcuts.addNewItem)) {
+        e.preventDefault();
+        openNewForm();
+      } else if (matchShortcut(e, shortcuts.focusSearch)) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (matchShortcut(e, shortcuts.toggleFilter)) {
+        e.preventDefault();
+        setFilterMode(prev => prev === 'date' ? 'all' : 'date');
+      } else if (e.key === 'Escape') {
+        if (showFormModal) {
+          setShowFormModal(false);
+        } else if (onBack) {
+          onBack();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showFormModal, onBack, selectedDate]);
 
   // Custom Alert
   const [alertConfig, setAlertConfig] = useState({
@@ -432,6 +459,7 @@ export default function BypassTrackerPage({ currentUser, onBack }) {
             <motion.button
               whileTap={{ scale: 0.94 }}
               onClick={openNewForm}
+              title="Add Bypass (Alt+N)"
               style={{
                 background: 'linear-gradient(135deg, #0284C7, #0369A1)',
                 color: '#fff',
@@ -521,8 +549,9 @@ export default function BypassTrackerPage({ currentUser, onBack }) {
 
           {/* Search box */}
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder="Search bypass, plat, remark..."
+            placeholder="Search bypass, plat, remark... (Alt+F)"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             style={{

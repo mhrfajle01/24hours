@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../firebase/firebase';
 import { doc, getDoc, setDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { useSound } from '../contexts/SoundContext';
+import { getCustomShortcuts, saveCustomShortcuts, matchShortcut, parseKeyCombo } from '../utils/shortcutManager';
 
 // --- OFFLINE SUPPORT HELPERS ---
 const LS_KEY = 'shiftTracker_data';
@@ -610,7 +611,7 @@ const ShiftQuickEdit = ({ target, unit, shiftStart, shiftEnd, onApply }) => {
   );
 };
 
-export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, onOpenBypassTracker }) {
+export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, onOpenBypassTracker, onOpenDocTracker }) {
   const { playSound } = useSound();
 
   // Settings
@@ -788,6 +789,19 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   // Global Keyboard Listener (mouse-free production workflow)
   useEffect(() => {
     const handleKeyDown = (e) => {
+      // Global navigation combo shortcuts (Ctrl+ / Alt+) work anywhere
+      const customShortcuts = getCustomShortcuts();
+      if (onOpenDocTracker && matchShortcut(e, customShortcuts.openDocTracker)) {
+        e.preventDefault();
+        onOpenDocTracker();
+        return;
+      }
+      if (onOpenBypassTracker && matchShortcut(e, customShortcuts.openBypassTracker)) {
+        e.preventDefault();
+        onOpenBypassTracker();
+        return;
+      }
+
       const activeTag = document.activeElement?.tagName?.toLowerCase();
       const isInputFocused = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
 
@@ -2220,6 +2234,23 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
               >
                 <span>⚡</span>
                 <span>Bypass</span>
+              </motion.button>
+            )}
+
+            {/* Doc Tracker button */}
+            {onOpenDocTracker && (
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onClick={onOpenDocTracker}
+                title="Doc No Tracker"
+                style={{
+                  background: 'rgba(255,255,255,0.2)', color: '#fff', border: 'none',
+                  height: 29, padding: '0 8px', borderRadius: 14, fontWeight: 700, fontSize: 11,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0
+                }}
+              >
+                <span>📑</span>
+                <span>Docs</span>
               </motion.button>
             )}
 
@@ -4273,6 +4304,54 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         />
                       </div>
                     ))}
+                  </div>
+
+                  <div style={{ fontSize: 13, fontWeight: 700, color: '#0284C7', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, marginTop: 16 }}>
+                    Global Tracker Combos (Ctrl+ / Alt+)
+                  </div>
+                  <p style={{ fontSize: 12, color: '#64748B', marginTop: 0, marginBottom: 14 }}>
+                    Quick cross-page navigation & actions across Shift, Doc & Bypass trackers:
+                  </p>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
+                    {[
+                      { id: 'openDocTracker', label: 'Open Doc Tracker', desc: 'Jump directly to Doc No tracker' },
+                      { id: 'openBypassTracker', label: 'Open Bypass Tracker', desc: 'Jump directly to Bypass tracker' },
+                      { id: 'addNewItem', label: 'Add New Record', desc: 'Open Add modal in Doc/Bypass tracker' },
+                      { id: 'focusSearch', label: 'Focus Search', desc: 'Jump to search in Doc/Bypass tracker' },
+                      { id: 'toggleFilter', label: 'Toggle Daily / All', desc: 'Switch view mode in Doc/Bypass tracker' },
+                    ].map(item => {
+                      const shortcuts = getCustomShortcuts();
+                      return (
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', background: '#F8FAFC', borderRadius: 12, border: '1px solid #E2E8F0' }}>
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{item.label}</div>
+                            <div style={{ fontSize: 11, color: '#94A3B8' }}>{item.desc}</div>
+                          </div>
+                          <input
+                            type="text"
+                            readOnly
+                            placeholder="Press keys..."
+                            value={shortcuts[item.id] || ''}
+                            onKeyDown={(e) => {
+                              e.preventDefault();
+                              const combo = parseKeyCombo(e);
+                              if (combo && combo.includes('+')) {
+                                const updated = { ...shortcuts, [item.id]: combo };
+                                saveCustomShortcuts(updated);
+                                setKeybindings(prev => ({ ...prev })); // force re-render
+                              }
+                            }}
+                            style={{
+                              width: 86, height: 34, textAlign: 'center', borderRadius: 8,
+                              border: '2px solid #0284C7', background: '#F0F9FF', fontSize: 12,
+                              fontWeight: 800, color: '#0284C7', outline: 'none', cursor: 'pointer'
+                            }}
+                            title="Click and press your custom key combination (e.g. Alt+D, Ctrl+Shift+D)"
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}
