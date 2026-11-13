@@ -348,6 +348,7 @@ export default function Home() {
       setIsShiftReportOpen(path === '/shift-report');
       setIsBypassTrackerOpen(path === '/bypass-tracker');
       setIsDocTrackerOpen(path === '/doc-tracker');
+      setIsQuickBazarOpen(path === '/quick-bazar');
       if (path === '/islamic') setTheme('islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
@@ -2246,6 +2247,7 @@ export default function Home() {
                     }}
                     onOpenQuickBazar={() => {
                       setIsQuickBazarOpen(true);
+                      navigateTo('/quick-bazar');
                     }}
                     onOpenShiftTracker={() => {
                       setIsShiftTrackerOpen(true);
