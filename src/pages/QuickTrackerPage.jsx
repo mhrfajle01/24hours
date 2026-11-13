@@ -28,6 +28,16 @@ const CONFETTI_PARTICLES = Array.from({ length: 24 }, (_, i) => ({
 }));
 
 export default function QuickTrackerPage({ currentUser, onBack }) {
+  // Theme state: 'dark' | 'light'
+  const [themeMode, setThemeMode] = useState(() => localStorage.getItem('quick_tracker_theme') || 'dark');
+  const isDark = themeMode === 'dark';
+
+  const toggleTheme = () => {
+    const next = isDark ? 'light' : 'dark';
+    setThemeMode(next);
+    localStorage.setItem('quick_tracker_theme', next);
+  };
+
   const [activeTab, setActiveTab] = useState('tracker'); // 'tracker' | 'history'
   const [step, setStep] = useState(1);
   const [hasSavedSession, setHasSavedSession] = useState(false);
@@ -549,10 +559,26 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
   });
 
   return (
-    <div className="w-100 min-vh-100 position-fixed top-0 start-0 bottom-0" style={{ zIndex: 1050, height: '100dvh', background: '#090D16', color: '#F8FAFC', overflowY: 'auto' }}>
+    <div 
+      className="w-100 min-vh-100 position-fixed top-0 start-0 bottom-0" 
+      style={{ 
+        zIndex: 1050, 
+        height: '100dvh', 
+        background: isDark ? '#090D16' : '#F8FAFC', 
+        color: isDark ? '#F8FAFC' : '#0F172A', 
+        overflowY: 'auto' 
+      }}
+    >
       
       {/* Top Bar Header */}
-      <div style={{ background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgba(255,255,255,0.08)' }} className="sticky-top">
+      <div 
+        style={{ 
+          background: isDark ? 'rgba(15, 23, 42, 0.85)' : 'rgba(255, 255, 255, 0.85)', 
+          backdropFilter: 'blur(12px)', 
+          borderBottom: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)' 
+        }} 
+        className="sticky-top"
+      >
         <div className="container-fluid max-width-container py-2.5 px-3 d-flex align-items-center justify-content-between">
           <div className="d-flex align-items-center gap-2.5">
             <span 
@@ -566,37 +592,62 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
               <i className={`bi ${sessionType === 'bazar' ? 'bi-basket2-fill' : 'bi-airplane-fill'} fs-6`}></i>
             </span>
             <div>
-              <h6 className="fw-bold text-white mb-0" style={{ letterSpacing: '0.3px' }}>Quick Bazar & Tour</h6>
-              <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>স্মার্ট খরচ ও বাজার ট্র্যাকার</span>
+              <h6 className={`fw-bold mb-0 ${isDark ? 'text-white' : 'text-dark'}`} style={{ letterSpacing: '0.3px' }}>Quick Bazar & Tour</h6>
+              <span style={{ fontSize: '0.72rem', color: isDark ? '#94A3B8' : '#64748B' }}>স্মার্ট খরচ ও বাজার ট্র্যাকার</span>
             </div>
           </div>
-          <button 
-            className="btn btn-sm rounded-pill fw-bold" 
-            style={{ background: 'rgba(255,255,255,0.08)', color: '#E2E8F0', border: '1px solid rgba(255,255,255,0.1)' }}
-            onClick={handleSafeBack}
-          >
-            <i className="bi bi-arrow-left me-1" /> {step > 1 && activeTab === 'tracker' ? 'ধাপ পেছনে' : 'Back'}
-          </button>
+          <div className="d-flex align-items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              className="btn btn-sm rounded-pill fw-bold py-1 px-2.5 d-flex align-items-center gap-1 shadow-sm"
+              style={{
+                background: isDark ? 'rgba(251, 191, 36, 0.15)' : 'rgba(79, 70, 229, 0.1)',
+                color: isDark ? '#FBBF24' : '#4F46E5',
+                border: isDark ? '1px solid rgba(251, 191, 36, 0.3)' : '1px solid rgba(79, 70, 229, 0.2)',
+                fontSize: '0.75rem'
+              }}
+              title="থিম পরিবর্তন করুন"
+            >
+              {isDark ? <span>☀ লাইট</span> : <span>🌙 ডার্ক</span>}
+            </button>
+            <button 
+              className="btn btn-sm rounded-pill fw-bold" 
+              style={{ 
+                background: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', 
+                color: isDark ? '#E2E8F0' : '#334155', 
+                border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)' 
+              }}
+              onClick={handleSafeBack}
+            >
+              <i className="bi bi-arrow-left me-1" /> {step > 1 && activeTab === 'tracker' ? 'ধাপ পেছনে' : 'Back'}
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="container-fluid max-width-container py-3 px-3" style={{ maxWidth: '540px' }}>
         
         {/* Navigation Switcher (Luxury Pill Capsule) */}
-        <div className="d-flex p-1 rounded-pill mb-3" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div 
+          className="d-flex p-1 rounded-pill mb-3" 
+          style={{ 
+            background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', 
+            border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)' 
+          }}
+        >
           <button
             className={`btn btn-sm flex-fill rounded-pill fw-bold transition-all ${activeTab === 'tracker' ? 'text-white shadow-sm' : 'border-0'}`}
             style={activeTab === 'tracker' 
               ? { background: sessionType === 'bazar' ? 'linear-gradient(135deg, #10B981, #047857)' : 'linear-gradient(135deg, #3B82F6, #1D4ED8)' } 
-              : { color: '#94A3B8' }
+              : { color: isDark ? '#94A3B8' : '#64748B' }
             }
             onClick={() => setActiveTab('tracker')}
           >
             ⚡ Live Tracker
           </button>
           <button
-            className={`btn btn-sm flex-fill rounded-pill fw-bold transition-all ${activeTab === 'history' ? 'bg-white text-dark shadow-sm' : 'border-0'}`}
-            style={activeTab === 'history' ? {} : { color: '#94A3B8' }}
+            className={`btn btn-sm flex-fill rounded-pill fw-bold transition-all ${activeTab === 'history' ? (isDark ? 'bg-white text-dark shadow-sm' : 'bg-white text-dark shadow-sm') : 'border-0'}`}
+            style={activeTab === 'history' ? {} : { color: isDark ? '#94A3B8' : '#64748B' }}
             onClick={() => setActiveTab('history')}
           >
             📜 পূর্ববর্তী হিস্ট্রি
@@ -605,14 +656,22 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
 
         {/* Saved / Multiple Live Sessions Carousel */}
         {liveSessions.length > 0 && activeTab === 'tracker' && (
-          <div className="card p-3 rounded-4 border-0 shadow-sm text-white mb-3" style={{ background: 'linear-gradient(135deg, #1E293B, #0F172A)' }}>
+          <div 
+            className="card p-3 rounded-4 border-0 shadow-sm mb-3" 
+            style={{ 
+              background: isDark ? 'linear-gradient(135deg, #1E293B, #0F172A)' : '#FFFFFF',
+              color: isDark ? '#F8FAFC' : '#0F172A',
+              boxShadow: isDark ? 'none' : '0 4px 20px rgba(0,0,0,0.06)',
+              border: isDark ? 'none' : '1px solid #E2E8F0'
+            }}
+          >
             <div className="d-flex justify-content-between align-items-center mb-2">
               <span className="badge bg-danger text-white fw-bold d-flex align-items-center gap-1">
                 <span className="spinner-grow spinner-grow-sm text-white" style={{ width: '8px', height: '8px' }}></span>
                 লাইভ চলমান ({liveSessions.length}টি)
               </span>
               <button 
-                className="btn btn-xs btn-outline-light rounded-pill py-0.5 px-2" 
+                className={`btn btn-xs rounded-pill py-0.5 px-2 ${isDark ? 'btn-outline-light' : 'btn-outline-secondary'}`} 
                 onClick={() => {
                   setActiveSessionId(null);
                   setStep(1);
@@ -629,19 +688,19 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                 <div 
                   key={ls.id} 
                   onClick={() => handleSwitchToLiveSession(ls)}
-                  className={`p-2 rounded-3 border cursor-pointer flex-shrink-0 text-start ${activeSessionId === ls.id ? 'bg-primary border-primary' : 'bg-white bg-opacity-10 border-white border-opacity-10'}`}
+                  className={`p-2 rounded-3 border cursor-pointer flex-shrink-0 text-start ${activeSessionId === ls.id ? 'bg-primary text-white border-primary' : (isDark ? 'bg-white bg-opacity-10 border-white border-opacity-10' : 'bg-light border-secondary border-opacity-25')}`}
                   style={{ minWidth: '160px', cursor: 'pointer' }}
                 >
                   <div className="d-flex justify-content-between align-items-center mb-1">
                     <span className="badge rounded-pill bg-white text-dark py-0 px-1.5" style={{ fontSize: '0.65rem' }}>
                       {ls.type === 'tour' ? '✈️ ট্যুর' : '🛒 বাজার'}
                     </span>
-                    <span className="fw-bolder small text-warning">
+                    <span className={`fw-bolder small ${activeSessionId === ls.id ? 'text-warning' : (isDark ? 'text-warning' : 'text-primary')}`}>
                       ৳{(ls.items || []).reduce((s, it) => s + (it.bought ? (parseFloat(it.price) || 0) : 0), 0)}
                     </span>
                   </div>
-                  <div className="fw-bold small text-truncate text-white">{ls.title || 'চলমান সেশন'}</div>
-                  <div className="small text-white-50" style={{ fontSize: '0.7rem' }}>
+                  <div className={`fw-bold small text-truncate ${activeSessionId === ls.id || isDark ? 'text-white' : 'text-dark'}`}>{ls.title || 'চলমান সেশন'}</div>
+                  <div className="small" style={{ fontSize: '0.7rem', color: isDark ? 'rgba(255,255,255,0.6)' : '#64748B' }}>
                     {(ls.items || []).filter(i => i.bought).length}/{(ls.items || []).length} আইটেম
                   </div>
                 </div>
@@ -656,10 +715,10 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
             className="rounded-4 p-4 position-relative overflow-hidden" 
             style={{ 
               minHeight: '440px',
-              background: 'rgba(255, 255, 255, 0.03)',
-              backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.37)'
+              background: isDark ? 'rgba(255, 255, 255, 0.03)' : '#FFFFFF',
+              backdropFilter: isDark ? 'blur(16px)' : 'none',
+              border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0,0,0,0.06)',
+              boxShadow: isDark ? '0 8px 32px 0 rgba(0, 0, 0, 0.37)' : '0 4px 20px rgba(0,0,0,0.05)'
             }}
           >
             
@@ -693,33 +752,37 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                       className="p-3 rounded-4 cursor-pointer text-center transition-all"
                       style={{ 
                         cursor: 'pointer', width: '140px',
-                        background: sessionType === 'bazar' ? 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.1))' : 'rgba(255,255,255,0.04)',
-                        border: sessionType === 'bazar' ? '2px solid #10B981' : '1px solid rgba(255,255,255,0.08)',
+                        background: sessionType === 'bazar' 
+                          ? (isDark ? 'linear-gradient(135deg, rgba(16,185,129,0.2), rgba(5,150,105,0.1))' : 'rgba(16,185,129,0.1)') 
+                          : (isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9'),
+                        border: sessionType === 'bazar' ? '2px solid #10B981' : (isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0'),
                         boxShadow: sessionType === 'bazar' ? '0 0 20px rgba(16,185,129,0.2)' : 'none'
                       }}
                     >
-                      <i className="bi bi-cart4 display-6 d-block mb-1" style={{ color: sessionType === 'bazar' ? '#10B981' : '#94A3B8' }}></i>
-                      <span className="fw-bold small" style={{ color: sessionType === 'bazar' ? '#34D399' : '#CBD5E1' }}>Quick Bazar</span>
+                      <i className="bi bi-cart4 display-6 d-block mb-1" style={{ color: sessionType === 'bazar' ? '#10B981' : (isDark ? '#94A3B8' : '#64748B') }}></i>
+                      <span className="fw-bold small" style={{ color: sessionType === 'bazar' ? (isDark ? '#34D399' : '#059669') : (isDark ? '#CBD5E1' : '#334155') }}>Quick Bazar</span>
                     </div>
                     <div 
                       onClick={() => setSessionType('tour')}
                       className="p-3 rounded-4 cursor-pointer text-center transition-all"
                       style={{ 
                         cursor: 'pointer', width: '140px',
-                        background: sessionType === 'tour' ? 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(37,99,235,0.1))' : 'rgba(255,255,255,0.04)',
-                        border: sessionType === 'tour' ? '2px solid #3B82F6' : '1px solid rgba(255,255,255,0.08)',
+                        background: sessionType === 'tour' 
+                          ? (isDark ? 'linear-gradient(135deg, rgba(59,130,246,0.2), rgba(37,99,235,0.1))' : 'rgba(59,130,246,0.1)') 
+                          : (isDark ? 'rgba(255,255,255,0.04)' : '#F1F5F9'),
+                        border: sessionType === 'tour' ? '2px solid #3B82F6' : (isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0'),
                         boxShadow: sessionType === 'tour' ? '0 0 20px rgba(59,130,246,0.2)' : 'none'
                       }}
                     >
-                      <i className="bi bi-airplane-engines display-6 d-block mb-1" style={{ color: sessionType === 'tour' ? '#3B82F6' : '#94A3B8' }}></i>
-                      <span className="fw-bold small" style={{ color: sessionType === 'tour' ? '#60A5FA' : '#CBD5E1' }}>Tour & Trip</span>
+                      <i className="bi bi-airplane-engines display-6 d-block mb-1" style={{ color: sessionType === 'tour' ? '#3B82F6' : (isDark ? '#94A3B8' : '#64748B') }}></i>
+                      <span className="fw-bold small" style={{ color: sessionType === 'tour' ? (isDark ? '#60A5FA' : '#2563EB') : (isDark ? '#CBD5E1' : '#334155') }}>Tour & Trip</span>
                     </div>
                   </div>
 
-                  <h5 className="fw-bolder text-white mb-1">
+                  <h5 className={`fw-bolder mb-1 ${isDark ? 'text-white' : 'text-dark'}`}>
                     {sessionType === 'bazar' ? 'আজকের বাজার শুরু করবেন?' : 'নতুন ট্যুর বা ট্রিপ শুরু করবেন?'}
                   </h5>
-                  <p className="small px-3 mb-3" style={{ color: '#94A3B8' }}>
+                  <p className="small px-3 mb-3" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>
                     {sessionType === 'bazar' ? 'বাজারের ফর্দ বানান এবং কেনাকাটা করার সময় লাইভ হিসেব রাখুন!' : 'ভ্রমণের আনুমানিক বাজেট নির্ধারণ করুন এবং পথখরচ ট্র্যাক রাখুন!'}
                   </p>
 
@@ -728,7 +791,11 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                       <input
                         type="text"
                         className="form-control rounded-3 text-center fw-bold"
-                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff' }}
+                        style={{ 
+                          background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', 
+                          border: isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #CBD5E1', 
+                          color: isDark ? '#fff' : '#0F172A' 
+                        }}
                         placeholder="ট্যুরের নাম (যেমন: সিলেট ট্যুর, ডে-আউট)..."
                         value={tourTitle}
                         onChange={(e) => setTourTitle(e.target.value)}
@@ -749,17 +816,17 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
               {/* STEP 2 */}
               {step === 2 && (
                 <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="w-100">
-                  <h6 className="fw-bold text-white text-center mb-3">বাজেট ও ফান্ডিং সোর্স</h6>
+                  <h6 className={`fw-bold text-center mb-3 ${isDark ? 'text-white' : 'text-dark'}`}>বাজেট ও ফান্ডিং সোর্স</h6>
                   
-                  <div className="p-1 rounded-pill mb-3 d-flex flex-row gap-1" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="p-1 rounded-pill mb-3 d-flex flex-row gap-1" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.06)' }}>
                     <button
-                      className={`btn btn-sm flex-fill rounded-pill fw-bold transition-all ${fundingSource === 'manual' ? 'bg-white text-dark shadow-sm' : 'border-0 text-white-50'}`}
+                      className={`btn btn-sm flex-fill rounded-pill fw-bold transition-all ${fundingSource === 'manual' ? 'bg-white text-dark shadow-sm' : (isDark ? 'border-0 text-white-50' : 'border-0 text-secondary')}`}
                       onClick={() => setFundingSource('manual')}
                     >
                       💵 হাতে ক্যাশ
                     </button>
                     <button
-                      className={`btn btn-sm flex-fill rounded-pill fw-bold transition-all ${fundingSource === 'wallet' ? 'bg-white text-dark shadow-sm' : 'border-0 text-white-50'}`}
+                      className={`btn btn-sm flex-fill rounded-pill fw-bold transition-all ${fundingSource === 'wallet' ? 'bg-white text-dark shadow-sm' : (isDark ? 'border-0 text-white-50' : 'border-0 text-secondary')}`}
                       onClick={() => setFundingSource('wallet')}
                     >
                       💳 Wallet থেকে
@@ -767,11 +834,11 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                   </div>
 
                   {fundingSource === 'wallet' && (
-                    <div className="p-3 rounded-4 mb-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                      <label className="form-label small fw-bold mb-1" style={{ color: '#94A3B8' }}>অ্যাকাউন্ট সিলেক্ট করুন</label>
+                    <div className="p-3 rounded-4 mb-3" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0' }}>
+                      <label className="form-label small fw-bold mb-1" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>অ্যাকাউন্ট সিলেক্ট করুন</label>
                       <select 
                         className="form-select rounded-3 mb-2"
-                        style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.15)', color: '#fff' }}
+                        style={{ background: isDark ? '#1E293B' : '#FFFFFF', border: isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #CBD5E1', color: isDark ? '#fff' : '#0F172A' }}
                         value={selectedAccountId}
                         onChange={(e) => {
                           setSelectedAccountId(e.target.value);
@@ -793,10 +860,10 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
 
                       {currentWallet?.distributions?.length > 0 && (
                         <div className="mb-2">
-                          <label className="form-label small fw-bold mb-1" style={{ color: '#94A3B8' }}>ডিস্ট্রিবিউশন হেড (ঐচ্ছিক)</label>
+                          <label className="form-label small fw-bold mb-1" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>ডিস্ট্রিবিউশন হেড (ঐচ্ছিক)</label>
                           <select 
                             className="form-select rounded-3"
-                            style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.15)', color: '#fff' }}
+                            style={{ background: isDark ? '#1E293B' : '#FFFFFF', border: isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #CBD5E1', color: isDark ? '#fff' : '#0F172A' }}
                             value={selectedDistId}
                             onChange={(e) => setSelectedDistId(e.target.value)}
                           >
@@ -811,9 +878,9 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                       )}
 
                       {/* Actual Usable Balance Badge Card */}
-                      <div className="p-2.5 rounded-3 mt-2 d-flex flex-row justify-content-between align-items-center" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      <div className="p-2.5 rounded-3 mt-2 d-flex flex-row justify-content-between align-items-center" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #E2E8F0' }}>
                         <div>
-                          <span className="small d-block" style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                          <span className="small d-block" style={{ fontSize: '0.72rem', color: isDark ? '#94A3B8' : '#64748B' }}>
                             {selectedDistId ? 'নির্বাচিত ফান্ডে প্রকৃত ব্যালেন্স' : 'ওয়ালেটে মোট খরচযোগ্য নগদ'}
                           </span>
                           <span className="fw-bolder fs-6 text-success">৳{(actualUsableBalance || 0).toLocaleString()}</span>
@@ -830,9 +897,9 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                     </div>
                   )}
 
-                  <div className="p-3 rounded-4 mb-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="p-3 rounded-4 mb-3" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0' }}>
                     <div className="d-flex justify-content-between align-items-center mb-1">
-                      <label className="form-label small fw-bold mb-0" style={{ color: '#94A3B8' }}>মোট বাজেট (৳)</label>
+                      <label className="form-label small fw-bold mb-0" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>মোট বাজেট (৳)</label>
                       {fundingSource === 'wallet' && parsedBudget > actualUsableBalance && (
                         <span className="badge bg-danger-subtle text-danger" style={{ fontSize: '0.7rem' }}>
                           ⚠️ পর্যাপ্ত ব্যালেন্স নেই!
@@ -840,11 +907,11 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                       )}
                     </div>
                     <div className="input-group">
-                      <span className="input-group-text border-0 fw-bold fs-5 text-success" style={{ background: 'rgba(255,255,255,0.06)', color: '#10B981' }}>৳</span>
+                      <span className="input-group-text border-0 fw-bold fs-5 text-success" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', color: '#10B981' }}>৳</span>
                       <input
                         type="number"
                         className="form-control form-control-lg border-0 rounded-end-3 fw-bolder fs-4"
-                        style={{ background: 'rgba(255,255,255,0.06)', color: '#fff' }}
+                        style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', color: isDark ? '#fff' : '#0F172A' }}
                         placeholder="১,০০০"
                         value={budgetAmount}
                         onChange={(e) => setBudgetAmount(e.target.value)}
@@ -863,15 +930,19 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
               {step === 3 && (
                 <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} className="w-100">
                   <div className="d-flex justify-content-between align-items-center mb-2.5">
-                    <h6 className="fw-bold text-white mb-0">{sessionType === 'bazar' ? 'বাজারের ফর্দ' : 'ট্যুরের খরচের তালিকা'}</h6>
-                    <span className="badge rounded-pill" style={{ background: 'rgba(255,255,255,0.1)', color: '#CBD5E1' }}>{items.length} টি</span>
+                    <h6 className={`fw-bold mb-0 ${isDark ? 'text-white' : 'text-dark'}`}>{sessionType === 'bazar' ? 'বাজারের ফর্দ' : 'ট্যুরের খরচের তালিকা'}</h6>
+                    <span className="badge rounded-pill" style={{ background: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0', color: isDark ? '#CBD5E1' : '#334155' }}>{items.length} টি</span>
                   </div>
 
                   <div className="input-group mb-2.5">
                     <input
                       type="text"
                       className="form-control rounded-start-3"
-                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff' }}
+                      style={{ 
+                        background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', 
+                        border: isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #CBD5E1', 
+                        color: isDark ? '#fff' : '#0F172A' 
+                      }}
                       placeholder={sessionType === 'bazar' ? 'আইটেম লিখুন...' : 'খরচের খাত লিখুন...'}
                       value={newItemName}
                       onChange={(e) => setNewItemName(e.target.value)}
@@ -882,17 +953,28 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
 
                   <div className="d-flex flex-wrap gap-1 mb-2.5" style={{ maxHeight: '60px', overflowY: 'auto' }}>
                     {currentSuggestions.filter(p => !items.some(i => i.name === p)).slice(0, 8).map(chip => (
-                      <button key={chip} className="btn btn-xs rounded-pill py-0.5 px-2 small" style={{ background: 'rgba(255,255,255,0.08)', color: '#CBD5E1', border: '1px solid rgba(255,255,255,0.1)' }} onClick={() => handleAddItem(chip)}>+ {chip}</button>
+                      <button 
+                        key={chip} 
+                        className="btn btn-xs rounded-pill py-0.5 px-2 small" 
+                        style={{ 
+                          background: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', 
+                          color: isDark ? '#CBD5E1' : '#475569', 
+                          border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #E2E8F0' 
+                        }} 
+                        onClick={() => handleAddItem(chip)}
+                      >
+                        + {chip}
+                      </button>
                     ))}
                   </div>
 
-                  <div className="rounded-4 p-2 mb-3" style={{ maxHeight: '160px', overflowY: 'auto', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="rounded-4 p-2 mb-3" style={{ maxHeight: '160px', overflowY: 'auto', background: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0' }}>
                     {items.length === 0 ? (
-                      <p className="text-center small my-3" style={{ color: '#94A3B8' }}>কোনো আইটেম যোগ করা হয়নি। সাজেশন থেকে ট্যাপ করুন।</p>
+                      <p className="text-center small my-3" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>কোনো আইটেম যোগ করা হয়নি। সাজেশন থেকে ট্যাপ করুন।</p>
                     ) : (
                       items.map((item, idx) => (
-                        <div key={item.id} className="d-flex justify-content-between align-items-center p-1.5 border-bottom border-secondary border-opacity-25">
-                          <span className="small fw-semibold text-white">{idx + 1}. {item.name}</span>
+                        <div key={item.id} className={`d-flex justify-content-between align-items-center p-1.5 border-bottom ${isDark ? 'border-secondary border-opacity-25' : 'border-light-subtle'}`}>
+                          <span className={`small fw-semibold ${isDark ? 'text-white' : 'text-dark'}`}>{idx + 1}. {item.name}</span>
                           <button className="btn btn-sm py-0 px-1 text-danger rounded border-0" onClick={() => handleRemoveItem(item.id)}>
                             <i className="bi bi-trash small"></i>
                           </button>
@@ -902,7 +984,7 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                   </div>
 
                   <div className="d-flex gap-2">
-                    <button className="btn rounded-3 fw-bold flex-grow-1" style={{ background: 'rgba(255,255,255,0.08)', color: '#CBD5E1', border: 'none' }} onClick={() => setStep(2)}>পেছনে</button>
+                    <button className="btn rounded-3 fw-bold flex-grow-1" style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', color: isDark ? '#CBD5E1' : '#334155', border: 'none' }} onClick={() => setStep(2)}>পেছনে</button>
                     <button className="btn rounded-3 fw-bold flex-grow-2 text-white" style={{ background: sessionType === 'bazar' ? 'linear-gradient(135deg, #10B981, #059669)' : 'linear-gradient(135deg, #3B82F6, #2563EB)' }} onClick={() => setStep(4)}>
                       {sessionType === 'bazar' ? 'বাজারে প্রবেশ করুন 🛒' : 'ট্যুর শুরু করুন ✈️'}
                     </button>
@@ -954,15 +1036,17 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
 
                   {/* Tour Sub Tabs: Expenses vs Packing Plan */}
                   {sessionType === 'tour' && (
-                    <div className="d-flex bg-light p-1 rounded-pill mb-2.5 border">
+                    <div className="d-flex p-1 rounded-pill mb-2.5 border" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', borderColor: isDark ? 'rgba(255,255,255,0.1)' : '#E2E8F0' }}>
                       <button
-                        className={`btn btn-xs flex-fill rounded-pill py-1 fw-bold ${tourSubTab === 'expenses' ? 'btn-primary text-white shadow-xs' : 'btn-light border-0 text-muted'}`}
+                        className={`btn btn-xs flex-fill rounded-pill py-1 fw-bold ${tourSubTab === 'expenses' ? 'btn-primary text-white shadow-xs' : 'border-0'}`}
+                        style={tourSubTab === 'expenses' ? {} : { color: isDark ? '#94A3B8' : '#64748B' }}
                         onClick={() => setTourSubTab('expenses')}
                       >
                         💰 খরচের হিসাব ({items.filter(i => i.bought).length}/{items.length})
                       </button>
                       <button
-                        className={`btn btn-xs flex-fill rounded-pill py-1 fw-bold ${tourSubTab === 'packing' ? 'btn-primary text-white shadow-xs' : 'btn-light border-0 text-muted'}`}
+                        className={`btn btn-xs flex-fill rounded-pill py-1 fw-bold ${tourSubTab === 'packing' ? 'btn-primary text-white shadow-xs' : 'border-0'}`}
+                        style={tourSubTab === 'packing' ? {} : { color: isDark ? '#94A3B8' : '#64748B' }}
                         onClick={() => setTourSubTab('packing')}
                       >
                         🎒 ব্যাগ প্যাকিং ({packingList.filter(p => p.packed).length}/{packingList.length})
@@ -977,6 +1061,11 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                         <input
                           type="text"
                           className="form-control rounded-start-3"
+                          style={{ 
+                            background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', 
+                            border: isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #CBD5E1', 
+                            color: isDark ? '#fff' : '#0F172A' 
+                          }}
                           placeholder="প্যাকিং আইটেম (যেমন: পাওয়ার ব্যাংক, ছাতা)..."
                           value={newPackingItem}
                           onChange={(e) => setNewPackingItem(e.target.value)}
@@ -1004,7 +1093,12 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                         {PACKING_PRESETS.filter(p => !packingList.some(item => item.name === p)).slice(0, 6).map(preset => (
                           <button
                             key={preset}
-                            className="btn btn-xs btn-outline-secondary rounded-pill py-0 px-2 small"
+                            className="btn btn-xs rounded-pill py-0 px-2 small"
+                            style={{ 
+                              background: isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9', 
+                              color: isDark ? '#CBD5E1' : '#475569', 
+                              border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #E2E8F0' 
+                            }}
                             onClick={() => setPackingList([...packingList, { id: 'pack_' + Date.now() + Math.random(), name: preset, packed: false }])}
                           >
                             + {preset}
@@ -1013,9 +1107,9 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                       </div>
 
                       {/* Packing items list */}
-                      <div className="rounded-4 p-2 mb-3" style={{ maxHeight: '180px', overflowY: 'auto', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div className="rounded-4 p-2 mb-3" style={{ maxHeight: '180px', overflowY: 'auto', background: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0' }}>
                         {packingList.length === 0 ? (
-                          <p className="text-center small my-3" style={{ color: '#94A3B8' }}>ব্যাগ প্যাকিংয়ের কোনো আইটেম নেই। উপরের সাজেশনের চিপ চাপুন।</p>
+                          <p className="text-center small my-3" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>ব্যাগ প্যাকিংয়ের কোনো আইটেম নেই। উপরের সাজেশনের চিপ চাপুন।</p>
                         ) : (
                           packingList.map(item => (
                             <div
@@ -1026,13 +1120,13 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                               className="d-flex justify-content-between align-items-center p-2 rounded-3 mb-1 cursor-pointer"
                               style={{ 
                                 cursor: 'pointer',
-                                background: item.packed ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.03)',
-                                border: item.packed ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(255,255,255,0.06)'
+                                background: item.packed ? 'rgba(16,185,129,0.12)' : (isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF'),
+                                border: item.packed ? '1px solid rgba(16,185,129,0.3)' : (isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #E2E8F0')
                               }}
                             >
                               <div className="d-flex align-items-center gap-2">
                                 <input type="checkbox" className="form-check-input mt-0 fs-5" checked={item.packed} readOnly />
-                                <span className={`fw-semibold small ${item.packed ? 'text-decoration-line-through text-success' : 'text-white'}`}>{item.name}</span>
+                                <span className={`fw-semibold small ${item.packed ? 'text-decoration-line-through text-success' : (isDark ? 'text-white' : 'text-dark')}`}>{item.name}</span>
                               </div>
                               <button
                                 className="btn btn-sm btn-link text-danger p-0 border-0"
@@ -1051,10 +1145,10 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                   ) : (
                     <>
                       <div className="d-flex justify-content-between align-items-center mb-2">
-                        <span className="small fw-bold" style={{ color: '#94A3B8' }}>টিক দিয়ে খরচের দাম লিখুন:</span>
+                        <span className="small fw-bold" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>টিক দিয়ে খরচের দাম লিখুন:</span>
                         <button 
                           className="btn btn-sm btn-link p-0 text-decoration-none fw-bold small"
-                          style={{ color: sessionType === 'bazar' ? '#34D399' : '#60A5FA' }}
+                          style={{ color: sessionType === 'bazar' ? (isDark ? '#34D399' : '#059669') : (isDark ? '#60A5FA' : '#2563EB') }}
                           onClick={() => {
                             setNewKhatName('');
                             setNewKhatModalOpen(true);
@@ -1064,27 +1158,27 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                         </button>
                       </div>
 
-                      <div className="rounded-4 p-2 mb-3" style={{ maxHeight: '180px', overflowY: 'auto', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div className="rounded-4 p-2 mb-3" style={{ maxHeight: '180px', overflowY: 'auto', background: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0' }}>
                         {items.map(item => (
                           <div 
-                            key={item.id}
+                            key={item.id} 
                             onClick={() => handleInitiateCheck(item)}
                             className="d-flex justify-content-between align-items-center p-2 rounded-3 mb-1 cursor-pointer"
                             style={{ 
                               cursor: 'pointer',
-                              background: item.bought ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.03)',
-                              border: item.bought ? '1px solid rgba(16,185,129,0.25)' : '1px solid rgba(255,255,255,0.06)'
+                              background: item.bought ? 'rgba(16,185,129,0.1)' : (isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF'),
+                              border: item.bought ? '1px solid rgba(16,185,129,0.25)' : (isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #E2E8F0')
                             }}
                           >
                             <div className="d-flex align-items-center gap-2">
                               <input type="checkbox" className="form-check-input mt-0 fs-5" checked={item.bought} readOnly />
-                              <span className={`fw-semibold small ${item.bought ? 'text-decoration-line-through text-white-50' : 'text-white'}`}>{item.name}</span>
+                              <span className={`fw-semibold small ${item.bought ? 'text-decoration-line-through ' + (isDark ? 'text-white-50' : 'text-muted') : (isDark ? 'text-white' : 'text-dark')}`}>{item.name}</span>
                             </div>
                             <div>
                               {item.bought ? (
-                                <span className="badge rounded-pill fw-bold" style={{ background: 'rgba(16,185,129,0.25)', color: '#34D399' }}>৳{item.price}</span>
+                                <span className="badge rounded-pill fw-bold" style={{ background: 'rgba(16,185,129,0.25)', color: isDark ? '#34D399' : '#059669' }}>৳{item.price}</span>
                               ) : (
-                                <span className="small border rounded px-1.5 py-0.5" style={{ color: '#94A3B8', borderColor: 'rgba(255,255,255,0.15)' }}>লিখুন</span>
+                                <span className="small border rounded px-1.5 py-0.5" style={{ color: isDark ? '#94A3B8' : '#64748B', borderColor: isDark ? 'rgba(255,255,255,0.15)' : '#CBD5E1' }}>লিখুন</span>
                               )}
                             </div>
                           </div>
@@ -1112,22 +1206,22 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
               {step === 5 && (
                 <motion.div key="step5" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-2">
                   <div className="display-6 mb-2">🎉</div>
-                  <h5 className="fw-bolder text-white mb-1">{sessionType === 'bazar' ? 'বাজার সফলভাবে সম্পন্ন!' : 'ট্যুর সফলভাবে সম্পন্ন!'}</h5>
-                  <p className="small mb-3" style={{ color: '#94A3B8' }}>সারসংক্ষেপ দেখে ওয়ালেট নিশ্চিত করুন</p>
+                  <h5 className={`fw-bolder mb-1 ${isDark ? 'text-white' : 'text-dark'}`}>{sessionType === 'bazar' ? 'বাজার সফলভাবে সম্পন্ন!' : 'ট্যুর সফলভাবে সম্পন্ন!'}</h5>
+                  <p className="small mb-3" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>সারসংক্ষেপ দেখে ওয়ালেট নিশ্চিত করুন</p>
 
                   {/* Summary Card */}
-                  <div className="p-3 rounded-4 text-start mb-3" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)' }}>
-                    <div className="d-flex justify-content-between py-1.5 border-bottom border-secondary border-opacity-25">
-                      <span className="small" style={{ color: '#94A3B8' }}>মোট খাত:</span>
-                      <span className="fw-bold text-white">{items.filter(i => i.bought).length} টি</span>
+                  <div className="p-3 rounded-4 text-start mb-3" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#F8FAFC', border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #E2E8F0' }}>
+                    <div className={`d-flex justify-content-between py-1.5 border-bottom ${isDark ? 'border-secondary border-opacity-25' : 'border-light-subtle'}`}>
+                      <span className="small" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>মোট খাত:</span>
+                      <span className={`fw-bold ${isDark ? 'text-white' : 'text-dark'}`}>{items.filter(i => i.bought).length} টি</span>
                     </div>
-                    <div className="d-flex justify-content-between py-1.5 border-bottom border-secondary border-opacity-25">
-                      <span className="small" style={{ color: '#94A3B8' }}>মোট ব্যয়:</span>
+                    <div className={`d-flex justify-content-between py-1.5 border-bottom ${isDark ? 'border-secondary border-opacity-25' : 'border-light-subtle'}`}>
+                      <span className="small" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>মোট ব্যয়:</span>
                       <span className="fw-bolder text-success fs-5">৳{totalSpent.toLocaleString()}</span>
                     </div>
                     {parsedBudget > 0 && (
                       <div className="d-flex justify-content-between py-1.5">
-                        <span className="small" style={{ color: '#94A3B8' }}>
+                        <span className="small" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>
                           {remainingBudget >= 0 ? 'সাশ্রয় হয়েছে:' : 'বাজেট ছাড়িয়েছে:'}
                         </span>
                         <span className={`fw-bold ${remainingBudget >= 0 ? 'text-success' : 'text-danger'}`}>
@@ -1138,16 +1232,16 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                   </div>
 
                   {/* Finishing Time Wallet Confirmation Selector */}
-                  <div className="p-3 rounded-4 text-start mb-3" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="p-3 rounded-4 text-start mb-3" style={{ background: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0' }}>
                     <div className="d-flex justify-content-between align-items-center mb-2">
-                      <span className="small fw-bold text-white d-flex align-items-center gap-1.5">
+                      <span className={`small fw-bold d-flex align-items-center gap-1.5 ${isDark ? 'text-white' : 'text-dark'}`}>
                         <i className="bi bi-wallet2 text-success"></i> পেমেন্ট / ওয়ালেট সিলেক্ট করুন
                       </span>
                     </div>
 
                     <select
                       className="form-select rounded-3 mb-2"
-                      style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.85rem' }}
+                      style={{ background: isDark ? '#1E293B' : '#FFFFFF', border: isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #CBD5E1', color: isDark ? '#fff' : '#0F172A', fontSize: '0.85rem' }}
                       value={selectedAccountId}
                       onChange={(e) => {
                         setSelectedAccountId(e.target.value);
@@ -1170,7 +1264,7 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                     {currentWallet?.distributions?.length > 0 && (
                       <select
                         className="form-select rounded-3 mb-2"
-                        style={{ background: '#1E293B', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', fontSize: '0.82rem' }}
+                        style={{ background: isDark ? '#1E293B' : '#FFFFFF', border: isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #CBD5E1', color: isDark ? '#fff' : '#0F172A', fontSize: '0.82rem' }}
                         value={selectedDistId}
                         onChange={(e) => setSelectedDistId(e.target.value)}
                       >
@@ -1183,8 +1277,8 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                       </select>
                     )}
 
-                    <div className="d-flex justify-content-between align-items-center small p-2 rounded-3 mt-1" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                      <span style={{ color: '#94A3B8' }}>কাটার পর নতুন ব্যালেন্স:</span>
+                    <div className="d-flex justify-content-between align-items-center small p-2 rounded-3 mt-1" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9' }}>
+                      <span style={{ color: isDark ? '#94A3B8' : '#64748B' }}>কাটার পর নতুন ব্যালেন্স:</span>
                       <span className={`fw-bold ${((actualUsableBalance || 0) - totalSpent) < 0 ? 'text-danger' : 'text-success'}`}>
                         ৳{Math.max(0, (actualUsableBalance || 0) - totalSpent).toLocaleString()}
                       </span>
@@ -1202,7 +1296,11 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                     </button>
                     <button 
                       className="btn py-2 rounded-3 fw-bold"
-                      style={{ background: 'rgba(255,255,255,0.08)', color: '#CBD5E1', border: '1px solid rgba(255,255,255,0.1)' }}
+                      style={{ 
+                        background: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', 
+                        color: isDark ? '#CBD5E1' : '#334155', 
+                        border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #CBD5E1' 
+                      }}
                       disabled={isSyncing} 
                       onClick={() => handleFinishAndSave(false)}
                     >
@@ -1218,25 +1316,33 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
           <div className="w-100">
             {/* Top Lifetime Summary Banner */}
             {historyList.length > 0 && (
-              <div className="card p-2.5 rounded-4 border-0 shadow-sm text-white mb-2.5" style={{ background: 'linear-gradient(135deg, #0F172A, #1E293B)' }}>
+              <div 
+                className="card p-2.5 rounded-4 border-0 shadow-sm mb-2.5" 
+                style={{ 
+                  background: isDark ? 'linear-gradient(135deg, #0F172A, #1E293B)' : '#FFFFFF',
+                  color: isDark ? '#F8FAFC' : '#0F172A',
+                  border: isDark ? 'none' : '1px solid #E2E8F0',
+                  boxShadow: isDark ? 'none' : '0 4px 20px rgba(0,0,0,0.05)'
+                }}
+              >
                 <div className="d-flex justify-content-between align-items-center mb-2">
-                  <span className="small text-white-50 fw-semibold d-flex align-items-center gap-1" style={{ fontSize: '0.74rem' }}>
+                  <span className={`small fw-semibold d-flex align-items-center gap-1 ${isDark ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '0.74rem' }}>
                     <i className="bi bi-pie-chart-fill text-success"></i> সার্বিক হিসাব
                   </span>
-                  <span className="badge bg-white text-dark fw-bold rounded-pill px-2 py-0.5" style={{ fontSize: '0.72rem' }}>
+                  <span className={`badge fw-bold rounded-pill px-2 py-0.5 ${isDark ? 'bg-white text-dark' : 'bg-light text-dark border'}`} style={{ fontSize: '0.72rem' }}>
                     📊 {historyList.filter(h => h.status === 'completed').length} টি সম্পন্ন
                   </span>
                 </div>
                 <div className="d-flex gap-2 text-center">
-                  <div className="flex-fill p-1.5 rounded-3 bg-white bg-opacity-10 border border-white border-opacity-10">
-                    <span className="d-block text-white-50" style={{ fontSize: '0.65rem' }}>মোট খরচ</span>
+                  <div className={`flex-fill p-1.5 rounded-3 border ${isDark ? 'bg-white bg-opacity-10 border-white border-opacity-10' : 'bg-light border-light-subtle'}`}>
+                    <span className={`d-block ${isDark ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '0.65rem' }}>মোট খরচ</span>
                     <span className="fw-bolder text-success" style={{ fontSize: '0.88rem' }}>
                       ৳{historyList.filter(h => h.status === 'completed').reduce((sum, h) => sum + (h.totalSpent || 0), 0).toLocaleString()}
                     </span>
                   </div>
-                  <div className="flex-fill p-1.5 rounded-3 bg-white bg-opacity-10 border border-white border-opacity-10">
-                    <span className="d-block text-white-50" style={{ fontSize: '0.65rem' }}>মোট সাশ্রয়</span>
-                    <span className="fw-bolder text-warning" style={{ fontSize: '0.88rem' }}>
+                  <div className={`flex-fill p-1.5 rounded-3 border ${isDark ? 'bg-white bg-opacity-10 border-white border-opacity-10' : 'bg-light border-light-subtle'}`}>
+                    <span className={`d-block ${isDark ? 'text-white-50' : 'text-muted'}`} style={{ fontSize: '0.65rem' }}>মোট সাশ্রয়</span>
+                    <span className={`fw-bolder ${isDark ? 'text-warning' : 'text-primary'}`} style={{ fontSize: '0.88rem' }}>
                       ৳{historyList.filter(h => h.status === 'completed').reduce((sum, h) => sum + Math.max(0, (h.budget || 0) - (h.totalSpent || 0)), 0).toLocaleString()}
                     </span>
                   </div>
@@ -1246,12 +1352,12 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
 
             {/* Filter Pills */}
             <div className="d-flex justify-content-between align-items-center mb-2.5">
-              <span className="small fw-bold" style={{ color: '#94A3B8' }}>ইভেন্ট তালিকা</span>
-              <div className="d-flex p-1 rounded-pill gap-1" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <span className="small fw-bold" style={{ color: isDark ? '#94A3B8' : '#64748B' }}>ইভেন্ট তালিকা</span>
+              <div className="d-flex p-1 rounded-pill gap-1" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#E2E8F0', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.06)' }}>
                 {['all', 'bazar', 'tour', 'trash'].map(t => (
                   <button 
                     key={t} 
-                    className={`btn btn-xs rounded-pill px-2.5 py-0.5 fw-bold transition-all ${historyFilter === t ? 'bg-white text-dark shadow-sm' : 'border-0 text-white-50'}`}
+                    className={`btn btn-xs rounded-pill px-2.5 py-0.5 fw-bold transition-all ${historyFilter === t ? 'bg-white text-dark shadow-sm' : (isDark ? 'border-0 text-white-50' : 'border-0 text-secondary')}`}
                     onClick={() => setHistoryFilter(t)}
                   >
                     {t === 'all' ? 'সব' : t === 'bazar' ? '🛒 বাজার' : t === 'tour' ? '✈️ ট্যুর' : `🗑️ ট্র্যাশ (${historyList.filter(h => h.status === 'trashed').length})`}
@@ -1263,9 +1369,9 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
             {loadingHistory ? (
               <div className="text-center py-5 text-muted small"><div className="spinner-border spinner-border-sm me-2"></div>লোড হচ্ছে...</div>
             ) : filteredHistory.length === 0 ? (
-              <div className="rounded-4 p-5 text-center" style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed rgba(255,255,255,0.1)' }}>
-                <i className="bi bi-clock-history fs-2 text-white-50 mb-2"></i>
-                <p className="text-white-50 small mb-0">কোনো পূর্ববর্তী হিস্ট্রি পাওয়া যায়নি।</p>
+              <div className="rounded-4 p-5 text-center" style={{ background: isDark ? 'rgba(255,255,255,0.03)' : '#FFFFFF', border: isDark ? '1px dashed rgba(255,255,255,0.1)' : '1px dashed #CBD5E1' }}>
+                <i className={`bi bi-clock-history fs-2 mb-2 ${isDark ? 'text-white-50' : 'text-muted'}`}></i>
+                <p className={`small mb-0 ${isDark ? 'text-white-50' : 'text-muted'}`}>কোনো পূর্ববর্তী হিস্ট্রি পাওয়া যায়নি।</p>
               </div>
             ) : (
               filteredHistory.map(session => {
@@ -1280,10 +1386,10 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                     key={session.id} 
                     className="p-3 rounded-4 mb-3 transition-all"
                     style={{ 
-                      background: 'rgba(255, 255, 255, 0.04)',
-                      backdropFilter: 'blur(12px)',
-                      border: '1px solid rgba(255, 255, 255, 0.08)',
-                      boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+                      background: isDark ? 'rgba(255, 255, 255, 0.04)' : '#FFFFFF',
+                      backdropFilter: isDark ? 'blur(12px)' : 'none',
+                      border: isDark ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid #E2E8F0',
+                      boxShadow: isDark ? '0 4px 20px rgba(0,0,0,0.2)' : '0 4px 20px rgba(0,0,0,0.05)'
                     }}
                   >
                     {/* Top Row: Type, Title & Big Amount */}
@@ -1296,8 +1402,8 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                           <i className={`bi ${isTour ? 'bi-airplane-fill' : 'bi-basket2-fill'} fs-6`}></i>
                         </span>
                         <div>
-                          <div className="fw-bolder text-white mb-0 lh-sm" style={{ fontSize: '0.92rem' }}>{session.title}</div>
-                          <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+                          <div className={`fw-bolder mb-0 lh-sm ${isDark ? 'text-white' : 'text-dark'}`} style={{ fontSize: '0.92rem' }}>{session.title}</div>
+                          <span style={{ fontSize: '0.72rem', color: isDark ? '#94A3B8' : '#64748B' }}>
                             <i className="bi bi-calendar3 me-1"></i>
                             {session.timestamp 
                               ? new Date(session.timestamp).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -1306,14 +1412,14 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                         </div>
                       </div>
                       <div className="text-end">
-                        <div className="fw-bolder fs-5 text-white lh-sm">৳{session.totalSpent?.toLocaleString()}</div>
+                        <div className={`fw-bolder fs-5 lh-sm ${isDark ? 'text-white' : 'text-dark'}`}>৳{session.totalSpent?.toLocaleString()}</div>
                         {session.budget > 0 && (
                           <span 
                             className="badge rounded-pill" 
                             style={{ 
                               fontSize: '0.68rem',
-                              background: isSaved ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)',
-                              color: isSaved ? '#34D399' : '#F87171'
+                              background: isSaved ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                              color: isSaved ? '#10B981' : '#EF4444'
                             }}
                           >
                             {isSaved ? `+৳${diff} সাশ্রয়` : `-৳${Math.abs(diff)} অতিরিক্ত`}
@@ -1326,9 +1432,9 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                     {session.status !== 'trashed' && getRemainingTimeStr(session.timestamp) && (
                       <div 
                         className="d-flex justify-content-between align-items-center rounded-3 px-2.5 py-1.5 mb-2.5 mt-1"
-                        style={{ background: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)' }}
+                        style={{ background: isDark ? 'rgba(59,130,246,0.15)' : 'rgba(59,130,246,0.1)', border: isDark ? '1px solid rgba(59,130,246,0.3)' : '1px solid rgba(59,130,246,0.2)' }}
                       >
-                        <span className="small fw-bold d-flex align-items-center gap-1.5" style={{ fontSize: '0.74rem', color: '#60A5FA' }}>
+                        <span className="small fw-bold d-flex align-items-center gap-1.5" style={{ fontSize: '0.74rem', color: isDark ? '#60A5FA' : '#2563EB' }}>
                           <span className="spinner-grow spinner-grow-sm text-primary" style={{ width: '7px', height: '7px' }}></span>
                           এডিট সুযোগ: {getRemainingTimeStr(session.timestamp)}
                         </span>
@@ -1346,12 +1452,12 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                     {displayItems.length > 0 && (
                       <div className="d-flex flex-wrap gap-1 my-2">
                         {displayItems.slice(0, 4).map((it, idx) => (
-                          <span key={idx} className="badge rounded-pill px-2 py-1" style={{ fontSize: '0.72rem', background: 'rgba(255,255,255,0.06)', color: '#CBD5E1', border: '1px solid rgba(255,255,255,0.08)' }}>
-                            {it.name} <strong className="text-white">৳{it.price || 0}</strong>
+                          <span key={idx} className="badge rounded-pill px-2 py-1" style={{ fontSize: '0.72rem', background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', color: isDark ? '#CBD5E1' : '#475569', border: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #E2E8F0' }}>
+                            {it.name} <strong className={isDark ? 'text-white' : 'text-dark'}>৳{it.price || 0}</strong>
                           </span>
                         ))}
                         {displayItems.length > 4 && (
-                          <span className="badge rounded-pill px-2 py-1" style={{ fontSize: '0.72rem', background: 'rgba(255,255,255,0.04)', color: '#94A3B8' }}>
+                          <span className="badge rounded-pill px-2 py-1" style={{ fontSize: '0.72rem', background: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC', color: isDark ? '#94A3B8' : '#64748B' }}>
                             +{displayItems.length - 4}টি আরো...
                           </span>
                         )}
@@ -1359,10 +1465,10 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                     )}
 
                     {/* Bottom Action Bar */}
-                    <div className="d-flex justify-content-between align-items-center pt-2.5 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <div className="d-flex justify-content-between align-items-center pt-2.5 mt-1" style={{ borderTop: isDark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #F1F5F9' }}>
                       <button 
                         className="btn btn-xs rounded-pill px-2.5 py-1 fw-bold d-flex align-items-center gap-1"
-                        style={{ background: 'rgba(16,185,129,0.15)', color: '#34D399', border: '1px solid rgba(16,185,129,0.3)' }}
+                        style={{ background: isDark ? 'rgba(16,185,129,0.15)' : 'rgba(16,185,129,0.1)', color: isDark ? '#34D399' : '#059669', border: '1px solid rgba(16,185,129,0.3)' }}
                         onClick={() => handleShareSessionWhatsApp(session)}
                         title="WhatsApp শেয়ার"
                       >
@@ -1374,8 +1480,8 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                         <button 
                           className="btn btn-xs rounded-pill px-2 py-1 fw-semibold"
                           style={{ 
-                            background: expandedHistoryId === session.id ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)',
-                            color: '#E2E8F0', border: '1px solid rgba(255,255,255,0.1)'
+                            background: expandedHistoryId === session.id ? (isDark ? 'rgba(255,255,255,0.2)' : '#E2E8F0') : (isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9'),
+                            color: isDark ? '#E2E8F0' : '#334155', border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #CBD5E1'
                           }}
                           onClick={() => setExpandedHistoryId(expandedHistoryId === session.id ? null : session.id)}
                         >
@@ -1404,7 +1510,7 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                           <>
                             <button 
                               className="btn btn-xs rounded-pill px-2 py-1 fw-semibold"
-                              style={{ background: 'rgba(255,255,255,0.06)', color: '#60A5FA', border: '1px solid rgba(255,255,255,0.1)' }}
+                              style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#EFF6FF', color: isDark ? '#60A5FA' : '#2563EB', border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #BFDBFE' }}
                               onClick={() => handleCloneHistory(session)}
                               title="পুনরায় ব্যবহার"
                             >
@@ -1412,7 +1518,7 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                             </button>
                             <button 
                               className="btn btn-xs rounded-circle p-1 d-flex align-items-center justify-content-center"
-                              style={{ width: '28px', height: '28px', background: 'rgba(239,68,68,0.15)', color: '#F87171', border: '1px solid rgba(239,68,68,0.25)' }}
+                              style={{ width: '28px', height: '28px', background: 'rgba(239,68,68,0.15)', color: '#EF4444', border: '1px solid rgba(239,68,68,0.25)' }}
                               onClick={() => handleMoveToTrash(session.id)}
                               title="ট্র্যাশে পাঠান"
                             >
@@ -1522,9 +1628,9 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
             className="p-3.5 rounded-4 shadow-lg w-100 animate-slide-up" 
             style={{ 
               maxWidth: '340px',
-              background: '#0F172A',
-              border: '1px solid rgba(255,255,255,0.12)',
-              color: '#F8FAFC'
+              background: isDark ? '#0F172A' : '#FFFFFF',
+              border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid #E2E8F0',
+              color: isDark ? '#F8FAFC' : '#0F172A'
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -1533,19 +1639,19 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                 <span className="badge rounded-circle p-2 bg-success bg-opacity-25 text-success d-flex align-items-center justify-content-center" style={{ width: '32px', height: '32px' }}>
                   <i className="bi bi-cash-stack fs-6"></i>
                 </span>
-                <h6 className="fw-bold mb-0 text-white" style={{ fontSize: '0.96rem' }}>
+                <h6 className={`fw-bold mb-0 ${isDark ? 'text-white' : 'text-dark'}`} style={{ fontSize: '0.96rem' }}>
                   বাজেট / টাকা যোগ করুন
                 </h6>
               </div>
               <button 
-                className="btn btn-sm btn-link text-white-50 p-0 border-0" 
+                className={`btn btn-sm btn-link p-0 border-0 ${isDark ? 'text-white-50' : 'text-muted'}`} 
                 onClick={() => setTopUpModalOpen(false)}
               >
                 <i className="bi bi-x-lg"></i>
               </button>
             </div>
             
-            <p className="small mb-2" style={{ color: '#94A3B8', fontSize: '0.78rem' }}>
+            <p className="small mb-2" style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: '0.78rem' }}>
               চলমান সেশনের মূল বাজেটের সাথে অতিরিক্ত টাকা যোগ করুন:
             </p>
 
@@ -1553,10 +1659,10 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
             {fundingSource === 'wallet' && (
               <div 
                 className="p-2 rounded-3 mb-2.5 d-flex justify-content-between align-items-center"
-                style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)' }}
+                style={{ background: isDark ? 'rgba(16,185,129,0.12)' : 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.25)' }}
               >
                 <div>
-                  <span className="d-block" style={{ fontSize: '0.7rem', color: '#94A3B8' }}>
+                  <span className="d-block" style={{ fontSize: '0.7rem', color: isDark ? '#94A3B8' : '#64748B' }}>
                     {selectedDistId ? 'নির্বাচিত ফান্ডে অবশিষ্ট' : 'ওয়ালেটে খরচযোগ্য নগদ'}
                   </span>
                   <span className="fw-bolder fs-6 text-success">৳{(actualUsableBalance || 0).toLocaleString()}</span>
@@ -1564,7 +1670,7 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                 <button
                   type="button"
                   className="btn btn-xs rounded-pill px-2 py-0.5 fw-bold"
-                  style={{ background: 'rgba(16,185,129,0.25)', color: '#34D399', border: 'none', fontSize: '0.72rem' }}
+                  style={{ background: 'rgba(16,185,129,0.25)', color: isDark ? '#34D399' : '#059669', border: 'none', fontSize: '0.72rem' }}
                   onClick={() => setTopUpAmount(Math.min(actualUsableBalance || 0, 1000).toString())}
                 >
                   সর্বোচ্চ নিন
@@ -1573,11 +1679,11 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
             )}
 
             {/* Big Amount Input */}
-            <div className="input-group mb-2.5" style={{ background: 'rgba(255,255,255,0.06)', borderRadius: '14px', border: '1px solid rgba(255,255,255,0.15)', overflow: 'hidden' }}>
+            <div className="input-group mb-2.5" style={{ background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9', borderRadius: '14px', border: isDark ? '1px solid rgba(255,255,255,0.15)' : '1px solid #CBD5E1', overflow: 'hidden' }}>
               <span className="input-group-text bg-transparent border-0 fw-bold fs-4 text-success ps-3">৳</span>
               <input
                 type="number"
-                className="form-control form-control-lg bg-transparent border-0 fw-bolder fs-3 text-white pe-3"
+                className={`form-control form-control-lg bg-transparent border-0 fw-bolder fs-3 pe-3 ${isDark ? 'text-white' : 'text-dark'}`}
                 placeholder="৫০০"
                 value={topUpAmount}
                 onChange={(e) => setTopUpAmount(e.target.value)}
@@ -1593,9 +1699,9 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
                   type="button"
                   className="btn btn-xs flex-fill rounded-pill py-1.5 fw-bold"
                   style={{ 
-                    background: topUpAmount === amt.toString() ? '#10B981' : 'rgba(255,255,255,0.08)',
-                    color: topUpAmount === amt.toString() ? '#fff' : '#CBD5E1',
-                    border: '1px solid rgba(255,255,255,0.1)',
+                    background: topUpAmount === amt.toString() ? '#10B981' : (isDark ? 'rgba(255,255,255,0.08)' : '#F1F5F9'),
+                    color: topUpAmount === amt.toString() ? '#fff' : (isDark ? '#CBD5E1' : '#334155'),
+                    border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #E2E8F0',
                     fontSize: '0.75rem'
                   }}
                   onClick={() => setTopUpAmount(amt.toString())}
@@ -1608,7 +1714,7 @@ export default function QuickTrackerPage({ currentUser, onBack }) {
             <div className="d-flex gap-2">
               <button 
                 className="btn flex-fill rounded-3 fw-bold py-2" 
-                style={{ background: 'rgba(255,255,255,0.08)', color: '#94A3B8', border: 'none' }}
+                style={{ background: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', color: isDark ? '#94A3B8' : '#475569', border: 'none' }}
                 onClick={() => setTopUpModalOpen(false)}
               >
                 বাতিল
