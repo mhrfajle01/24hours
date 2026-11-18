@@ -2727,6 +2727,76 @@ export default function WalletPage({ currentUser, onBack, initialDistId }) {
         </>
       )}
 
+      {/* Savings Goal History Modal */}
+      {viewSavingsHistory && (
+        <>
+          <div className="modal-backdrop fade show animate-fade-in" style={{ zIndex: 1200 }} onClick={() => setViewSavingsHistory(null)}></div>
+          <div className="modal fade show d-block animate-slide-up" style={{ zIndex: 1210 }} tabIndex="-1">
+            <div className="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+              <div className="modal-content border-0 rounded-4 shadow-lg overflow-hidden">
+                <div className="modal-header border-0 text-white pb-3" style={{ background: 'linear-gradient(135deg, #128C7E, #075E54)' }}>
+                  <div>
+                    <h5 className="modal-title fw-bold d-flex align-items-center gap-2 mb-0">
+                      <i className="bi bi-clock-history"></i> {viewSavingsHistory.name} History
+                    </h5>
+                    <span className="small opacity-75">
+                      Saved: ৳{(viewSavingsHistory.currentAmount || 0).toLocaleString()} / Target: ৳{(viewSavingsHistory.targetAmount || 0).toLocaleString()}
+                    </span>
+                  </div>
+                  <button type="button" className="btn-close btn-close-white shadow-none" onClick={() => setViewSavingsHistory(null)}></button>
+                </div>
+                <div className="modal-body p-3 bg-light">
+                  {(!viewSavingsHistory.history || viewSavingsHistory.history.length === 0) ? (
+                    <div className="text-center py-4 text-muted">
+                      <i className="bi bi-receipt fs-2 mb-2 d-block"></i>
+                      No transaction history for this savings goal yet.
+                    </div>
+                  ) : (
+                    <div className="d-flex flex-column gap-2">
+                      {viewSavingsHistory.history.map(item => {
+                        const isDep = item.type === 'deposit';
+                        return (
+                          <div key={item.id} className="card border-0 shadow-xs rounded-3 p-2.5 bg-white">
+                            <div className="d-flex justify-content-between align-items-center">
+                              <div className="d-flex align-items-center gap-2">
+                                <div className={`rounded-circle d-flex align-items-center justify-content-center text-white small ${isDep ? 'bg-success' : 'bg-warning'}`} style={{ width: 30, height: 30 }}>
+                                  <i className={`bi ${isDep ? 'bi-arrow-down-left' : 'bi-arrow-up-right'}`} />
+                                </div>
+                                <div>
+                                  <div className="fw-bold text-dark small">
+                                    {isDep ? 'Cash In (Deposit)' : 'Withdrawal'}
+                                  </div>
+                                  <div className="text-secondary" style={{ fontSize: '0.75rem' }}>
+                                    {item.walletName ? `Via ${item.walletName}` : 'Wallet'} • {new Date(item.date).toLocaleDateString()} {new Date(item.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-end">
+                                <div className={`fw-bold ${isDep ? 'text-success' : 'text-danger'}`}>
+                                  {isDep ? '+' : '-'}৳{item.amount.toLocaleString()}
+                                </div>
+                              </div>
+                            </div>
+                            {item.note && (
+                              <div className="text-muted small mt-1 pt-1 border-top" style={{ fontSize: '0.75rem' }}>
+                                💬 {item.note}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                <div className="modal-footer border-0 bg-light pt-0 pb-3 px-3">
+                  <button className="btn btn-secondary rounded-pill px-4 py-1.5 fw-bold w-100" onClick={() => setViewSavingsHistory(null)}>Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {toast.show && (
         <div className="position-fixed top-0 start-50 translate-middle-x mt-3 shadow-lg animate-slide-down-toast-container" style={{ zIndex: 2000, width: 'min(92vw, 400px)' }}>
           <div className={`toast show align-items-center border-0 rounded-4 text-white px-3 py-2 bg-${toast.type === 'danger' ? 'danger' : 'success'}`}>
