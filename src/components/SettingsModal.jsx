@@ -73,6 +73,17 @@ export default function SettingsModal({
 
   // PDF Export settings state
   const [pdfTemplateType, setPdfTemplateType] = useState('report');
+
+  // WhatsApp Automation states
+  const [waNotifyEnabled, setWaNotifyEnabled] = useState(() => localStorage.getItem('wa_notify_enabled') === 'true');
+  const [waNotifyNumber, setWaNotifyNumber] = useState(() => localStorage.getItem('wa_notify_number') || '');
+  const [waNotifyApiKey, setWaNotifyApiKey] = useState(() => localStorage.getItem('wa_notify_apikey') || '');
+
+  const saveWaSettings = (enabled, number, apiKey) => {
+    localStorage.setItem('wa_notify_enabled', enabled ? 'true' : 'false');
+    localStorage.setItem('wa_notify_number', number);
+    localStorage.setItem('wa_notify_apikey', apiKey);
+  };
   const [englishFont, setEnglishFont] = useState('Outfit');
   const [banglaFont, setBanglaFont] = useState('Noto Sans Bengali');
   const [pdfTheme, setPdfTheme] = useState('teal');
@@ -945,6 +956,81 @@ export default function SettingsModal({
                     <p className="text-secondary small mb-0">
                       <strong>Note:</strong> In-app notifications (success messages, points updates) appear automatically while using the app. This setting controls native system notifications when the app is closed.
                     </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* WhatsApp Active Block Automation */}
+              <div style={settingStyle('notifications')} className="mb-3 bg-white p-3 rounded-4 shadow-sm border">
+                <div className="d-flex align-items-center justify-content-between mb-2">
+                  <h6 className="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+                    <i className="bi bi-whatsapp text-success fs-5" />
+                    হোয়াটসঅ্যাপ টাইম ব্লক নোটিফিকেশন
+                  </h6>
+                  <div className="form-check form-switch m-0">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      checked={waNotifyEnabled}
+                      onChange={(e) => {
+                        const val = e.target.checked;
+                        setWaNotifyEnabled(val);
+                        saveWaSettings(val, waNotifyNumber, waNotifyApiKey);
+                      }}
+                    />
+                  </div>
+                </div>
+                <p className="text-secondary small mb-3">
+                  নতুন অ্যাক্টিভ টাইম ব্লক শুরু হলে স্বয়ংক্রিয়ভাবে আপনার হোয়াটসঅ্যাপে ব্লকের প্ল্যান ও মেসেজ চলে যাবে।
+                </p>
+
+                <div className="mb-2">
+                  <label className="form-label small fw-semibold text-dark mb-1">WhatsApp BD নম্বর:</label>
+                  <div className="input-group input-group-sm">
+                    <span className="input-group-text bg-light text-muted fw-bold">+880</span>
+                    <input
+                      type="tel"
+                      className="form-control"
+                      placeholder="17XXXXXXXX"
+                      maxLength={10}
+                      value={waNotifyNumber}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        setWaNotifyNumber(val);
+                        saveWaSettings(waNotifyEnabled, val, waNotifyApiKey);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <div className="d-flex justify-content-between align-items-center mb-1">
+                    <label className="form-label small fw-semibold text-dark mb-0">TextMeBot ApiKey (সরাসরি সাইলেন্ট অটো মেসেজ):</label>
+                    <a
+                      href="https://textmebot.com/#lepopup-NewApiKey"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-success small text-decoration-none fw-semibold"
+                      style={{ fontSize: '0.75rem' }}
+                    >
+                      <i className="bi bi-box-arrow-up-right me-1" />Get Free Demo Key
+                    </a>
+                  </div>
+                  <input
+                    type="text"
+                    className="form-control form-control-sm"
+                    placeholder="TextMeBot ApiKey দিন (অ্যাপ না খুলে সরাসরি মেসেজ যাবে)"
+                    value={waNotifyApiKey}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setWaNotifyApiKey(val);
+                      localStorage.setItem('textmebot_apikey', val);
+                      saveWaSettings(waNotifyEnabled, waNotifyNumber, val);
+                    }}
+                  />
+                  <div className="text-muted mt-1" style={{ fontSize: '0.7rem' }}>
+                    * <strong>TextMeBot:</strong> এটি দিলে কোনো WhatsApp অ্যাপ ওপেন না করে সরাসরি ইনবক্সে ব্যাকগ্রাউন্ড মেসেজ চলে যাবে।
                   </div>
                 </div>
               </div>

@@ -137,8 +137,8 @@ export default function HourCard({
           <span className="fs-6 fs-sm-5 fw-bold text-dark animate-fade-in" style={{ letterSpacing: '0.5px' }}>
             {timeStr}
           </span>
-          <span className={`badge rounded-pill px-3 py-1.5 fw-bold text-uppercase fs-xs ${statusBadgeClass}`}>
-            {status}
+          <span className={`badge rounded-pill px-3 py-1.5 fw-bold text-uppercase fs-xs ${isCurrentHour ? 'bg-primary text-white' : statusBadgeClass}`}>
+            {isCurrentHour ? 'Active' : status}
           </span>
         </div>
         
@@ -169,6 +169,19 @@ export default function HourCard({
             >
               🍅 Pomodoro Style
             </button>
+            {/* WhatsApp Trigger Indicator */}
+            {localStorage.getItem('wa_notify_enabled') === 'true' && (
+              <a
+                href={`https://wa.me/${(localStorage.getItem('wa_notify_number') || '').startsWith('0') ? '880' + (localStorage.getItem('wa_notify_number') || '').slice(1) : '880' + (localStorage.getItem('wa_notify_number') || '')}?text=${encodeURIComponent(`🔔 *24Hours - অ্যাক্টিভ টাইম ব্লক!*\n⏰ সময়: ${timeStr}\n📌 প্ল্যান: ${plan || 'কোনো প্ল্যান নেই'}\n🏷 ট্যাগ: ${report.tag || 'Regular'}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="badge rounded-pill bg-success-subtle border border-success text-success px-2 py-1 fs-xs d-flex align-items-center gap-1 text-decoration-none shadow-sm"
+                title="WhatsApp-এ মেসেজ পাঠান বা রিসেন্ড করুন"
+              >
+                <i className="bi bi-whatsapp text-success"></i>
+                <span>WA Sent</span>
+              </a>
+            )}
           </div>
         )}
       </div>

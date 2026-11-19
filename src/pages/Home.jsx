@@ -46,6 +46,7 @@ import CustomFeatureViewer from '../components/CustomFeatureViewer';
 import NotificationPrompt from '../components/NotificationPrompt';
 import GenerateTodayModal from '../components/GenerateTodayModal';
 import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
+import { sendWhatsAppBlockAlert } from '../utils/whatsappNotifier';
 import { useFirestore } from '../hooks/useFirestore';
 import { useAppUsage } from '../hooks/useAppUsage';
 import { useMessages } from '../hooks/useMessages';
@@ -541,6 +542,44 @@ export default function Home() {
     }, 1000); // Central clock ticks every 1s
     return () => clearInterval(t);
   }, []);
+
+  // WhatsApp active block notification check
+  useEffect(() => {
+    if (!reports || reports.length === 0) return;
+    const isWaEnabled = localStorage.getItem('wa_notify_enabled') === 'true';
+    if (!isWaEnabled) return;
+
+    // Use exact timeline matching logic: find active report by interval minutes
+    const now = currentTime || new Date();
+    const currentMin = now.getHours() * 60 + now.getMinutes();
+    
+    const matchingReports = reports.filter((report) => {
+      const times = getIntervalTimes(report);
+      const startMin = timeToMinutes(times.startTime);
+      let endMin = timeToMinutes(times.endTime);
+      if (endMin < startMin) endMin += 24 * 60;
+      return (endMin >= 24 * 60)
+        ? (currentMin >= startMin || currentMin < (endMin % (24 * 60)))
+        : (currentMin >= startMin && currentMin < endMin);
+    });
+
+    const activeReport = matchingReports[0];
+    if (!activeReport) return;
+
+    const blockKey = `${selectedDate}_${activeReport.id}`;
+    const lastSentBlock = localStorage.getItem('last_wa_sent_block');
+
+    if (lastSentBlock !== blockKey) {
+      localStorage.setItem('last_wa_sent_block', blockKey);
+      const times = getIntervalTimes(activeReport);
+      showToast(`💬 WhatsApp auto-triggered for active block (${times.startTime} - ${times.endTime})`, 'success');
+      sendWhatsAppBlockAlert({
+        timeRange: `${times.startTime} - ${times.endTime}`,
+        plan: activeReport.plan || activeReport.description || '',
+        tag: activeReport.tag || 'Regular'
+      });
+    }
+  }, [currentTime, reports, selectedDate]);
 
   useEffect(() => {
     const handleOnline = () => {
