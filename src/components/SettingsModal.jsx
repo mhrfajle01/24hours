@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { auth, db } from '../firebase/firebase';
+import { signOut } from 'firebase/auth';
+import { terminate, clearIndexedDbPersistence } from 'firebase/firestore';
 import { getSyncQueue } from '../utils/localSyncManager';
 import { generatePDF } from '../utils/pdfGenerator';
 import { getIntervalTimes, formatTime12h, isFeatureActive, getFeatureTimeRemaining } from '../utils/helpers';
@@ -125,31 +128,76 @@ export default function SettingsModal({
       modalBody.scrollTo({ top: 0, behavior: 'smooth' });
     }
     try {
-      // 1. Clear LocalStorage and SessionStorage
-      localStorage.clear();
-      sessionStorage.clear();
+      // 1. Sign out Firebase Auth so connection cleanly terminates
+      try {
+        await signOut(auth);
+      } catch {}
 
-      // 2. Clear CacheStorage (PWA / Service Worker asset cache)
-      if ('caches' in window) {
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      // 2. Terminate Firestore & clear its persistent IndexedDB cache directly
+      try {
+        if (db) {
+          await terminate(db);
+          await clearIndexedDbPersistence(db);
+        }
+      } catch (e) {
+        console.warn('Firestore termination warning:', e);
       }
 
-      // 3. Clear IndexedDB databases for this origin (Firebase offline cache, etc.)
-      if ('indexedDB' in window && indexedDB.databases) {
-        const dbs = await indexedDB.databases();
-        for (const db of dbs) {
-          if (db.name) indexedDB.deleteDatabase(db.name);
+      // 3. Clear LocalStorage and SessionStorage
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+      } catch {}
+
+      // 4. Clear Cookies
+      try {
+        const cookies = document.cookie.split(";");
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i];
+          const eqPos = cookie.indexOf("=");
+          const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+          document.cookie = name.trim() + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        }
+      } catch {}
+
+      // 5. Unregister all Service Workers (PWA & FCM Push)
+      if ('serviceWorker' in navigator) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(r => r.unregister()));
+        } catch (e) {
+          console.warn('Service worker unregister warning:', e);
         }
       }
 
-      // 4. Force reload page
-      window.location.reload();
+      // 6. Clear CacheStorage (PWA / Service Worker asset cache)
+      if ('caches' in window) {
+        try {
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map((name) => caches.delete(name)));
+        } catch {}
+      }
+
+      // 7. Safely delete all IndexedDB databases
+      if ('indexedDB' in window && indexedDB.databases) {
+        try {
+          const dbs = await indexedDB.databases();
+          await Promise.all(
+            dbs.map((d) => d.name ? new Promise((resolve) => {
+              const req = indexedDB.deleteDatabase(d.name);
+              req.onsuccess = req.onerror = req.onblocked = () => resolve();
+            }) : Promise.resolve())
+          );
+        } catch (e) {
+          console.warn('IDB cleanup warning:', e);
+        }
+      }
+
+      // 8. Navigate explicitly to home '/' cleanly
+      window.location.href = '/';
     } catch (err) {
       console.error('Failed to clear browser data:', err);
-      showAlert('Failed to clear browser storage: ' + err.message, 'danger');
-      setIsClearingBrowserData(false);
-      setConfirmClearBrowserData(false);
+      window.location.href = '/';
     }
   };
 

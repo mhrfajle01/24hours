@@ -97,6 +97,14 @@ export default function Home() {
   });
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Safety fallback: Never leave user stuck on authLoading screen (e.g. after database/cache wipe)
+  useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      setAuthLoading(false);
+    }, 3500);
+    return () => clearTimeout(safetyTimer);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     const loadAdminRole = async () => {
@@ -158,6 +166,12 @@ export default function Home() {
           lastSeenAt: serverTimestamp(),
         }, { merge: true }).catch(() => {});
         
+        // Always ensure that upon successful login after session wipe, we land cleanly on Home
+        if (previousUid === null && window.location.pathname === '/settings') {
+          window.history.replaceState({}, '', '/');
+          setActiveModal(null);
+        }
+
         // Only reset route/page state on a fresh login (user changed), not on page refresh
         if (previousUid !== null && previousUid !== user.uid) {
           if (window.location.pathname !== '/') {

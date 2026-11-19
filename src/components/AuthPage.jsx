@@ -99,7 +99,14 @@ export default function AuthPage() {
     clearMessages();
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      if (userCredential?.user) {
+        const u = userCredential.user;
+        const userInfo = { uid: u.uid, email: u.email, displayName: u.displayName, photoURL: u.photoURL };
+        try {
+          localStorage.setItem('hourlog_cached_user', JSON.stringify(userInfo));
+        } catch {}
+      }
     } catch (err) {
       console.error(err);
       setErrorMsg(getFriendlyErrorMessage(err.code));
