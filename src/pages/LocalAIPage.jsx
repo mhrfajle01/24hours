@@ -22,17 +22,29 @@ export default function LocalAIPage({ onBack }) {
   const [viewportHeight, setViewportHeight] = useState('100%');
 
   useEffect(() => {
-    // Listen to visualViewport resize (on-screen keyboard appearing/disappearing)
+    // Prevent background window scrolling completely while LocalAIPage is open
+    const prevOverflow = document.documentElement.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+
+    // Track visualViewport for on-screen mobile keyboard
     if (!window.visualViewport) return;
-    const updateHeight = () => {
+    const updateViewport = () => {
       setViewportHeight(`${window.visualViewport.height}px`);
+      // Scroll window to (0, 0) in case browser tried to scroll the outer document
+      window.scrollTo(0, 0);
     };
-    window.visualViewport.addEventListener('resize', updateHeight);
-    window.visualViewport.addEventListener('scroll', updateHeight);
-    updateHeight();
+
+    window.visualViewport.addEventListener('resize', updateViewport);
+    window.visualViewport.addEventListener('scroll', updateViewport);
+    updateViewport();
+
     return () => {
-      window.visualViewport.removeEventListener('resize', updateHeight);
-      window.visualViewport.removeEventListener('scroll', updateHeight);
+      document.documentElement.style.overflow = prevOverflow;
+      document.body.style.overflow = prevBodyOverflow;
+      window.visualViewport.removeEventListener('resize', updateViewport);
+      window.visualViewport.removeEventListener('scroll', updateViewport);
     };
   }, []);
 
@@ -134,7 +146,7 @@ export default function LocalAIPage({ onBack }) {
       </header>
 
       {/* WhatsApp-style Scrollable Messages Area */}
-      <main style={{ flex: '1 1 0%', minHeight: 0, height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', padding: '16px 14px', maxWidth: 840, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
+      <main style={{ flex: '1 1 0%', minHeight: 0, height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', overscrollBehaviorY: 'contain', padding: '16px 14px', maxWidth: 840, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
         {messages.length === 0 ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 10px' }}>
             <div style={{ width: 64, height: 64, borderRadius: 22, background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 8px 30px rgba(99,102,241,0.35)' }}>
