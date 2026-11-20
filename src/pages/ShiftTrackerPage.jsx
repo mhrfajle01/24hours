@@ -66,6 +66,7 @@ const BREAK_TYPES = [
   { id: 'rest', icon: '🧘', label: 'Rest', defaultMins: 5, color: '#7C3AED' },
   { id: 'prayer', icon: '🕌', label: 'Prayer', defaultMins: 15, color: '#0891B2' },
   { id: 'personal', icon: '📱', label: 'Personal', defaultMins: 10, color: '#DC2626' },
+  { id: 'custom', icon: '⚙️', label: 'Custom', defaultMins: 15, color: '#6366F1' },
 ];
 
 const ZEN_QUOTES = [
@@ -646,6 +647,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   const [clockStatus, setClockStatus] = useState('idle'); // idle, active, break
   const [shiftStartMs, setShiftStartMs] = useState(null);
   const [totalAccumulatedMs, setTotalAccumulatedMs] = useState(0);
+  const [clockSessions, setClockSessions] = useState([]); // array of { id, slotLabel, clockInTime, clockInMs, clockOutTime, clockOutMs, durationSec }
 
   const [breakStartMs, setBreakStartMs] = useState(null);
   const [breakDurationMs, setBreakDurationMs] = useState(0);
@@ -660,6 +662,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
   // --- ENHANCED BREAK STATE ---
   const [breakType, setBreakType] = useState(null); // current break type id
+  const [customBreakName, setCustomBreakName] = useState(''); // custom break reason/name
   const [selectedBreakType, setSelectedBreakType] = useState(null); // type being selected in picker
   const [selectedBreakMins, setSelectedBreakMins] = useState(15); // duration being adjusted in picker
   const [totalBreakAccumulatedMs, setTotalBreakAccumulatedMs] = useState(0);
@@ -942,7 +945,10 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   const budgetColor = breakBudgetPct <= 50 ? '#10B981' : breakBudgetPct <= 75 ? '#F59E0B' : breakBudgetPct <= 100 ? '#F97316' : '#EF4444';
 
   // Current break type object
-  const currentBreakType = BREAK_TYPES.find(t => t.id === breakType) || BREAK_TYPES[0];
+  const foundBreakType = BREAK_TYPES.find(t => t.id === breakType) || BREAK_TYPES[0];
+  const currentBreakType = breakType === 'custom' && customBreakName.trim()
+    ? { ...foundBreakType, label: customBreakName.trim() }
+    : foundBreakType;
 
   // --- Zen quote rotation ---
   useEffect(() => {
@@ -991,6 +997,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     if (d.clockStatus) setClockStatus(d.clockStatus);
     if (d.shiftStartMs) setShiftStartMs(d.shiftStartMs);
     if (d.totalAccumulatedMs) setTotalAccumulatedMs(d.totalAccumulatedMs);
+    if (Array.isArray(d.clockSessions)) setClockSessions(d.clockSessions);
     if (d.breakStartMs) setBreakStartMs(d.breakStartMs);
     if (d.breakDurationMs) setBreakDurationMs(d.breakDurationMs);
     if (d.earnedBreak) setEarnedBreak(d.earnedBreak);
@@ -1285,12 +1292,14 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
     const currentTotalBreakMs = extraData.totalBreakAccumulatedMs ?? totalBreakAccumulatedMs;
     const currentBreakHistory = extraData.breakHistory ?? breakHistory;
+    const currentClockSessions = extraData.clockSessions ?? clockSessions;
     const nowTs = Date.now();
 
     const todayDoc = isToday ? {
       date: todayStr, target, unit, shiftStart, shiftEnd, shiftSlots, blockLen, scheduledBreaks, blocks: currentBlocks,
       clockStatus, shiftStartMs,
       totalAccumulatedMs: extraData.totalAccumulatedMs ?? totalAccumulatedMs,
+      clockSessions: currentClockSessions,
       breakStartMs, breakDurationMs, earnedBreak, earnedBreakReason,
       totalBreakAccumulatedMs: currentTotalBreakMs,
       breakHistory: currentBreakHistory,
@@ -1316,6 +1325,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       totalShiftSec: extraData.totalAccumulatedMs != null ? Math.floor(extraData.totalAccumulatedMs / 1000) : Math.floor(totalAccumulatedMs / 1000),
       totalBreakSec: Math.floor(currentTotalBreakMs / 1000),
       breakHistory: currentBreakHistory,
+      clockSessions: currentClockSessions,
       missedReasons: customMissedReasons,
       dayType,
       dayTypeNote,
@@ -1507,6 +1517,21 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     }
 
     const startMs = opts.clockInMs || Date.now();
+    const clockInStr = fmtTime(new Date(startMs));
+    const activeInfo = getTargetSlotForClockIn();
+    const slotLabel = activeInfo.label || 'Shift';
+    const newSession = {
+      id: String(Date.now()),
+      slotLabel,
+      clockInTime: clockInStr,
+      clockInMs: startMs,
+      clockOutTime: null,
+      clockOutMs: null,
+      durationSec: 0
+    };
+    const updatedSessions = [...clockSessions, newSession];
+    setClockSessions(updatedSessions);
+
     setClockStatus('active');
     setShiftStartMs(startMs);
     shiftEndPromptedRef.current = false;
@@ -1515,7 +1540,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       clockStatus: 'active',
       shiftStartMs: startMs,
       shiftStart: targetStart,
-      shiftSlots: targetSlots
+      shiftSlots: targetSlots,
+      clockSessions: updatedSessions
     });
   };
 
@@ -1656,9 +1682,28 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   const handleClockOutConfirm = () => {
     const clockOutTime = new Date();
     const actualShiftEnd = fmtTime(clockOutTime);
+    const clockOutMs = clockOutTime.getTime();
     const finalAccumulatedMs = shiftStartMs
       ? totalAccumulatedMs + (Date.now() - shiftStartMs)
       : totalAccumulatedMs;
+
+    // Close last clock session
+    let updatedSessions = [...clockSessions];
+    if (updatedSessions.length > 0) {
+      const lastIdx = updatedSessions.length - 1;
+      const lastSess = updatedSessions[lastIdx];
+      if (!lastSess.clockOutMs) {
+        const inMs = lastSess.clockInMs || (shiftStartMs || clockOutMs);
+        const durSec = Math.max(0, Math.floor((clockOutMs - inMs) / 1000));
+        updatedSessions[lastIdx] = {
+          ...lastSess,
+          clockOutTime: actualShiftEnd,
+          clockOutMs,
+          durationSec: durSec
+        };
+      }
+    }
+    setClockSessions(updatedSessions);
 
     setClockStatus('idle');
     setShiftStartMs(null);
@@ -1670,7 +1715,8 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       clockStatus: 'idle',
       shiftStartMs: null,
       totalAccumulatedMs: finalAccumulatedMs,
-      shiftEnd: actualShiftEnd
+      shiftEnd: actualShiftEnd,
+      clockSessions: updatedSessions
     });
     setCustomAlert({ isOpen: false });
   };
@@ -3305,11 +3351,29 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                               <>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                                   <div style={{ fontSize: 36 }}>{bt.icon}</div>
-                                  <div>
+                                  <div style={{ flex: 1, textAlign: 'left' }}>
                                     <div style={{ fontSize: 16, fontWeight: 700, color: bt.color }}>{bt.label}</div>
                                     <div style={{ fontSize: 12, color: '#888' }}>Adjust duration</div>
                                   </div>
                                 </div>
+
+                                {selectedBreakType === 'custom' && (
+                                  <div style={{ marginBottom: 16, textAlign: 'left' }}>
+                                    <label style={{ fontSize: 12, fontWeight: 700, color: '#475569', display: 'block', marginBottom: 4 }}>
+                                      Custom Break Name / Reason:
+                                    </label>
+                                    <input
+                                      type="text"
+                                      placeholder="e.g. Call, Snack, Doctor Visit..."
+                                      value={customBreakName}
+                                      onChange={(e) => setCustomBreakName(e.target.value)}
+                                      style={{
+                                        width: '100%', padding: '9px 12px', borderRadius: 10,
+                                        border: '1px solid #CBD5E1', fontSize: 14, outline: 'none'
+                                      }}
+                                    />
+                                  </div>
+                                )}
 
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginBottom: 20 }}>
                                   <motion.button whileTap={{ scale: 0.9 }}
@@ -3406,7 +3470,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                                     border: 'none', borderRadius: 12, fontWeight: 700, fontSize: 16, cursor: 'pointer',
                                     boxShadow: `0 4px 16px ${bt.color}40`,
                                   }}>
-                                  {bt.icon} Start {bt.label} Break
+                                  {bt.icon} Start {selectedBreakType === 'custom' && customBreakName.trim() ? customBreakName.trim() : bt.label} Break
                                 </motion.button>
                                 <button onClick={() => setSelectedBreakType(null)}
                                   style={{ width: '100%', marginTop: 8, padding: 8, background: 'none', color: '#888', border: 'none', fontWeight: 600, cursor: 'pointer' }}>← Back to types</button>

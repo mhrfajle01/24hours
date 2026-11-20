@@ -345,7 +345,8 @@ export default function ShiftReportPage({ currentUser, onBack }) {
               dayTypeNote: liveToday.dayTypeNote,
               totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : (liveToday.totalShiftSec || 0),
               totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : (liveToday.totalBreakSec || 0),
-              breakHistory: liveToday.breakHistory || []
+              breakHistory: liveToday.breakHistory || [],
+              clockSessions: liveToday.clockSessions || []
             };
             combinedHistory = [liveEntry, ...combinedHistory.filter(h => h.date !== todayStr)];
           }
@@ -385,7 +386,8 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                   dayTypeNote: liveToday.dayTypeNote,
                   totalShiftSec: liveToday.totalAccumulatedMs ? Math.floor(liveToday.totalAccumulatedMs / 1000) : (liveToday.totalShiftSec || 0),
                   totalBreakSec: liveToday.totalBreakAccumulatedMs ? Math.floor(liveToday.totalBreakAccumulatedMs / 1000) : (liveToday.totalBreakSec || 0),
-                  breakHistory: liveToday.breakHistory || []
+                  breakHistory: liveToday.breakHistory || [],
+                  clockSessions: liveToday.clockSessions || []
                 };
                 mergedData = [liveEntry, ...mergedData.filter(d => d.date !== todayStr)];
               }
@@ -949,6 +951,55 @@ export default function ShiftReportPage({ currentUser, onBack }) {
                             ) : (
                               <div style={{ fontSize: 12, color: '#94A3B8', fontStyle: 'italic', textAlign: 'center', padding: '8px 0' }}>
                                 No hourly block details recorded for this date.
+                              </div>
+                            )}
+
+                            {/* Clock In / Out History Dashboard */}
+                            {day.clockSessions && day.clockSessions.length > 0 && (
+                              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#38BDF8', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span>🕒</span> Clock In / Out Sessions ({day.clockSessions.length})
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  {day.clockSessions.map((sess, sIdx) => {
+                                    const durMins = sess.durationSec ? Math.floor(sess.durationSec / 60) : 0;
+                                    const durHrs = Math.floor(durMins / 60);
+                                    const remMins = durMins % 60;
+                                    const durText = durHrs > 0 ? `${durHrs}h ${remMins}m` : `${remMins}m`;
+
+                                    return (
+                                      <div key={sess.id || sIdx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)', borderRadius: 10, padding: '7px 10px', fontSize: 11.5 }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                          <span style={{ fontWeight: 800, color: '#BAE6FD', background: 'rgba(56,189,248,0.2)', padding: '1px 6px', borderRadius: 6, fontSize: 10 }}>
+                                            {sess.slotLabel || `Shift ${sIdx + 1}`}
+                                          </span>
+                                          <span style={{ color: '#F8FAFC' }}>
+                                            {sess.clockInTime} – {sess.clockOutTime || 'Active'}
+                                          </span>
+                                        </div>
+                                        <div style={{ fontWeight: 700, color: sess.clockOutTime ? '#34D399' : '#FBBF24', fontSize: 11 }}>
+                                          {sess.clockOutTime ? durText : '● In Progress'}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Break History Summary */}
+                            {day.breakHistory && day.breakHistory.length > 0 && (
+                              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#FBBF24', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span>☕</span> Breaks Taken ({day.breakHistory.length})
+                                </div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                  {day.breakHistory.map((bk, bIdx) => (
+                                    <span key={bIdx} style={{ fontSize: 10.5, background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', color: '#FDE68A', padding: '3px 8px', borderRadius: 8, fontWeight: 600 }}>
+                                      {bk.type || 'break'}: {bk.durationMs ? Math.round(bk.durationMs / 60000) : 0}m
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
                             )}
                          </div>
