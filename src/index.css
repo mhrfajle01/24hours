@@ -1438,3 +1438,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .animated-row { animation: slideInUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) both; }
 @keyframes slideInUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
 
+
+/* AI Typing Animation */
+.typing-dot{width:6px;height:6px;border-radius:50%;background:#818CF8;display:inline-block;animation:typingBounce 1.2s infinite}
+@keyframes typingBounce{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-6px);opacity:1}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}

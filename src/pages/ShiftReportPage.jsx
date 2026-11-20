@@ -328,7 +328,8 @@ export default function ShiftReportPage({ currentUser, onBack }) {
         const todayStr = getTodayDateStr();
         const liveToday = JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}_${todayStr}`)) ||
                           JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
-        if (liveToday && (liveToday.date === todayStr || !liveToday.date)) {
+        // Only consider if data strictly matches today and is NOT in unconfigured setupMode
+        if (liveToday && liveToday.date === todayStr && !liveToday.setupMode) {
           const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0) || (Number(liveToday.actual) || 0);
           const hasAnyActivity = totalProducedNow > 0 || (liveToday.totalAccumulatedMs || 0) > 0 || (liveToday.blocks || []).some(b => b.logged);
           // Only include today if shift has actually started (has production or timer activity)
@@ -370,7 +371,7 @@ export default function ShiftReportPage({ currentUser, onBack }) {
             const liveToday = JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}_${todayStr}`)) ||
                               JSON.parse(localStorage.getItem(`shiftTracker_data_${currentUser.uid}`));
             let mergedData = [...data];
-            if (liveToday) {
+            if (liveToday && liveToday.date === todayStr && !liveToday.setupMode) {
               const totalProducedNow = (liveToday.blocks || []).reduce((s, blk) => s + (blk.logged ? blk.actual : 0), 0) || (Number(liveToday.actual) || 0);
               const hasAnyActivity = totalProducedNow > 0 || (liveToday.totalAccumulatedMs || 0) > 0 || (liveToday.blocks || []).some(b => b.logged);
               if (hasAnyActivity) {

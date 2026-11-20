@@ -43,6 +43,7 @@ import InsightsModal from '../components/InsightsModal';
 import MessageCenterModal from '../components/MessageCenterModal';
 import AboutAdminsModal from '../components/AboutAdminsModal';
 import CustomFeatureViewer from '../components/CustomFeatureViewer';
+import LocalAIPage from './LocalAIPage';
 import NotificationPrompt from '../components/NotificationPrompt';
 import GenerateTodayModal from '../components/GenerateTodayModal';
 import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
@@ -325,6 +326,7 @@ export default function Home() {
   const [isTaskPlannerOpen, setIsTaskPlannerOpen] = useState(false);
   const [isShopFinanceOpen, setIsShopFinanceOpen] = useState(false);
   const [isQuickBazarOpen, setIsQuickBazarOpen] = useState(false);
+  const [isLocalAIOpen, setIsLocalAIOpen] = useState(false);
   const [isShiftTrackerOpen, setIsShiftTrackerOpen] = useState(false);
   const [isShiftReportOpen, setIsShiftReportOpen] = useState(false);
   const [isBypassTrackerOpen, setIsBypassTrackerOpen] = useState(false);
@@ -364,6 +366,7 @@ export default function Home() {
       setIsBypassTrackerOpen(path === '/bypass-tracker');
       setIsDocTrackerOpen(path === '/doc-tracker');
       setIsQuickBazarOpen(path === '/quick-bazar');
+      setIsLocalAIOpen(path === '/mhrbot');
       if (path === '/islamic') setTheme('islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
@@ -2002,6 +2005,18 @@ export default function Home() {
     );
   }
 
+  // ── Local AI Page: Full separate page ─────────────────────────────────────
+  if (isLocalAIOpen) {
+    return (
+      <LocalAIPage
+        onBack={() => {
+          setIsLocalAIOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
   // ── Shift Tracker Page: Full separate page ──────────────────────────────
   if (isShiftTrackerOpen) {
     return (
@@ -2301,6 +2316,10 @@ export default function Home() {
                     onOpenQuickBazar={() => {
                       setIsQuickBazarOpen(true);
                       navigateTo('/quick-bazar');
+                    }}
+                    onOpenLocalAI={() => {
+                      setIsLocalAIOpen(true);
+                      navigateTo('/mhrbot');
                     }}
                     onOpenShiftTracker={() => {
                       setIsShiftTrackerOpen(true);

@@ -17,6 +17,7 @@ const baseFeatures = [
   { id: 'virtual-island', title: 'Island', icon: 'bi-tree', color: '#2eb82e' },
   { id: 'shop-finance', title: 'Shop Cash', icon: 'bi-shop-window', color: '#059669' },
   { id: 'quick-bazar', title: 'Bazar & Tour', icon: 'bi-bag-heart-fill', color: '#10B981' },
+  { id: 'mhrbot', title: 'MHR BOT', icon: 'bi-robot', color: '#6366F1' },
   { id: 'task-planner', title: 'Task Planner', icon: 'bi-file-earmark-spreadsheet', color: '#17a2b8' },
   { id: 'shift-tracker', title: 'Shift Tracker', icon: 'bi-stopwatch', color: '#1CB0F6' }
 ];
@@ -36,6 +37,7 @@ export default function QuickAccessDashboardWidget({
   onOpenVirtualIsland,
   onOpenShopFinance,
   onOpenQuickBazar,
+  onOpenLocalAI,
   onOpenTaskPlanner,
   onOpenShiftTracker
 }) {
@@ -195,6 +197,7 @@ export default function QuickAccessDashboardWidget({
     if (id === 'virtual-island') onOpenVirtualIsland?.();
     if (id === 'shop-finance') onOpenShopFinance?.();
     if (id === 'quick-bazar') onOpenQuickBazar?.();
+    if (id === 'mhrbot' || id === 'local-ai') onOpenLocalAI?.();
     if (id === 'task-planner') onOpenTaskPlanner?.();
     if (id === 'shift-tracker') onOpenShiftTracker?.();
   };
@@ -213,7 +216,9 @@ export default function QuickAccessDashboardWidget({
     );
   }
 
-  const featuresToRender = pinnedFeatures.map(id => availableFeatures.find(f => f.id === id)).filter(Boolean);
+  // Deduplicate pinned items and map legacy 'local-ai' to 'mhrbot'
+  const uniquePinned = Array.from(new Set(pinnedFeatures.map(id => id === 'local-ai' ? 'mhrbot' : id)));
+  const featuresToRender = uniquePinned.map(id => availableFeatures.find(f => f.id === id)).filter(Boolean);
 
   const handleDrop = (targetId) => {
     if (!draggedFeatureId || draggedFeatureId === targetId) return;

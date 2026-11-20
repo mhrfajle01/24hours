@@ -4,6 +4,7 @@ import { db } from '../firebase/firebase';
 import { getStreakDays } from '../hooks/useStreaks';
 import CustomFeatureManager from '../components/CustomFeatureManager';
 import AdminStoriesTab from '../components/AdminStoriesTab';
+import AdminAILearningTab from '../components/AdminAILearningTab';
 import { sendPushToUser, sendPushToAllUsers, getAllUserFCMTokens } from '../utils/pushNotifications';
 
 const MOOD_MAP = {
@@ -883,6 +884,13 @@ export default function AdminPage({
           >
             <i className="bi bi-book" style={{ marginRight: '0.3rem' }} />Stories
           </button>
+          <button 
+            className={`admin-main-tab ${adminTab === 'ai' ? 'active' : ''}`}
+            onClick={() => setAdminTab('ai')}
+            style={{ minWidth: 'fit-content', padding: '0.6rem 1rem', borderRadius: '2rem', border: 'none', background: adminTab === 'ai' ? '#6366F1' : 'rgba(255,255,255,0.1)', color: '#fff', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', whiteSpace: 'nowrap', flexShrink: 0 }}
+          >
+            <i className="bi bi-cpu" style={{ marginRight: '0.3rem' }} />AI Learning
+          </button>
         </div>
 
         {adminTab === 'users' && (
@@ -909,6 +917,12 @@ export default function AdminPage({
         {adminTab === 'stories' && (
           <div className="px-3 pb-5">
             <AdminStoriesTab currentUser={currentUser} notify={notify} audit={audit} />
+          </div>
+        )}
+
+        {adminTab === 'ai' && (
+          <div className="px-3 pb-5">
+            <AdminAILearningTab />
           </div>
         )}
 
