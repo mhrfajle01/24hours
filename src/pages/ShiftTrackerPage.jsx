@@ -699,7 +699,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
   // Custom Modal State
   const [customAlert, setCustomAlert] = useState({ isOpen: false, type: 'confirm', title: '', message: '', onConfirm: null });
-  const [lateClockInPrompt, setLateClockInPrompt] = useState({ isOpen: false, customTime: '' });
+  const [lateClockInPrompt, setLateClockInPrompt] = useState({ isOpen: false, customTime: '', targetStart: '', targetEnd: '', slotIndex: -1, slotLabel: '' });
   const [runningBlockInputs, setRunningBlockInputs] = useState({});
   const [editTimerModal, setEditTimerModal] = useState({ isOpen: false, hrs: '', mins: '' });
   const shiftEndPromptedRef = useRef(false);
@@ -903,6 +903,28 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
   const effectiveShiftStart = activeSlots.length > 0 ? activeSlots[0].start : shiftStart;
   const effectiveShiftEnd = activeSlots.length > 0 ? activeSlots[activeSlots.length - 1].end : shiftEnd;
+
+  // Determine current or next active slot for multi-shift clocking
+  const getTargetSlotForClockIn = () => {
+    if (!activeSlots || activeSlots.length === 0) return { slot: null, index: -1, start: effectiveShiftStart, end: effectiveShiftEnd, label: 'Shift' };
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    // 1. Slot currently happening
+    let idx = activeSlots.findIndex(s => nowMin >= timeToMinutes(s.start) && nowMin <= timeToMinutes(s.end));
+    if (idx !== -1) {
+      return { slot: activeSlots[idx], index: idx, start: activeSlots[idx].start, end: activeSlots[idx].end, label: activeSlots[idx].label || `Shift ${idx + 1}` };
+    }
+
+    // 2. Earliest upcoming slot today
+    idx = activeSlots.findIndex(s => timeToMinutes(s.start) > nowMin);
+    if (idx !== -1) {
+      return { slot: activeSlots[idx], index: idx, start: activeSlots[idx].start, end: activeSlots[idx].end, label: activeSlots[idx].label || `Shift ${idx + 1}` };
+    }
+
+    // 3. Fall back to last slot
+    const lastIdx = activeSlots.length - 1;
+    return { slot: activeSlots[lastIdx], index: lastIdx, start: activeSlots[lastIdx].start, end: activeSlots[lastIdx].end, label: activeSlots[lastIdx].label || `Shift ${lastIdx + 1}` };
+  };
 
   const getShiftDurationHrs = () => {
     if (activeSlots.length > 1) {
@@ -1267,7 +1289,9 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
     const todayDoc = isToday ? {
       date: todayStr, target, unit, shiftStart, shiftEnd, shiftSlots, blockLen, scheduledBreaks, blocks: currentBlocks,
-      clockStatus, shiftStartMs, totalAccumulatedMs, breakStartMs, breakDurationMs, earnedBreak, earnedBreakReason,
+      clockStatus, shiftStartMs,
+      totalAccumulatedMs: extraData.totalAccumulatedMs ?? totalAccumulatedMs,
+      breakStartMs, breakDurationMs, earnedBreak, earnedBreakReason,
       totalBreakAccumulatedMs: currentTotalBreakMs,
       breakHistory: currentBreakHistory,
       breakType,
@@ -1432,22 +1456,27 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
     // If options specify adjusting the scheduled start time to right now (early clock in)
     if (opts.adjustScheduledStart && opts.newStartTime) {
       const newStart = opts.newStartTime;
-      const newStartMin = timeToMinutes(newStart);
-      const oldStartMin = timeToMinutes(shiftStart);
-      targetStart = newStart;
-      setShiftStart(newStart);
-
-      if (targetSlots && targetSlots.length > 0) {
+      const targetSlotIdx = opts.slotIndex !== undefined && opts.slotIndex >= 0 ? opts.slotIndex : 0;
+      
+      if (targetSlots && targetSlots.length > targetSlotIdx) {
         const updatedSlots = [...targetSlots];
-        updatedSlots[0] = { ...updatedSlots[0], start: newStart };
+        updatedSlots[targetSlotIdx] = { ...updatedSlots[targetSlotIdx], start: newStart };
         targetSlots = updatedSlots;
         setShiftSlots(updatedSlots);
       }
 
+      if (targetSlotIdx === 0) {
+        targetStart = newStart;
+        setShiftStart(newStart);
+      }
+
+      const newStartMin = timeToMinutes(newStart);
+      const oldStartMin = timeToMinutes(opts.targetSlotStart || shiftStart);
+
       let nb = blocks.map(b => ({ ...b }));
       if (nb.length > 0 && newStartMin < oldStartMin) {
         const firstBlockStart = timeToMinutes(nb[0].start);
-        if (newStartMin < firstBlockStart) {
+        if (newStartMin < firstBlockStart && targetSlotIdx === 0) {
           let curMin = newStartMin;
           const firstShiftLabel = nb[0].shiftLabel || '';
           const newBlocks = [];
@@ -1463,8 +1492,12 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
             curMin = bEndMin;
           }
           nb = [...newBlocks, ...nb];
-        } else if (!nb[0].logged && !nb[0].isBreak) {
-          nb[0] = { ...nb[0], start: newStart };
+        } else {
+          // Find first unlogged block corresponding to this slot or shift
+          const blkIdx = nb.findIndex(b => !b.logged && !b.isBreak);
+          if (blkIdx !== -1) {
+            nb[blkIdx] = { ...nb[blkIdx], start: newStart };
+          }
         }
       }
       nb = nb.map((b, idx) => ({ ...b, id: idx }));
@@ -1488,10 +1521,14 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
   const handleClockIn = () => {
     const nowMin = now.getHours() * 60 + now.getMinutes();
-    const startMinutes = timeToMinutes(effectiveShiftStart);
-    const endMinutes = timeToMinutes(effectiveShiftEnd);
+    const activeInfo = getTargetSlotForClockIn();
+    const slotStart = activeInfo.start;
+    const slotEnd = activeInfo.end;
+    const startMinutes = timeToMinutes(slotStart);
+    const endMinutes = timeToMinutes(slotEnd);
+    const slotName = activeInfo.label || 'Shift';
 
-    // If shift hasn't started yet (e.g. shift is 9:00 AM but it's 8:30 AM)
+    // If active/next shift hasn't started yet
     if (nowMin < startMinutes) {
       const waitMins = startMinutes - nowMin;
       const waitHrs = Math.floor(waitMins / 60);
@@ -1502,18 +1539,19 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       setCustomAlert({
         isOpen: true,
         type: 'confirm',
-        title: '⏳ Shift Not Started Yet',
-        message: `Your shift is scheduled to start at ${fmt12h(effectiveShiftStart)} (in ${waitStr}). Do you want to clock in now starting at ${fmt12h(currentNowStr)} and adapt shift blocks?`,
+        title: `⏳ ${slotName} Not Started Yet`,
+        message: `${slotName} is scheduled to start at ${fmt12h(slotStart)} (in ${waitStr}). Do you want to clock in now starting at ${fmt12h(currentNowStr)} and adapt shift blocks?`,
         onConfirm: () => {
-          performClockIn({ adjustScheduledStart: true, newStartTime: currentNowStr });
+          performClockIn({ adjustScheduledStart: true, newStartTime: currentNowStr, slotIndex: activeInfo.index, targetSlotStart: slotStart });
           setCustomAlert({ isOpen: false });
         }
       });
       return;
     }
 
-    // If scheduled shift has already passed
-    if (endMinutes > 0 && nowMin > endMinutes) {
+    // If scheduled shift has already passed (past the final shift end)
+    const overallEndMin = timeToMinutes(effectiveShiftEnd);
+    if (overallEndMin > 0 && nowMin > overallEndMin) {
       setCustomAlert({
         isOpen: true,
         type: 'confirm',
@@ -1527,11 +1565,15 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
       return;
     }
 
-    // Check if user is clocking in late (e.g. >= 2 mins after scheduled shift start)
-    if (effectiveShiftStart && nowMin > startMinutes + 1) {
+    // Check if user is clocking in late for this active/current shift slot (e.g. >= 2 mins after slot start)
+    if (slotStart && nowMin > startMinutes + 1) {
       setLateClockInPrompt({
         isOpen: true,
-        customTime: effectiveShiftStart
+        customTime: slotStart,
+        targetStart: slotStart,
+        targetEnd: slotEnd,
+        slotIndex: activeInfo.index,
+        slotLabel: slotName
       });
       return;
     }
@@ -1620,7 +1662,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
 
     setClockStatus('idle');
     setShiftStartMs(null);
-    setTotalAccumulatedMs(0);
+    setTotalAccumulatedMs(finalAccumulatedMs);
     setElapsedShiftSec(0);
     shiftEndPromptedRef.current = false;
     playSound('trash');
@@ -4877,7 +4919,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     Forgot to Clock In on Time?
                   </h3>
                   <div style={{ fontSize: 12, color: '#64748B' }}>
-                    Shift was scheduled for {fmt12h(effectiveShiftStart)}
+                    {lateClockInPrompt.slotLabel || 'Shift'} was scheduled for {fmt12h(lateClockInPrompt.targetStart || effectiveShiftStart)}
                   </div>
                 </div>
               </div>
@@ -4891,11 +4933,12 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 <button
                   type="button"
                   onClick={() => {
-                    const [h, m] = (effectiveShiftStart || '09:00').split(':').map(Number);
+                    const targetSt = lateClockInPrompt.targetStart || effectiveShiftStart || '09:00';
+                    const [h, m] = targetSt.split(':').map(Number);
                     const d = new Date();
                     d.setHours(h, m, 0, 0);
                     performClockIn({ clockInMs: d.getTime() });
-                    setLateClockInPrompt({ isOpen: false, customTime: '' });
+                    setLateClockInPrompt({ isOpen: false, customTime: '', targetStart: '', targetEnd: '', slotIndex: -1, slotLabel: '' });
                   }}
                   style={{
                     padding: '12px 14px', background: '#3B82F6', color: '#fff',
@@ -4903,7 +4946,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
                   }}
                 >
-                  <span>⚡ Match Shift Start ({fmt12h(effectiveShiftStart)})</span>
+                  <span>⚡ Match Shift Start ({fmt12h(lateClockInPrompt.targetStart || effectiveShiftStart)})</span>
                   <span style={{ fontSize: 11, background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: 99 }}>Recommended</span>
                 </button>
 
@@ -4931,7 +4974,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                         d.setHours(h, m, 0, 0);
                         const ms = Math.min(d.getTime(), Date.now());
                         performClockIn({ clockInMs: ms });
-                        setLateClockInPrompt({ isOpen: false, customTime: '' });
+                        setLateClockInPrompt({ isOpen: false, customTime: '', targetStart: '', targetEnd: '', slotIndex: -1, slotLabel: '' });
                       }}
                       style={{
                         padding: '8px 14px', background: '#0F172A', color: '#fff',
@@ -4950,7 +4993,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                     type="button"
                     onClick={() => {
                       performClockIn();
-                      setLateClockInPrompt({ isOpen: false, customTime: '' });
+                      setLateClockInPrompt({ isOpen: false, customTime: '', targetStart: '', targetEnd: '', slotIndex: -1, slotLabel: '' });
                     }}
                     style={{
                       flex: 1, padding: '10px 12px', background: '#F1F5F9', color: '#334155',
@@ -4962,7 +5005,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                   </button>
                   <button
                     type="button"
-                    onClick={() => setLateClockInPrompt({ isOpen: false, customTime: '' })}
+                    onClick={() => setLateClockInPrompt({ isOpen: false, customTime: '', targetStart: '', targetEnd: '', slotIndex: -1, slotLabel: '' })}
                     style={{
                       padding: '10px 14px', background: 'transparent', color: '#64748B',
                       border: 'none', borderRadius: 10, fontWeight: 600, fontSize: 13,

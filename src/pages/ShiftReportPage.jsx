@@ -480,8 +480,20 @@ export default function ShiftReportPage({ currentUser, onBack }) {
     return { dayType: dayType || 'work', dayTypeNote, isNonWorking, isOnlySetup, label, icon, badgeBg, badgeColor, badgeBorder };
   };
 
+  // Helper to deduplicate history entries by unique date
+  const deduplicateByDate = (list) => {
+    const map = new Map();
+    for (const item of list) {
+      if (item && item.date && !map.has(item.date)) {
+        map.set(item.date, item);
+      }
+    }
+    return Array.from(map.values());
+  };
+
   const getFilteredData = () => {
-    let sorted = history.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+    const uniqueHistory = deduplicateByDate(history);
+    let sorted = uniqueHistory.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
     const today = getTodayDateStr();
     
     if (filter === 'today') return sorted.filter(d => d.date === today);
