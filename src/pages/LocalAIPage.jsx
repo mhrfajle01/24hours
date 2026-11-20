@@ -19,6 +19,23 @@ export default function LocalAIPage({ onBack }) {
   const typingRef = useRef(null);
   const messagesEndRef = useRef(null);
 
+  const [viewportHeight, setViewportHeight] = useState('100%');
+
+  useEffect(() => {
+    // Listen to visualViewport resize (on-screen keyboard appearing/disappearing)
+    if (!window.visualViewport) return;
+    const updateHeight = () => {
+      setViewportHeight(`${window.visualViewport.height}px`);
+    };
+    window.visualViewport.addEventListener('resize', updateHeight);
+    window.visualViewport.addEventListener('scroll', updateHeight);
+    updateHeight();
+    return () => {
+      window.visualViewport.removeEventListener('resize', updateHeight);
+      window.visualViewport.removeEventListener('scroll', updateHeight);
+    };
+  }, []);
+
   useEffect(() => {
     // 1. Initial count from local
     setTopicCount(getLocalAIKnowledge().length);
@@ -43,11 +60,15 @@ export default function LocalAIPage({ onBack }) {
     try {
       localStorage.setItem('local_ai_chat_history', JSON.stringify(messages));
     } catch {}
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, typingText]);
+    // Scroll to bottom only when a new message is added, not continuously
+    if (messages.length > 0 && !isTyping) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages.length, isTyping]);
 
-  // Cleanup typing interval on unmount
-  useEffect(() => () => { if (typingRef.current) clearInterval(typingRef.current); }, []);
+  useEffect(() => {
+    if (typingRef.current) clearInterval(typingRef.current);
+  }, []);
 
   const handleSend = (textToSend) => {
     const q = (textToSend || input).trim();
@@ -85,7 +106,7 @@ export default function LocalAIPage({ onBack }) {
   };
 
   return (
-    <div style={{ height: '100dvh', maxHeight: '100dvh', background: '#090D16', color: '#F8FAFC', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, right: 0, height: viewportHeight, background: '#090D16', color: '#F8FAFC', display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 9999 }}>
       {/* Top Header */}
       <header style={{ flexShrink: 0, zIndex: 100, background: 'rgba(9, 13, 22, 0.95)', backdropFilter: 'blur(16px)', borderBottom: '1px solid rgba(255,255,255,0.06)', padding: '10px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -113,7 +134,7 @@ export default function LocalAIPage({ onBack }) {
       </header>
 
       {/* WhatsApp-style Scrollable Messages Area */}
-      <main style={{ flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', padding: '16px 14px', maxWidth: 840, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
+      <main style={{ flex: '1 1 0%', minHeight: 0, height: '100%', overflowY: 'auto', WebkitOverflowScrolling: 'touch', touchAction: 'pan-y', padding: '16px 14px', maxWidth: 840, width: '100%', margin: '0 auto', display: 'flex', flexDirection: 'column' }}>
         {messages.length === 0 ? (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '30px 10px' }}>
             <div style={{ width: 64, height: 64, borderRadius: 22, background: 'linear-gradient(135deg, #6366F1, #8B5CF6)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 8px 30px rgba(99,102,241,0.35)' }}>
@@ -163,13 +184,12 @@ export default function LocalAIPage({ onBack }) {
       </main>
 
       {/* WhatsApp-style Fixed Bottom Typing Bar */}
-      <footer style={{ flexShrink: 0, background: 'rgba(9, 13, 22, 0.98)', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '8px 12px max(8px, env(safe-area-inset-bottom))' }}>
+      <footer style={{ flexShrink: 0, zIndex: 100, touchAction: 'none', background: 'rgba(9, 13, 22, 0.98)', borderTop: '1px solid rgba(255,255,255,0.08)', padding: '8px 12px max(8px, env(safe-area-inset-bottom))' }}>
         <form onSubmit={e => { e.preventDefault(); handleSend(); }} style={{ maxWidth: 840, margin: '0 auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             type="text"
             value={input}
             onChange={e => setInput(e.target.value)}
-            onFocus={() => setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 250)}
             placeholder={isTyping ? 'MHR BOT লিখছে...' : 'মেসেজ লিখুন...'}
             disabled={isTyping}
             style={{ flex: 1, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', borderRadius: 24, padding: '10px 16px', fontSize: 14, outline: 'none' }}
