@@ -2009,6 +2009,11 @@ export default function Home() {
   if (isLocalAIOpen) {
     return (
       <LocalAIPage
+        currentUser={currentUser}
+        onOpenShiftTracker={() => {
+          setIsLocalAIOpen(false);
+          setIsShiftTrackerOpen(true);
+        }}
         onBack={() => {
           setIsLocalAIOpen(false);
           navigateTo('/');
