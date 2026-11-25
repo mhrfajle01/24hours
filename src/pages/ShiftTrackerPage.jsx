@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../firebase/firebase';
-import { doc, getDoc, setDoc, collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { useSound } from '../contexts/SoundContext';
 import { getCustomShortcuts, saveCustomShortcuts, matchShortcut, parseKeyCombo } from '../utils/shortcutManager';
 
@@ -631,6 +631,34 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
   const [scheduledBreaks, setScheduledBreaks] = useState([]);
 
   const [setupMode, setSetupMode] = useState(true);
+  const [isCheckingShift, setIsCheckingShift] = useState(true);
+  const [recentCloudBreaks, setRecentCloudBreaks] = useState([]);
+
+  // Fetch recent days breaks from Firestore when in setup mode
+  useEffect(() => {
+    if (!setupMode || !currentUser?.uid) return;
+    let cancelled = false;
+    const todayLocal = getBDDateStr(0);
+    (async () => {
+      try {
+        const histRef = collection(db, 'shiftTracker', currentUser.uid, 'history');
+        const q = query(histRef, orderBy('date', 'desc'), limit(5));
+        const snap = await getDocs(q);
+        if (cancelled) return;
+        const list = [];
+        snap.forEach(dSnap => {
+          const d = dSnap.data();
+          if (d && d.date && d.date !== todayLocal && Array.isArray(d.scheduledBreaks) && d.scheduledBreaks.length > 0) {
+            list.push({ date: d.date, breaks: d.scheduledBreaks });
+          }
+        });
+        if (list.length > 0) setRecentCloudBreaks(list.slice(0, 2));
+      } catch {
+        // Silent fallback to localStorage if offline
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [setupMode, currentUser?.uid]);
 
   // Live Block State
   const [blocks, setBlocks] = useState([]);
@@ -1091,6 +1119,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
         const local = lsGet(currentUser.uid);
         if (local && local.date === todayStr) {
           applyData(local);
+          setIsCheckingShift(false);
         }
         // 2. Try Firestore in background if online
         if (navigator.onLine) {
@@ -1117,6 +1146,7 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
         } else if (!local || local.date !== todayStr) {
           resetState();
         }
+        setIsCheckingShift(false);
       } else {
         // Past date: try local first, then Firestore
         const local = lsGetByDate(currentUser.uid, selectedDate);
@@ -2546,6 +2576,38 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
               </button>
             </div>
           </motion.div>
+        ) : isCheckingShift ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            style={{
+              padding: '60px 20px',
+              textAlign: 'center',
+              background: 'linear-gradient(135deg, #F8FAFC, #EFF6FF)',
+              borderRadius: 20,
+              border: '1px solid #E2E8F0',
+              marginTop: 12
+            }}
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1.2, ease: 'linear' }}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: '50%',
+                border: '3px solid #E2E8F0',
+                borderTopColor: '#3B82F6',
+                margin: '0 auto 16px'
+              }}
+            />
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#1E293B', marginBottom: 4 }}>
+              Loading Today's Shift...
+            </div>
+            <div style={{ fontSize: 12, color: '#64748B' }}>
+              Checking your schedule &amp; live blocks
+            </div>
+          </motion.div>
         ) : setupMode ? (
           <motion.div initial={{ y: 20 }} animate={{ y: 0 }} style={{ maxWidth: 640, margin: '0 auto', background: '#fff', padding: 24, borderRadius: 20, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
             <h3 style={{ marginTop: 0 }}>⚙️ Setup Shift</h3>
@@ -2702,6 +2764,51 @@ export default function ShiftTrackerPage({ currentUser, onBack, onOpenReports, o
                 <button onClick={() => setScheduledBreaks(prev => [...prev, { start: '12:00', end: '12:30', label: 'Lunch' }])}
                   style={{ padding: '6px 14px', background: '#FF9800', color: '#fff', border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>+ Add Break</button>
               </div>
+
+              {/* Recent Days Break Suggestions (Firestore + LocalStorage fallback) */}
+              {(() => {
+                if (!currentUser?.uid) return null;
+                let recentList = recentCloudBreaks;
+                if (!recentList || recentList.length === 0) {
+                  recentList = [];
+                  for (let offset = 1; offset <= 5; offset++) {
+                    const dStr = getBDDateStr(-offset);
+                    const d = lsGetByDate(currentUser.uid, dStr);
+                    if (d && Array.isArray(d.scheduledBreaks) && d.scheduledBreaks.length > 0) {
+                      recentList.push({ date: dStr, breaks: d.scheduledBreaks });
+                      if (recentList.length >= 2) break;
+                    }
+                  }
+                }
+                if (recentList.length === 0) return null;
+                return (
+                  <div style={{ marginBottom: 12, padding: '10px 12px', background: '#FFF3E0', borderRadius: 10, border: '1px dashed #FFB74D' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#E65100', marginBottom: 6 }}>
+                      🕒 Recent Breaks (Tap to apply to today):
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {recentList.map(rec => (
+                        <div key={rec.date} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12, background: '#fff', padding: '6px 10px', borderRadius: 8 }}>
+                          <div style={{ color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <strong style={{ color: '#0F172A' }}>{rec.date}:</strong>{' '}
+                            {rec.breaks.map(b => `${b.label || 'Break'} (${fmt12h(b.start)}-${fmt12h(b.end)})`).join(', ')}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setScheduledBreaks(rec.breaks.map(b => ({ ...b })));
+                              playSound('success');
+                            }}
+                            style={{ flexShrink: 0, padding: '4px 10px', background: '#FF9800', color: '#fff', border: 'none', borderRadius: 6, fontWeight: 700, fontSize: 11, cursor: 'pointer' }}
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {scheduledBreaks.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '12px 0', color: '#aaa', fontSize: 13 }}>No breaks scheduled. Add one to auto-insert break blocks.</div>
