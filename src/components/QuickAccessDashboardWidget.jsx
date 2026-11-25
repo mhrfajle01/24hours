@@ -19,7 +19,8 @@ const baseFeatures = [
   { id: 'quick-bazar', title: 'Bazar & Tour', icon: 'bi-bag-heart-fill', color: '#10B981' },
   { id: 'mhrbot', title: 'MHR BOT', icon: 'bi-robot', color: '#6366F1' },
   { id: 'task-planner', title: 'Task Planner', icon: 'bi-file-earmark-spreadsheet', color: '#17a2b8' },
-  { id: 'shift-tracker', title: 'Shift Tracker', icon: 'bi-stopwatch', color: '#1CB0F6' }
+  { id: 'shift-tracker', title: 'Shift Tracker', icon: 'bi-stopwatch', color: '#1CB0F6' },
+  { id: 'issue-tracker', title: 'Issue Tracker', icon: 'bi-bug', color: '#EF4444' }
 ];
 
 export default function QuickAccessDashboardWidget({ 
@@ -39,7 +40,8 @@ export default function QuickAccessDashboardWidget({
   onOpenQuickBazar,
   onOpenLocalAI,
   onOpenTaskPlanner,
-  onOpenShiftTracker
+  onOpenShiftTracker,
+  onOpenIssueTracker
 }) {
   const [pinnedFeatures, setPinnedFeatures] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -200,6 +202,7 @@ export default function QuickAccessDashboardWidget({
     if (id === 'mhrbot' || id === 'local-ai') onOpenLocalAI?.();
     if (id === 'task-planner') onOpenTaskPlanner?.();
     if (id === 'shift-tracker') onOpenShiftTracker?.();
+    if (id === 'issue-tracker') onOpenIssueTracker?.();
   };
 
   if (pinnedFeatures.length === 0) {

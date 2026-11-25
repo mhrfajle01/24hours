@@ -44,6 +44,7 @@ import MessageCenterModal from '../components/MessageCenterModal';
 import AboutAdminsModal from '../components/AboutAdminsModal';
 import CustomFeatureViewer from '../components/CustomFeatureViewer';
 import LocalAIPage from './LocalAIPage';
+import IssueTrackerPage from './IssueTrackerPage';
 import NotificationPrompt from '../components/NotificationPrompt';
 import GenerateTodayModal from '../components/GenerateTodayModal';
 import { PointsCollectionAnimation, usePointsAnimation } from '../components/PointsAnimator';
@@ -328,6 +329,7 @@ export default function Home() {
   const [isQuickBazarOpen, setIsQuickBazarOpen] = useState(false);
   const [isLocalAIOpen, setIsLocalAIOpen] = useState(false);
   const [isShiftTrackerOpen, setIsShiftTrackerOpen] = useState(false);
+  const [isIssueTrackerOpen, setIsIssueTrackerOpen] = useState(false);
   const [isShiftReportOpen, setIsShiftReportOpen] = useState(false);
   const [isBypassTrackerOpen, setIsBypassTrackerOpen] = useState(false);
   const [isDocTrackerOpen, setIsDocTrackerOpen] = useState(false);
@@ -362,6 +364,7 @@ export default function Home() {
       setIsShopFinanceOpen(path === '/shop-finance');
       setIsTaskPlannerOpen(path === '/task-planner');
       setIsShiftTrackerOpen(path === '/shift-tracker');
+      setIsIssueTrackerOpen(path === '/issue-tracker');
       setIsShiftReportOpen(path === '/shift-report');
       setIsBypassTrackerOpen(path === '/bypass-tracker');
       setIsDocTrackerOpen(path === '/doc-tracker');
@@ -2022,6 +2025,19 @@ export default function Home() {
     );
   }
 
+  // ── Issue Tracker Page: Full separate page ──────────────────────────────
+  if (isIssueTrackerOpen) {
+    return (
+      <IssueTrackerPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsIssueTrackerOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
   // ── Shift Tracker Page: Full separate page ──────────────────────────────
   if (isShiftTrackerOpen) {
     return (
@@ -2329,6 +2345,10 @@ export default function Home() {
                     onOpenShiftTracker={() => {
                       setIsShiftTrackerOpen(true);
                       navigateTo('/shift-tracker');
+                    }}
+                    onOpenIssueTracker={() => {
+                      setIsIssueTrackerOpen(true);
+                      navigateTo('/issue-tracker');
                     }}
                   />
                   <TodoDashboardWidget 
