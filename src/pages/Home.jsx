@@ -330,6 +330,7 @@ export default function Home() {
   const [isLocalAIOpen, setIsLocalAIOpen] = useState(false);
   const [isShiftTrackerOpen, setIsShiftTrackerOpen] = useState(false);
   const [isIssueTrackerOpen, setIsIssueTrackerOpen] = useState(false);
+  const [isIslamicPageOpen, setIsIslamicPageOpen] = useState(false);
   const [isShiftReportOpen, setIsShiftReportOpen] = useState(false);
   const [isBypassTrackerOpen, setIsBypassTrackerOpen] = useState(false);
   const [isDocTrackerOpen, setIsDocTrackerOpen] = useState(false);
@@ -370,7 +371,7 @@ export default function Home() {
       setIsDocTrackerOpen(path === '/doc-tracker');
       setIsQuickBazarOpen(path === '/quick-bazar');
       setIsLocalAIOpen(path === '/mhrbot');
-      if (path === '/islamic') setTheme('islamic');
+      setIsIslamicPageOpen(path === '/islamic');
       if (path === '/settings') setActiveModal('settings');
       else if (activeModal === 'settings') setActiveModal(null);
     };
@@ -1884,6 +1885,7 @@ export default function Home() {
           onTriggerPendingReview={() => {}}
         />
         <IslamicPage
+          currentUser={currentUser}
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}
           onOpenSettings={handleOpenSettings}
@@ -2019,6 +2021,19 @@ export default function Home() {
         }}
         onBack={() => {
           setIsLocalAIOpen(false);
+          navigateTo('/');
+        }}
+      />
+    );
+  }
+
+  // ── Islamic Hub Page: Full separate Light-theme page ────────────────────
+  if (isIslamicPageOpen) {
+    return (
+      <IslamicPage
+        currentUser={currentUser}
+        onBack={() => {
+          setIsIslamicPageOpen(false);
           navigateTo('/');
         }}
       />
@@ -2349,6 +2364,10 @@ export default function Home() {
                     onOpenIssueTracker={() => {
                       setIsIssueTrackerOpen(true);
                       navigateTo('/issue-tracker');
+                    }}
+                    onOpenIslamic={() => {
+                      setIsIslamicPageOpen(true);
+                      navigateTo('/islamic');
                     }}
                   />
                   <TodoDashboardWidget 

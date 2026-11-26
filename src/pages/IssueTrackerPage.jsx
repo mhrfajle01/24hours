@@ -92,10 +92,12 @@ export default function IssueTrackerPage({ currentUser, onBack }) {
   const handleSaveEdit = (e) => {
     e.preventDefault();
     if (!editItem || !editItem.title.trim()) return;
+    if (editItem.module === 'Other' && !(editItem.customModule || '').trim()) return;
+    const finalModule = editItem.module === 'Other' ? editItem.customModule.trim() : editItem.module;
     const next = items.map(it => it.id === editItem.id ? {
       ...it,
       title: editItem.title.trim(),
-      module: editItem.module,
+      module: finalModule,
       priority: editItem.priority,
       note: (editItem.note || '').trim()
     } : it);
@@ -310,7 +312,15 @@ export default function IssueTrackerPage({ currentUser, onBack }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setEditItem({ ...it })}
+                        onClick={() => {
+                          const stdModules = ['UI', 'Shift Tracker', 'Wallet', 'Local AI'];
+                          const isCustom = !stdModules.includes(it.module);
+                          setEditItem({
+                            ...it,
+                            module: isCustom ? 'Other' : it.module,
+                            customModule: isCustom ? it.module : ''
+                          });
+                        }}
                         style={{ padding: '5px 8px', borderRadius: 8, border: 'none', background: '#F1F5F9', color: '#334155', fontSize: 12, cursor: 'pointer' }}
                       >
                         <i className="bi bi-pencil" />
@@ -372,6 +382,16 @@ export default function IssueTrackerPage({ currentUser, onBack }) {
                   <option value="critical">Critical</option>
                 </select>
               </div>
+              {editItem.module === 'Other' && (
+                <input
+                  type="text"
+                  placeholder="Specify section / category (required)..."
+                  value={editItem.customModule || ''}
+                  onChange={e => setEditItem({ ...editItem, customModule: e.target.value })}
+                  required
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid #818CF8', marginBottom: 10, fontSize: 13, boxSizing: 'border-box', background: '#EEF2FF' }}
+                />
+              )}
               <textarea
                 rows={3}
                 value={editItem.note || ''}

@@ -20,7 +20,8 @@ const baseFeatures = [
   { id: 'mhrbot', title: 'MHR BOT', icon: 'bi-robot', color: '#6366F1' },
   { id: 'task-planner', title: 'Task Planner', icon: 'bi-file-earmark-spreadsheet', color: '#17a2b8' },
   { id: 'shift-tracker', title: 'Shift Tracker', icon: 'bi-stopwatch', color: '#1CB0F6' },
-  { id: 'issue-tracker', title: 'Issue Tracker', icon: 'bi-bug', color: '#EF4444' }
+  { id: 'issue-tracker', title: 'Issue Tracker', icon: 'bi-bug', color: '#EF4444' },
+  { id: 'islamic', title: 'Islamic Hub', icon: 'bi-moon-stars', color: '#059669' }
 ];
 
 export default function QuickAccessDashboardWidget({ 
@@ -41,7 +42,8 @@ export default function QuickAccessDashboardWidget({
   onOpenLocalAI,
   onOpenTaskPlanner,
   onOpenShiftTracker,
-  onOpenIssueTracker
+  onOpenIssueTracker,
+  onOpenIslamic
 }) {
   const [pinnedFeatures, setPinnedFeatures] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -203,6 +205,7 @@ export default function QuickAccessDashboardWidget({
     if (id === 'task-planner') onOpenTaskPlanner?.();
     if (id === 'shift-tracker') onOpenShiftTracker?.();
     if (id === 'issue-tracker') onOpenIssueTracker?.();
+    if (id === 'islamic') onOpenIslamic?.();
   };
 
   if (pinnedFeatures.length === 0) {
