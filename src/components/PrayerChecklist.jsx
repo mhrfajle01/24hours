@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { getPrayerTimes } from '../utils/prayerTimesCalc';
 
-export default function PrayerChecklist({ selectedDate }) {
+export default function PrayerChecklist({ selectedDate, onOpenIslamic }) {
+  // Sync with Islamic Hub's salatHistory
+  const [salatHistory, setSalatHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('islamic_salat_history')) || {}; } catch { return {}; }
+  });
+
   // --- Checklist state loaded from localStorage ---
   const [checklist, setChecklist] = useState({
     Fajr: { completed: false, sunnah: false, jamaah: false },
@@ -204,7 +209,18 @@ export default function PrayerChecklist({ selectedDate }) {
         {/* Prayers Rows */}
         <div className="d-flex flex-column gap-2">
           {prayers.map((prayer) => {
-            const isCompleted = checklist[prayer]?.completed;
+            const prayerKeyMap = {
+              Fajr: 'fajr',
+              Dhuhr: 'dhuhr',
+              Asr: 'asr',
+              Maghrib: 'maghrib',
+              Isha: 'isha'
+            };
+            const histVal = salatHistory[selectedDate]?.[prayerKeyMap[prayer]];
+            const histStatus = histVal && typeof histVal === 'object' ? histVal.status : histVal;
+            const histReason = histVal && typeof histVal === 'object' ? histVal.missedReason : '';
+            const isCompleted = checklist[prayer]?.completed || histStatus === 'jamat' || histStatus === 'alone';
+            const isMissed = histStatus === 'missed';
             const isActive = activePrayer === prayer;
             const timeVal = prayerTimesList[prayer] || '--:--';
 
@@ -220,7 +236,9 @@ export default function PrayerChecklist({ selectedDate }) {
               <div
                 key={prayer}
                 className={`d-flex flex-column p-3 rounded-3 transition-all ${
-                  isCompleted
+                  isMissed
+                    ? 'bg-danger bg-opacity-20 border border-danger border-opacity-50'
+                    : isCompleted
                     ? 'bg-black bg-opacity-30 border border-success border-opacity-20'
                     : isActive
                     ? 'prayer-active-glow bg-warning bg-opacity-10 border border-warning border-opacity-50 shadow-sm'
@@ -237,20 +255,30 @@ export default function PrayerChecklist({ selectedDate }) {
                       type="button"
                       onClick={() => handleToggleCompleted(prayer)}
                       className={`btn rounded-circle d-flex align-items-center justify-content-center border ${
-                        isCompleted
+                        isMissed
+                          ? 'btn-danger text-white border-danger'
+                          : isCompleted
                           ? 'btn-warning text-dark border-warning'
                           : 'btn-outline-light border-white-50'
                       }`}
                       style={{ width: '28px', height: '28px', minWidth: '28px', padding: 0 }}
                     >
-                      {isCompleted && <i className="bi bi-check-lg fw-bold" />}
+                      {isMissed ? <i className="bi bi-x-lg fw-bold" /> : isCompleted && <i className="bi bi-check-lg fw-bold" />}
                     </button>
                     <div>
-                      <span className={`fw-bold d-block ${isCompleted ? 'text-white-50 text-decoration-line-through' : 'text-white'}`} style={{ fontSize: '1rem' }}>
+                      <span className={`fw-bold d-block ${isCompleted ? 'text-white-50 text-decoration-line-through' : isMissed ? 'text-danger' : 'text-white'}`} style={{ fontSize: '1rem' }}>
                         {prayerNamesBn[prayer] || prayer}
                         {isActive && <span className="badge bg-warning text-dark ms-2 fs-xs py-0.5 px-1.5 rounded-pill">সক্রিয়</span>}
+                        {histStatus === 'jamat' && <span className="badge bg-success text-white ms-2 fs-xs py-0.5 px-1.5 rounded-pill">জামাত</span>}
+                        {histStatus === 'alone' && <span className="badge bg-primary text-white ms-2 fs-xs py-0.5 px-1.5 rounded-pill">একাকী</span>}
+                        {isMissed && <span className="badge bg-danger text-white ms-2 fs-xs py-0.5 px-1.5 rounded-pill">মিস (কাযা)</span>}
                       </span>
                       <span className="text-white-50 fs-xs">{timeVal}</span>
+                      {isMissed && histReason && (
+                        <div className="text-danger-emphasis fs-xs mt-0.5" style={{ fontSize: '0.72rem' }}>
+                          কারণ: {histReason}
+                        </div>
+                      )}
                     </div>
                   </div>
 

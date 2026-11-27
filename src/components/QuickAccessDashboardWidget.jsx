@@ -43,7 +43,8 @@ export default function QuickAccessDashboardWidget({
   onOpenTaskPlanner,
   onOpenShiftTracker,
   onOpenIssueTracker,
-  onOpenIslamic
+  onOpenIslamic,
+  salatPendingCount = 0
 }) {
   const [pinnedFeatures, setPinnedFeatures] = useState([]);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -404,10 +405,18 @@ export default function QuickAccessDashboardWidget({
                 onClick={() => handleOpenFeature(feature)}
               >
                 <div 
-                  className="rounded-4 d-flex justify-content-center align-items-center shadow-sm mb-2" 
+                  className="rounded-4 d-flex justify-content-center align-items-center shadow-sm mb-2 position-relative" 
                   style={{ width: '56px', height: '56px', background: feature.color }}
                 >
                   <i className={`bi ${feature.icon} text-white fs-4`}></i>
+                  {feature.id === 'islamic' && salatPendingCount > 0 && (
+                    <span 
+                      className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger border border-light"
+                      style={{ fontSize: '0.65rem', padding: '0.25em 0.45em' }}
+                    >
+                      {salatPendingCount}
+                    </span>
+                  )}
                 </div>
                 <span className="small fw-semibold text-dark text-center" style={{ fontSize: '0.75rem', lineHeight: '1.1' }}>{feature.title}</span>
               </div>

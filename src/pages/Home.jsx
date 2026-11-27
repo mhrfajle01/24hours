@@ -399,6 +399,7 @@ export default function Home() {
   // ── Pending Review States ────────────────────────────────────────────────
   const [pastPendingReports, setPastPendingReports] = useState([]);
   const [showPendingToast, setShowPendingToast] = useState(false);
+  const [salatPendingCount, setSalatPendingCount] = useState(0);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [awayDuration, setAwayDuration] = useState(null); // { minutes, label, lastSeenTime }
 
@@ -605,7 +606,71 @@ export default function Home() {
     };
   }, []);
 
-  // Scan for past pending reports — polls every 60s so newly-ended blocks are detected live
+  // Scan for pending Salat waqts periodically
+  useEffect(() => {
+    const checkSalat = () => {
+      try {
+        const todayKey = getTodayDateString();
+        const city = localStorage.getItem('islamic_city') || 'Dhaka';
+        const timings = JSON.parse(localStorage.getItem(`islamic_timings_${todayKey}_${city}`)) || null;
+        const salatHistory = JSON.parse(localStorage.getItem('islamic_salat_history')) || {};
+        const todayLog = salatHistory[todayKey] || {};
+
+        if (!timings) {
+          setSalatPendingCount(0);
+          return;
+        }
+
+        const PRAYERS_LIST = [
+          { id: 'fajr', key: 'Fajr', def: '05:05' },
+          { id: 'dhuhr', key: 'Dhuhr', def: '11:55' },
+          { id: 'asr', key: 'Asr', def: '15:35' },
+          { id: 'maghrib', key: 'Maghrib', def: '17:15' },
+          { id: 'isha', key: 'Isha', def: '18:35' }
+        ];
+
+        const now = new Date();
+        const currentMin = now.getHours() * 60 + now.getMinutes();
+        let unloggedPastCount = 0;
+        let newlyEndedWaqts = [];
+        const notifiedSalat = JSON.parse(localStorage.getItem('hourlog_notified_salat') || '[]');
+
+        for (let i = 0; i < PRAYERS_LIST.length; i++) {
+          const p = PRAYERS_LIST[i];
+          const nextP = PRAYERS_LIST[i + 1];
+          let endMin = 23 * 60 + 59;
+          if (nextP) {
+            const rawNext = timings?.[nextP.key] ? timings[nextP.key].split(' ')[0] : nextP.def;
+            const [nh, nm] = rawNext.split(':');
+            endMin = parseInt(nh, 10) * 60 + parseInt(nm, 10);
+          }
+
+          const entry = todayLog[p.id];
+          const isDone = !!(entry && (typeof entry === 'object' ? entry.status : entry));
+          if (!isDone && currentMin >= endMin) {
+            unloggedPastCount++;
+            const notificationKey = `${todayKey}_${p.id}`;
+            if (!notifiedSalat.includes(notificationKey)) {
+              newlyEndedWaqts.push(p.id);
+              notifiedSalat.push(notificationKey);
+            }
+          }
+        }
+        setSalatPendingCount(unloggedPastCount);
+
+        if (newlyEndedWaqts.length > 0) {
+          localStorage.setItem('hourlog_notified_salat', JSON.stringify(notifiedSalat));
+          sendLocalNotification('সালাতের ওয়াক্ত শেষ হয়েছে', `${unloggedPastCount}টি ওয়াক্তের হিসাব সম্পন্ন করুন।`);
+        }
+      } catch (err) {
+        // silent
+      }
+    };
+
+    checkSalat();
+    const interval = setInterval(checkSalat, 60000);
+    return () => clearInterval(interval);
+  }, [selectedDate]);
   useEffect(() => {
     const STORAGE_KEY_LAST_SEEN   = 'hourlog_last_seen';
     const STORAGE_KEY_REVIEW_DATE = 'hourlog_last_review_date';
@@ -2369,6 +2434,7 @@ export default function Home() {
                       setIsIslamicPageOpen(true);
                       navigateTo('/islamic');
                     }}
+                    salatPendingCount={salatPendingCount}
                   />
                   <TodoDashboardWidget 
                     currentUser={currentUser} 
@@ -2784,6 +2850,50 @@ export default function Home() {
               onClick={() => setShowPendingToast(false)}
             >
               Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Toast reminder for pending Salat waqts */}
+      {salatPendingCount > 0 && !isIslamicPageOpen && (
+        <div
+          className="position-fixed d-flex align-items-center gap-2 p-3 rounded-4 shadow-lg animate-slide-up border"
+          style={{
+            bottom: showPendingToast && pastPendingReports.length > 0 ? '168px' : '96px',
+            left: '24px',
+            zIndex: 998,
+            backgroundColor: 'rgba(255, 255, 255, 0.96)',
+            backdropFilter: 'blur(10px)',
+            maxWidth: '320px',
+            borderColor: '#059669'
+          }}
+        >
+          <div className="d-flex align-items-center gap-2">
+            <div 
+              className="rounded-circle d-flex align-items-center justify-content-center text-white" 
+              style={{ width: '36px', height: '36px', backgroundColor: '#059669' }}
+            >
+              <i className="bi bi-moon-stars-fill animate-pulse"></i>
+            </div>
+            <div>
+              <div className="fw-bold text-dark" style={{ fontSize: '0.85rem' }}>
+                🕌 {salatPendingCount}টি ওয়াক্ত পেন্ডিং
+              </div>
+              <div className="text-secondary" style={{ fontSize: '0.75rem' }}>
+                বিগত ওয়াক্তের হিসাব সম্পন্ন করুন।
+              </div>
+            </div>
+          </div>
+          <div className="d-flex flex-column gap-1 ms-auto">
+            <button
+              className="btn btn-xs text-white fw-bold rounded-pill px-2.5 py-1 border-0"
+              style={{ backgroundColor: '#059669', fontSize: '0.7rem' }}
+              onClick={() => {
+                navigateTo('/islamic');
+              }}
+            >
+              রিভিউ
             </button>
           </div>
         </div>

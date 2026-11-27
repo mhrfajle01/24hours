@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import SalatPendingReviewModal from '../components/SalatPendingReviewModal';
+import IslamicReportCharts from '../components/IslamicReportCharts';
 
 const PRAYERS_META = [
   { id: 'fajr', key: 'Fajr', name: 'Fajr', bn: 'ফজর', defaultTime: '05:05', icon: 'bi-sunrise' },
@@ -176,6 +178,11 @@ export default function IslamicPage({ currentUser, onBack }) {
     try { return JSON.parse(localStorage.getItem('islamic_amol_history')) || {}; } catch { return {}; }
   });
 
+  // Missed Log: [ { id, date, waqt, reason, timestamp, recovered: boolean, recoveredAt: timestamp } ]
+  const [missedLog, setMissedLog] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('islamic_missed_log')) || []; } catch { return []; }
+  });
+
   // Qaza Umri: { fajr, dhuhr, asr, maghrib, isha, witr }
   const [qazaUmri, setQazaUmri] = useState(() => {
     try { return JSON.parse(localStorage.getItem('islamic_qaza_umri')) || { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0, witr: 0 }; } catch { return { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0, witr: 0 }; }
@@ -194,6 +201,12 @@ export default function IslamicPage({ currentUser, onBack }) {
   const [reportStartDate, setReportStartDate] = useState('');
   const [reportEndDate, setReportEndDate] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => getBDNow().todayKey);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [salatPendingModalOpen, setSalatPendingModalOpen] = useState(false);
+  const [activePendingWaqts, setActivePendingWaqts] = useState([]);
+  const [selectedMissedWaqt, setSelectedMissedWaqt] = useState(null);
+  const [manualMissedReason, setManualMissedReason] = useState('😴 ঘুম থেকে উঠতে পারিনি');
+  const [manualCustomReason, setManualCustomReason] = useState('');
 
   const changeDateBy = (days) => {
     const cur = new Date(selectedDate);
@@ -254,6 +267,7 @@ export default function IslamicPage({ currentUser, onBack }) {
       if (d.salatHistory) { setSalatHistory(d.salatHistory); localStorage.setItem('islamic_salat_history', JSON.stringify(d.salatHistory)); }
       if (d.amolHistory) { setAmolHistory(d.amolHistory); localStorage.setItem('islamic_amol_history', JSON.stringify(d.amolHistory)); }
       if (d.qazaUmri) { setQazaUmri(d.qazaUmri); localStorage.setItem('islamic_qaza_umri', JSON.stringify(d.qazaUmri)); }
+      if (d.missedLog) { setMissedLog(d.missedLog); localStorage.setItem('islamic_missed_log', JSON.stringify(d.missedLog)); }
       if (d.customDuas) { setCustomDuas(d.customDuas); localStorage.setItem('islamic_custom_duas', JSON.stringify(d.customDuas)); }
     }).catch(() => {});
   }, [currentUser?.uid]);
@@ -285,14 +299,164 @@ export default function IslamicPage({ currentUser, onBack }) {
     syncToCloud({ qazaUmri: next });
   };
 
-  const setPrayerStatus = (id, status) => {
-    const nextVal = todayLog[id] === status ? null : status;
+  const recoverMissedLogItem = (item) => {
+    const nextList = missedLog.map(m => m.id === item.id ? { ...m, recovered: !m.recovered, recoveredAt: !m.recovered ? Date.now() : null } : m);
+    setMissedLog(nextList);
+    try { localStorage.setItem('islamic_missed_log', JSON.stringify(nextList)); } catch {}
+
+    const delta = !item.recovered ? -1 : 1;
+    const nextVal = Math.max(0, (qazaUmri[item.waqt] || 0) + delta);
+    const nextQ = { ...qazaUmri, [item.waqt]: nextVal };
+    setQazaUmri(nextQ);
+    try { localStorage.setItem('islamic_qaza_umri', JSON.stringify(nextQ)); } catch {}
+
+    playTone(!item.recovered ? 'success' : 'click');
+    syncToCloud({ missedLog: nextList, qazaUmri: nextQ });
+  };
+
+  const getStatus = (val) => (val && typeof val === 'object' ? val.status : val);
+  const getReason = (val) => (val && typeof val === 'object' ? val.missedReason : '');
+
+  const setPrayerStatus = (id, status, reason = '') => {
+    const curStatus = getStatus(todayLog[id]);
+    const nextStatus = curStatus === status ? null : status;
+    const nextVal = nextStatus ? { status: nextStatus, missedReason: nextStatus === 'missed' ? reason : '', markedAt: Date.now() } : null;
     const nextDay = { ...todayLog, [id]: nextVal };
     const nextHist = { ...salatHistory, [selectedDate]: nextDay };
     setSalatHistory(nextHist);
-    playTone(nextVal ? 'success' : 'click');
+    playTone(nextVal ? (nextStatus === 'missed' ? 'click' : 'success') : 'click');
     try { localStorage.setItem('islamic_salat_history', JSON.stringify(nextHist)); } catch {}
-    syncToCloud({ salatHistory: nextHist });
+
+    let nextMissedLog = [...missedLog];
+    let nextQaza = { ...qazaUmri };
+
+    if (nextStatus === 'missed') {
+      const logEntry = {
+        id: 'miss_' + Date.now() + '_' + id,
+        date: selectedDate,
+        waqt: id,
+        reason: reason || 'অন্যান্য',
+        timestamp: Date.now(),
+        recovered: false,
+        recoveredAt: null
+      };
+      nextMissedLog = [logEntry, ...nextMissedLog];
+      setMissedLog(nextMissedLog);
+      try { localStorage.setItem('islamic_missed_log', JSON.stringify(nextMissedLog)); } catch {}
+
+      nextQaza[id] = (nextQaza[id] || 0) + 1;
+      setQazaUmri(nextQaza);
+      try { localStorage.setItem('islamic_qaza_umri', JSON.stringify(nextQaza)); } catch {}
+    }
+
+    syncToCloud({ salatHistory: nextHist, missedLog: nextMissedLog, qazaUmri: nextQaza });
+  };
+
+  // Check pending waqts forcefully
+  useEffect(() => {
+    if (selectedDate !== bd.todayKey || !timings) return;
+    const checkWaqts = () => {
+      const now = new Date();
+      const currentMin = now.getHours() * 60 + now.getMinutes();
+      const pending = [];
+
+      // Accurate Waqt end boundaries: Fajr ends at Sunrise; others end at next waqt start; Isha ends at Midnight/Fajr
+      const sunriseTime = timings?.Sunrise ? timings.Sunrise.split(' ')[0] : '06:15';
+      const [sh, sm] = sunriseTime.split(':');
+      const sunriseMin = parseInt(sh, 10) * 60 + parseInt(sm, 10);
+
+      for (let i = 0; i < PRAYERS_META.length; i++) {
+        const p = PRAYERS_META[i];
+        const nextP = PRAYERS_META[i + 1];
+        const rawWaqt = timings?.[p.key] ? timings[p.key].split(' ')[0] : p.defaultTime;
+        const [h, m] = rawWaqt.split(':');
+        const waqtStartMin = parseInt(h, 10) * 60 + parseInt(m, 10);
+
+        let waqtEndMin = 0;
+        if (p.id === 'fajr') {
+          waqtEndMin = sunriseMin; // Fajr waqt strictly ends at Sunrise
+        } else if (nextP) {
+          const rawNext = timings?.[nextP.key] ? timings[nextP.key].split(' ')[0] : nextP.defaultTime;
+          const [nh, nm] = rawNext.split(':');
+          waqtEndMin = parseInt(nh, 10) * 60 + parseInt(nm, 10);
+        } else {
+          // Isha ends strictly before midnight / 23:59
+          waqtEndMin = 23 * 60 + 59;
+        }
+
+        const isMarked = !!getStatus(todayLog[p.id]);
+        const isFriday = new Date(selectedDate).getDay() === 5;
+        const isJumuah = isFriday && p.id === 'dhuhr';
+
+        if (!isMarked && currentMin >= waqtEndMin) {
+          pending.push({
+            id: p.id,
+            name: isJumuah ? "Jumu'ah" : p.name,
+            bn: isJumuah ? "জুমু'আ" : p.bn,
+            isJumuah,
+            waqtTime: fmt12h(rawWaqt),
+            jamatTime: jamatTimes[p.id] ? fmt12h(jamatTimes[p.id]) : ''
+          });
+        }
+      }
+
+      if (pending.length > 0) {
+        setActivePendingWaqts(pending);
+        setSalatPendingModalOpen(true);
+      } else {
+        setActivePendingWaqts([]);
+        setSalatPendingModalOpen(false);
+      }
+    };
+
+    checkWaqts();
+    const timer = setInterval(checkWaqts, 60000);
+    return () => clearInterval(timer);
+  }, [bd.todayKey, selectedDate, timings, todayLog, jamatTimes]);
+
+  const handleResolvePendingWaqts = async (payload) => {
+    let nextDay = { ...todayLog };
+    let qazaDelta = {};
+    let newMissedLogs = [];
+
+    payload.forEach(item => {
+      nextDay[item.id] = {
+        status: item.status,
+        missedReason: item.reason || '',
+        markedAt: Date.now()
+      };
+      if (item.status === 'missed') {
+        qazaDelta[item.id] = (qazaDelta[item.id] || 0) + 1;
+        newMissedLogs.push({
+          id: 'miss_' + Date.now() + '_' + item.id,
+          date: selectedDate,
+          waqt: item.id,
+          reason: item.reason || 'অন্যান্য',
+          timestamp: Date.now(),
+          recovered: false,
+          recoveredAt: null
+        });
+      }
+    });
+
+    const nextHist = { ...salatHistory, [selectedDate]: nextDay };
+    setSalatHistory(nextHist);
+    try { localStorage.setItem('islamic_salat_history', JSON.stringify(nextHist)); } catch {}
+
+    let nextQaza = { ...qazaUmri };
+    Object.keys(qazaDelta).forEach(k => {
+      nextQaza[k] = (nextQaza[k] || 0) + qazaDelta[k];
+    });
+    setQazaUmri(nextQaza);
+    try { localStorage.setItem('islamic_qaza_umri', JSON.stringify(nextQaza)); } catch {}
+
+    const nextMissedList = [...newMissedLogs, ...missedLog];
+    setMissedLog(nextMissedList);
+    try { localStorage.setItem('islamic_missed_log', JSON.stringify(nextMissedList)); } catch {}
+
+    playTone('complete');
+    syncToCloud({ salatHistory: nextHist, qazaUmri: nextQaza, missedLog: nextMissedList });
+    setSalatPendingModalOpen(false);
   };
 
   const saveJamatTime = (e) => {
@@ -306,38 +470,83 @@ export default function IslamicPage({ currentUser, onBack }) {
   };
 
   // Report Stats (Today & Last 7 Days)
-  const jamatToday = PRAYERS_META.filter(p => todayLog[p.id] === 'jamat').length;
-  const aloneToday = PRAYERS_META.filter(p => todayLog[p.id] === 'alone').length;
-  const pendingToday = 5 - jamatToday - aloneToday;
+  const jamatToday = PRAYERS_META.filter(p => getStatus(todayLog[p.id]) === 'jamat').length;
+  const aloneToday = PRAYERS_META.filter(p => getStatus(todayLog[p.id]) === 'alone').length;
+  const missedToday = PRAYERS_META.filter(p => getStatus(todayLog[p.id]) === 'missed').length;
+  const pendingToday = 5 - jamatToday - aloneToday - missedToday;
 
-  let weekJamat = 0, weekAlone = 0;
+  let weekJamat = 0, weekAlone = 0, weekMissed = 0;
   Object.values(salatHistory).slice(-7).forEach(day => {
-    Object.values(day || {}).forEach(st => {
+    Object.values(day || {}).forEach(raw => {
+      const st = getStatus(raw);
       if (st === 'jamat') weekJamat++;
       else if (st === 'alone') weekAlone++;
+      else if (st === 'missed') weekMissed++;
     });
   });
 
-  // Dynamic Filtering for Dashboard Report
+  // Accurate Date Range: Only includes days from the user's earliest logged day up to today
   const getFilteredDates = () => {
-    const allDates = Array.from(new Set([...Object.keys(salatHistory), ...Object.keys(amolHistory), bd.todayKey])).sort();
-    if (reportRange === '7') return allDates.slice(-7);
-    if (reportRange === '30') return allDates.slice(-30);
-    if (reportRange === 'custom') {
-      return allDates.filter(d => (!reportStartDate || d >= reportStartDate) && (!reportEndDate || d <= reportEndDate));
+    const today = new Date(bd.todayKey + 'T00:00:00');
+
+    // Find all days that actually have at least one salat or amol logged
+    const loggedDates = Array.from(new Set([...Object.keys(salatHistory), ...Object.keys(amolHistory)])).filter(d => {
+      if (!d || d > bd.todayKey) return false;
+      const s = salatHistory[d];
+      const a = amolHistory[d];
+      const hasSalat = s && Object.values(s).some(v => getStatus(v) !== null && getStatus(v) !== undefined);
+      const hasAmol = a && Object.values(a).some(Boolean);
+      return hasSalat || hasAmol;
+    }).sort();
+
+    // If no past days logged yet, only show today
+    if (loggedDates.length === 0) return [bd.todayKey];
+
+    const earliestLoggedStr = loggedDates[0];
+    const earliestDate = new Date(earliestLoggedStr + 'T00:00:00');
+
+    let startDate = new Date(today);
+    let endDate = new Date(today);
+
+    if (reportRange === '7') {
+      startDate.setDate(today.getDate() - 6);
+      if (startDate < earliestDate) startDate = new Date(earliestDate);
+    } else if (reportRange === '30') {
+      startDate.setDate(today.getDate() - 29);
+      if (startDate < earliestDate) startDate = new Date(earliestDate);
+    } else if (reportRange === 'custom') {
+      if (!reportStartDate || !reportEndDate) return [bd.todayKey];
+      startDate = new Date(reportStartDate + 'T00:00:00');
+      endDate = new Date(reportEndDate + 'T00:00:00');
+      if (endDate > today) endDate = new Date(today);
+    } else {
+      // 'all'
+      startDate = new Date(earliestDate);
     }
-    return allDates;
+
+    const res = [];
+    let cur = new Date(startDate);
+    while (cur <= endDate) {
+      const y = cur.getFullYear();
+      const m = String(cur.getMonth() + 1).padStart(2, '0');
+      const day = String(cur.getDate()).padStart(2, '0');
+      res.push(`${y}-${m}-${day}`);
+      cur.setDate(cur.getDate() + 1);
+    }
+    return res.length > 0 ? res : [bd.todayKey];
   };
 
   const filteredDates = getFilteredDates();
-  let filterJamat = 0, filterAlone = 0, filterTotalSalat = filteredDates.length * 5;
+  let filterJamat = 0, filterAlone = 0, filterMissed = 0, filterTotalSalat = filteredDates.length * 5;
   let filterTahajjud = 0, filterQuran = 0, filterAzkar = 0, filterMuhasaba = 0;
 
   filteredDates.forEach(dKey => {
     const sDay = salatHistory[dKey] || {};
-    Object.values(sDay).forEach(st => {
+    Object.values(sDay).forEach(raw => {
+      const st = getStatus(raw);
       if (st === 'jamat') filterJamat++;
       else if (st === 'alone') filterAlone++;
+      else if (st === 'missed') filterMissed++;
     });
     const aDay = amolHistory[dKey] || {};
     if (aDay.tahajjud) filterTahajjud++;
@@ -451,6 +660,27 @@ export default function IslamicPage({ currentUser, onBack }) {
           <button onClick={onBack} type="button" style={{ border: '1px solid #D1FAE5', background: '#ECFDF5', color: '#065F46', borderRadius: '50%', width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <i className="bi bi-chevron-left" />
           </button>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(true)}
+            className="d-lg-none"
+            style={{
+              border: '1px solid #D1FAE5',
+              background: '#ECFDF5',
+              color: '#065F46',
+              borderRadius: 10,
+              padding: '6px 10px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              fontSize: 12,
+              fontWeight: 700
+            }}
+          >
+            <i className="bi bi-list fs-6" />
+            <span>ট্যাবস</span>
+          </button>
           <div>
             <h5 style={{ margin: 0, fontWeight: 800, fontSize: 16, color: '#065F46' }}>🕌 Islamic Hub</h5>
             <select
@@ -490,7 +720,222 @@ export default function IslamicPage({ currentUser, onBack }) {
         </div>
       </header>
 
-      <div style={{ maxWidth: 780, margin: '0 auto', padding: '14px' }}>
+      <div style={{ maxWidth: 1060, margin: '0 auto', padding: '14px' }}>
+        <div className="row g-3">
+          {/* Desktop Permanent Left Sidebar */}
+          <div className="col-12 col-lg-3 d-none d-lg-block">
+            <div style={{ position: 'sticky', top: 76, background: '#fff', border: '1px solid #D1FAE5', borderRadius: 16, padding: '12px', boxShadow: '0 4px 15px rgba(5,150,105,0.05)', display: 'flex', flexDirection: 'column', gap: 0 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10, paddingLeft: 4 }}>
+                🕌 নেভিগেশন মেনু
+              </div>
+
+              {/* Quick Salat Status Widget */}
+              <div style={{ background: 'linear-gradient(135deg, #ECFDF5, #F0FDF4)', borderRadius: 12, padding: '10px 12px', marginBottom: 10, border: '1px solid #A7F3D0' }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#059669', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                  📊 আজকের সালাত
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#059669', lineHeight: 1.1 }}>{jamatToday}</div>
+                    <div style={{ fontSize: 10, color: '#065F46', fontWeight: 700 }}>🕌 জামাত</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#2563EB', lineHeight: 1.1 }}>{aloneToday}</div>
+                    <div style={{ fontSize: 10, color: '#1E40AF', fontWeight: 700 }}>🧍 একাকী</div>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: missedToday > 0 ? '#EF4444' : '#94A3B8', lineHeight: 1.1 }}>{missedToday}</div>
+                    <div style={{ fontSize: 10, color: missedToday > 0 ? '#B91C1C' : '#94A3B8', fontWeight: 700 }}>❌ মিস</div>
+                  </div>
+                </div>
+                <div style={{ height: 5, borderRadius: 5, background: '#E2E8F0', overflow: 'hidden', marginTop: 8, display: 'flex' }}>
+                  <div style={{ width: `${(jamatToday / 5) * 100}%`, background: '#10B981', transition: 'width 0.4s' }} />
+                  <div style={{ width: `${(aloneToday / 5) * 100}%`, background: '#3B82F6', transition: 'width 0.4s' }} />
+                  <div style={{ width: `${(missedToday / 5) * 100}%`, background: '#EF4444', transition: 'width 0.4s' }} />
+                </div>
+                <div style={{ fontSize: 10, color: '#64748B', marginTop: 5, textAlign: 'center' }}>
+                  {5 - jamatToday - aloneToday - missedToday > 0
+                    ? `⏳ ${5 - jamatToday - aloneToday - missedToday}টি ওয়াক্ত বাকি`
+                    : '✅ সব ওয়াক্ত রিভিউ সম্পন্ন'}
+                </div>
+              </div>
+
+              {/* Pending Salat Review Alert */}
+              {activePendingWaqts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setSalatPendingModalOpen(true); playTone('click'); }}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: 12,
+                    border: '1px solid #FCA5A5',
+                    background: '#FEF2F2',
+                    color: '#DC2626',
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 7,
+                    marginBottom: 10,
+                    textAlign: 'left'
+                  }}
+                >
+                  <i className="bi bi-exclamation-triangle-fill" style={{ fontSize: 14 }} />
+                  <span style={{ flex: 1 }}>{activePendingWaqts.length}টি ওয়াক্ত রিভিউ বাকি</span>
+                  <span className="badge bg-danger text-white" style={{ fontSize: 10 }}>{activePendingWaqts.length}</span>
+                </button>
+              )}
+
+              {/* Nav Tabs */}
+              <div className="d-flex flex-column gap-1">
+                {[
+                  { id: 'daily', label: 'সালাত ও ওয়াক্ত', icon: 'bi-clock-fill', badge: `${jamatToday}/৫` },
+                  { id: 'amol', label: 'আমল ও মুহাসাবা', icon: 'bi-check2-circle' },
+                  { id: 'qaza', label: 'কাযা ট্র্যাকার', icon: 'bi-arrow-counterclockwise', badge: Object.values(qazaUmri).reduce((a, b) => a + (Number(b) || 0), 0) || null, badgeDanger: true },
+                  { id: 'tasbih', label: 'ডিজিটাল তাসবিহ', icon: 'bi-fingerprint' },
+                  { id: 'report', label: 'ড্যাশবোর্ড রিপোর্ট', icon: 'bi-bar-chart-fill' }
+                ].map(t => {
+                  const isActive = activeTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => { setActiveTab(t.id); playTone('click'); }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 12px',
+                        borderRadius: 12,
+                        border: isActive ? '1px solid #10B981' : '1px solid transparent',
+                        background: isActive ? '#ECFDF5' : '#F8FAFC',
+                        color: isActive ? '#065F46' : '#475569',
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        textAlign: 'left'
+                      }}
+                    >
+                      <div className="d-flex align-items-center gap-2">
+                        <i className={`bi ${t.icon}`} style={{ fontSize: 16, color: isActive ? '#059669' : '#64748B' }} />
+                        <span>{t.label}</span>
+                      </div>
+                      {t.badge && (
+                        <span className={`badge rounded-pill ${t.badgeDanger ? 'bg-danger text-white' : 'bg-success-subtle text-success'}`} style={{ fontSize: 10 }}>
+                          {t.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Recent Activity Log */}
+              {Object.keys(salatHistory).filter(k => Object.values(salatHistory[k] || {}).some(v => getStatus(v))).sort().reverse().slice(0, 3).length > 0 && (
+                <div style={{ marginTop: 12, borderTop: '1px solid #E2E8F0', paddingTop: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: '#64748B', marginBottom: 7, textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+                    🕐 সাম্প্রতিক আমল
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {Object.keys(salatHistory)
+                      .filter(k => Object.values(salatHistory[k] || {}).some(v => getStatus(v)))
+                      .sort().reverse().slice(0, 3)
+                      .map(dKey => {
+                        const day = salatHistory[dKey] || {};
+                        const jCount = Object.values(day).filter(v => getStatus(v) === 'jamat').length;
+                        const aCount = Object.values(day).filter(v => getStatus(v) === 'alone').length;
+                        const mCount = Object.values(day).filter(v => getStatus(v) === 'missed').length;
+                        const isSelected = selectedDate === dKey;
+                        return (
+                          <div
+                            key={dKey}
+                            onClick={() => { setSelectedDate(dKey); setActiveTab('daily'); playTone('click'); }}
+                            style={{
+                              padding: '6px 9px',
+                              borderRadius: 8,
+                              background: isSelected ? '#ECFDF5' : '#F8FAFC',
+                              border: isSelected ? '1px solid #A7F3D0' : '1px solid #E2E8F0',
+                              cursor: 'pointer',
+                              fontSize: 11,
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center'
+                            }}
+                          >
+                            <span style={{ color: '#475569', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                              {dKey === bd.todayKey ? '📅 আজ' : dKey.slice(5).replace('-', '/')}
+                            </span>
+                            <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                              {jCount > 0 && <span style={{ color: '#059669', fontWeight: 700 }}>🕌{jCount}</span>}
+                              {aCount > 0 && <span style={{ color: '#2563EB', fontWeight: 700 }}>🧍{aCount}</span>}
+                              {mCount > 0 && <span style={{ color: '#EF4444', fontWeight: 700 }}>❌{mCount}</span>}
+                            </div>
+                          </div>
+                        );
+                      })
+                    }
+                  </div>
+                </div>
+              )}
+
+              {/* Qaza Footer Badge */}
+              {Object.values(qazaUmri).reduce((a, b) => a + (Number(b) || 0), 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('qaza'); playTone('click'); }}
+                  style={{
+                    marginTop: 10,
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: 10,
+                    background: '#FEF2F2',
+                    border: '1px solid #FECACA',
+                    fontSize: 11,
+                    color: '#DC2626',
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                >
+                  <i className="bi bi-arrow-counterclockwise" />
+                  মোট কাযা: {Object.values(qazaUmri).reduce((a, b) => a + (Number(b) || 0), 0)} ওয়াক্ত বাকি
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Main Content Area */}
+          <div className="col-12 col-lg-9">
+            {/* Mobile Current Tab Bar */}
+            <div className="d-lg-none d-flex align-items-center justify-content-between p-2.5 bg-white rounded-3 border mb-3" style={{ borderColor: '#D1FAE5' }}>
+              <div className="d-flex align-items-center gap-2">
+                <span className="badge bg-success-subtle text-success py-1 px-2 fw-bold" style={{ fontSize: 11 }}>
+                  বর্তমান ট্যাব
+                </span>
+                <span className="fw-bold text-dark" style={{ fontSize: 13 }}>
+                  {activeTab === 'daily' && 'সালাত ও ওয়াক্ত'}
+                  {activeTab === 'amol' && 'আমল ও মুহাসাবা'}
+                  {activeTab === 'qaza' && 'কাযা ট্র্যাকার'}
+                  {activeTab === 'tasbih' && 'ডিজিটাল তাসবিহ'}
+                  {activeTab === 'report' && 'ড্যাশবোর্ড রিপোর্ট'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="btn btn-sm btn-success fw-bold px-2.5 py-1 rounded-pill"
+                style={{ fontSize: 11.5, background: '#059669', borderColor: '#059669' }}
+              >
+                <i className="bi bi-grid-fill me-1" />
+                মেনু
+              </button>
+            </div>
         {/* Triple Calendar Card: English + Arabic Hijri + Bangla */}
         <div style={{ background: '#fff', border: '1px solid #D1FAE5', borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 4px 15px rgba(5,150,105,0.06)' }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>আজকের তারিখ (বাংলাদেশ)</div>
@@ -525,6 +970,38 @@ export default function IslamicPage({ currentUser, onBack }) {
             <span style={{ color: '#059669' }}>🌿 {bd.banglaDate}</span>
           </div>
         </div>
+
+        {/* Friday Special Dua Hour Alert (Active on Friday from Asr to Maghrib) */}
+        {(() => {
+          const isFriday = new Date(selectedDate).getDay() === 5;
+          if (!isFriday || !timings) return null;
+          const asrRaw = timings?.Asr ? timings.Asr.split(' ')[0] : '15:35';
+          const maghribRaw = timings?.Maghrib ? timings.Maghrib.split(' ')[0] : '17:15';
+          const [ah, am] = asrRaw.split(':');
+          const [mh, mm] = maghribRaw.split(':');
+          const asrMin = parseInt(ah, 10) * 60 + parseInt(am, 10);
+          const maghribMin = parseInt(mh, 10) * 60 + parseInt(mm, 10);
+          const now = new Date();
+          const currentMin = now.getHours() * 60 + now.getMinutes();
+          const isDuaWindow = currentMin >= asrMin && currentMin < maghribMin && selectedDate === bd.todayKey;
+
+          return isDuaWindow ? (
+            <div style={{ background: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%)', border: '2px solid #F59E0B', borderRadius: 16, padding: '12px 16px', marginBottom: 14, boxShadow: '0 4px 20px rgba(245,158,11,0.25)', animation: 'pulse 2s infinite' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 20 }}>🤲</span>
+                  <div>
+                    <span style={{ fontWeight: 800, fontSize: 13.5, color: '#92400E' }}>জুমু'আর বিশেষ দোয়া কবুলের মুহূর্ত (আসর - মাগরিব)</span>
+                    <div style={{ fontSize: 11, color: '#78350F', fontWeight: 600 }}>রাসূলুল্লাহ ﷺ বলেছেন: জুমু'আর দিনে এমন একটি মুহূর্ত রয়েছে যাতে বান্দা যা চায় আল্লাহ তা দান করেন। বেশি বেশি দোয়া ও ইস্তিগফার করুন।</div>
+                  </div>
+                </div>
+                <span className="badge rounded-pill bg-warning text-dark fw-bold px-2 py-1" style={{ fontSize: 11 }}>
+                  চলমান ওয়াক্ত ⏳
+                </span>
+              </div>
+            </div>
+          ) : null;
+        })()}
 
         {/* Top Prominent Dua Section (Hero Card - Mobile Responsive) */}
         <div style={{ background: 'linear-gradient(135deg, #FFFBEB 0%, #ECFDF5 100%)', border: '1px solid #FDE68A', borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 4px 15px rgba(217,119,6,0.06)' }}>
@@ -721,8 +1198,8 @@ export default function IslamicPage({ currentUser, onBack }) {
           )}
         </div>
 
-        {/* Navigation Tabs */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+        {/* Navigation Tabs - Hidden in favor of Sidebar */}
+        <div className="d-none">
           {[
             { id: 'daily', label: '🕌 সালাত ও ওয়াক্ত', icon: 'bi-clock' },
             { id: 'amol', label: '📿 আমল ও মুহাসাবা', icon: 'bi-check2-circle' },
@@ -795,18 +1272,24 @@ export default function IslamicPage({ currentUser, onBack }) {
                   const waqtTime = timings?.[p.key] ? timings[p.key].split(' ')[0] : p.defaultTime;
                   const jTime = jamatTimes[p.id];
                   const st = todayLog[p.id];
+                  const isFriday = new Date(selectedDate).getDay() === 5;
+                  const isJumuah = isFriday && p.id === 'dhuhr';
+                  const prayerTitle = isJumuah ? "জুমু'আ" : p.bn;
+
                   return (
-                    <div key={p.id} style={{ padding: '10px 12px', borderRadius: 12, border: st ? '1px solid #10B981' : '1px solid #E2E8F0', background: st === 'jamat' ? '#ECFDF5' : st === 'alone' ? '#EFF6FF' : '#F8FAFC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                    <div key={p.id} style={{ padding: '10px 12px', borderRadius: 12, border: st ? '1px solid #10B981' : isJumuah ? '1px solid #FDE68A' : '1px solid #E2E8F0', background: st === 'jamat' ? '#ECFDF5' : st === 'alone' ? '#EFF6FF' : isJumuah ? '#FFFBEB' : '#F8FAFC', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <i className={`bi ${p.icon}`} style={{ fontSize: 17, color: st === 'jamat' ? '#059669' : st === 'alone' ? '#2563EB' : '#64748B' }} />
+                        <i className={`bi ${isJumuah ? 'bi-star-fill text-warning' : p.icon}`} style={{ fontSize: 17, color: st === 'jamat' ? '#059669' : st === 'alone' ? '#2563EB' : '#64748B' }} />
                         <div>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{p.bn} <span style={{ fontSize: 12, color: '#64748B' }}>({fmt12h(waqtTime)})</span></div>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>
+                            {prayerTitle} {isJumuah && <span className="badge bg-warning text-dark ms-1" style={{ fontSize: 10 }}>মুবারক</span>} <span style={{ fontSize: 12, color: '#64748B' }}>({fmt12h(waqtTime)})</span>
+                          </div>
                           <button
                             type="button"
                             onClick={() => { setEditingJamat(p.id); setJamatInput(jTime || waqtTime); }}
                             style={{ background: 'transparent', border: 'none', padding: 0, fontSize: 11, color: '#D97706', fontWeight: 700, cursor: 'pointer' }}
                           >
-                            {jTime ? `🕌 জামাত: ${fmt12h(jTime)} ✏️` : '+ জামাতের সময় সেট করুন'}
+                            {jTime ? `🕌 ${isJumuah ? "জুমু'আ" : "জামাত"}: ${fmt12h(jTime)} ✏️` : `+ ${isJumuah ? "জুমু'আর" : "জামাতের"} সময় সেট করুন`}
                           </button>
                         </div>
                       </div>
@@ -816,14 +1299,29 @@ export default function IslamicPage({ currentUser, onBack }) {
                           onClick={() => setPrayerStatus(p.id, 'jamat')}
                           style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #A7F3D0', background: st === 'jamat' ? '#059669' : '#fff', color: st === 'jamat' ? '#fff' : '#065F46', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                         >
-                          🕌 জামাত
+                          {isJumuah ? "🕌 জুমু'আ জামাত" : '🕌 জামাত'}
                         </button>
                         <button
                           type="button"
                           onClick={() => setPrayerStatus(p.id, 'alone')}
                           style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #BFDBFE', background: st === 'alone' ? '#2563EB' : '#fff', color: st === 'alone' ? '#fff' : '#1E40AF', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                         >
-                          🧍 একাকী
+                          {isJumuah ? '🧍 একাকী যোহর' : '🧍 একাকী'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (st === 'missed') {
+                              setPrayerStatus(p.id, 'missed');
+                            } else {
+                              setSelectedMissedWaqt({ ...p, bn: isJumuah ? "জুমু'আ (যোহর কাযা)" : p.bn });
+                              setManualMissedReason('😴 ঘুম থেকে উঠতে পারিনি');
+                              setManualCustomReason('');
+                            }
+                          }}
+                          style={{ padding: '5px 10px', borderRadius: 8, border: '1px solid #FECACA', background: st === 'missed' ? '#DC2626' : '#fff', color: st === 'missed' ? '#fff' : '#991B1B', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {isJumuah ? "❌ জুমু'আ মিস" : '❌ মিস'}
                         </button>
                       </div>
                     </div>
@@ -836,6 +1334,55 @@ export default function IslamicPage({ currentUser, onBack }) {
 
         {activeTab === 'amol' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 14 }}>
+            {/* Friday Special Sunnah Checklist (Active on Fridays) */}
+            {new Date(selectedDate).getDay() === 5 && (
+              <div style={{ background: 'linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%)', border: '1px solid #FCD34D', borderRadius: 16, padding: '16px', boxShadow: '0 4px 15px rgba(217,119,6,0.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <i className="bi bi-moon-stars-fill text-warning fs-5" />
+                    <span style={{ fontWeight: 800, fontSize: 14, color: '#92400E' }}>🕌 জুমু'আর বিশেষ সুন্নাত ও আমল</span>
+                  </div>
+                  <span style={{ fontSize: 11, color: '#B45309', fontWeight: 700 }}>
+                    {[todayAmol.jumuahGhusl, todayAmol.jumuahKahf, todayAmol.jumuahDurood, todayAmol.jumuahEarly].filter(Boolean).length} / 4 সম্পন্ন
+                  </span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { key: 'jumuahGhusl', title: 'গোসল, মিসওয়াক ও উত্তম পোশাক', desc: 'সুগন্ধি (আতর) ব্যবহার ও পরিষ্কার-পরিচ্ছন্নতা' },
+                    { key: 'jumuahKahf', title: 'সূরা আল-কাহাফ তিলাওয়াত', desc: "দুই জুমু'আর মধ্যবর্তী সময়ের নূর ও হেফাজত" },
+                    { key: 'jumuahDurood', title: 'অধিক পরিমাণে দরুদ শরীফ পাঠ', desc: 'রাসূলুল্লাহ ﷺ-এর ওপর বেশি বেশি দরুদ প্রেরণ' },
+                    { key: 'jumuahEarly', title: 'মসজিদে আগে যাওয়া ও খুতবা শোনা', desc: 'মনোযোগ দিয়ে খুতবা শ্রবণ ও প্রথম কাতারের চেষ্টা' }
+                  ].map(item => {
+                    const done = !!todayAmol[item.key];
+                    return (
+                      <div
+                        key={item.key}
+                        onClick={() => toggleAmol(item.key)}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: 12,
+                          border: done ? '1px solid #F59E0B' : '1px solid #FDE68A',
+                          background: done ? '#FEF3C7' : '#fff',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: done ? '#92400E' : '#1E293B' }}>{item.title}</div>
+                          <div style={{ fontSize: 11, color: '#78350F' }}>{item.desc}</div>
+                        </div>
+                        <div style={{ width: 22, height: 22, borderRadius: 6, border: done ? 'none' : '2px solid #FBBF24', background: done ? '#D97706' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12 }}>
+                          {done && <i className="bi bi-check" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {/* Daily Nofol & Azkar */}
             <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: '16px', boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
@@ -975,6 +1522,68 @@ export default function IslamicPage({ currentUser, onBack }) {
                 );
               })}
             </div>
+
+            {/* Dynamic Missed Salat Log & 1-Click Recovery */}
+            <div style={{ marginTop: 18, borderTop: '1px solid #F1F5F9', paddingTop: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <span style={{ fontWeight: 800, fontSize: 13, color: '#334155' }}>
+                  📋 মিস হওয়া ওয়াক্তের কারণ ও কাযা তালিকা ({missedLog.filter(m => !m.recovered).length}টি অনিষ্পন্ন)
+                </span>
+              </div>
+              {missedLog.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '16px', background: '#F8FAFC', borderRadius: 10, color: '#64748B', fontSize: 12 }}>
+                  আলহামদুলিল্লাহ, সাম্প্রতিক সময়ে কোনো সালাত মিস হওয়ার রেকর্ড নেই।
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 280, overflowY: 'auto' }}>
+                  {missedLog.map(item => {
+                    const waqtNames = { fajr: 'ফজর', dhuhr: 'যোহর', asr: 'আসর', maghrib: 'মাগরিব', isha: 'এশা', witr: 'বিতর' };
+                    return (
+                      <div
+                        key={item.id}
+                        style={{
+                          padding: '10px 12px',
+                          borderRadius: 10,
+                          border: item.recovered ? '1px solid #E2E8F0' : '1px solid #FECACA',
+                          background: item.recovered ? '#F8FAFC' : '#FEF2F2',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: item.recovered ? '#64748B' : '#991B1B' }}>
+                            {waqtNames[item.waqt] || item.waqt} ({item.date})
+                            {item.recovered && <span className="badge bg-success ms-2" style={{ fontSize: 9 }}>কাযা আদায়কৃত ✅</span>}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#64748B', marginTop: 2 }}>
+                            কারণ: <span style={{ fontWeight: 600 }}>{item.reason}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => recoverMissedLogItem(item)}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: 8,
+                            border: 'none',
+                            background: item.recovered ? '#E2E8F0' : '#059669',
+                            color: item.recovered ? '#475569' : '#fff',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {item.recovered ? 'পুনরায় কাযা করুন' : 'কাযা আদায় সম্পন্ন'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1074,6 +1683,19 @@ export default function IslamicPage({ currentUser, onBack }) {
               </div>
             </div>
 
+            {/* Interactive Pie & Trend Visual Charts */}
+            <div style={{ marginBottom: 16 }}>
+              <IslamicReportCharts
+                filteredDates={filteredDates}
+                salatHistory={salatHistory}
+                filterJamat={filterJamat}
+                filterAlone={filterAlone}
+                filterMissed={filterMissed}
+                filterTotalSalat={filterTotalSalat}
+                missedLog={missedLog.filter(m => filteredDates.includes(m.date))}
+              />
+            </div>
+
             {/* Daily History Heatmap / Log Table */}
             <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: '#334155', marginBottom: 8 }}>
@@ -1089,16 +1711,35 @@ export default function IslamicPage({ currentUser, onBack }) {
                   filteredDates.slice().reverse().map(dKey => {
                     const s = salatHistory[dKey] || {};
                     const a = amolHistory[dKey] || {};
-                    const jCount = Object.values(s).filter(v => v === 'jamat').length;
-                    const aCount = Object.values(s).filter(v => v === 'alone').length;
+                    const jCount = Object.values(s).filter(v => getStatus(v) === 'jamat').length;
+                    const aCount = Object.values(s).filter(v => getStatus(v) === 'alone').length;
+                    const mCount = Object.values(s).filter(v => getStatus(v) === 'missed').length;
                     const amolDone = [a.tahajjud, a.duha, a.quran, a.morningAzkar, a.eveningAzkar].filter(Boolean).length;
+                    const isSelected = selectedDate === dKey;
                     return (
-                      <div key={dKey} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', borderRadius: 8, background: '#F8FAFC', border: '1px solid #E2E8F0', fontSize: 12 }}>
-                        <span style={{ fontWeight: 700, color: '#1E293B', fontVariantNumeric: 'tabular-nums' }}>{dKey}</span>
+                      <div
+                        key={dKey}
+                        onClick={() => { setSelectedDate(dKey); setActiveTab('daily'); playTone('click'); }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '8px 12px',
+                          borderRadius: 10,
+                          background: isSelected ? '#ECFDF5' : '#F8FAFC',
+                          border: isSelected ? '1px solid #10B981' : '1px solid #E2E8F0',
+                          fontSize: 12,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, color: '#1E293B', fontVariantNumeric: 'tabular-nums' }}>
+                          {dKey === bd.todayKey ? '📅 আজ' : dKey}
+                        </span>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           <span style={{ color: '#059669', fontWeight: 700 }}>🕌 {jCount}</span>
                           <span style={{ color: '#2563EB', fontWeight: 700 }}>🧍 {aCount}</span>
-                          <span style={{ color: '#D97706', fontWeight: 700 }}>📖 {amolDone}/5 আমল</span>
+                          {mCount > 0 && <span style={{ color: '#EF4444', fontWeight: 700 }}>❌ {mCount}</span>}
+                          <span style={{ color: '#D97706', fontWeight: 700 }}>📖 {amolDone}/৫ আমল</span>
                         </div>
                       </div>
                     );
@@ -1163,7 +1804,195 @@ export default function IslamicPage({ currentUser, onBack }) {
             </div>
           </div>
         )}
+          </div>
+        </div>
       </div>
+
+      {/* Mobile Offcanvas Sidebar Drawer */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.55)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 1050,
+            display: 'flex'
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              width: 280,
+              maxWidth: '82%',
+              height: '100%',
+              background: '#fff',
+              boxShadow: '4px 0 25px rgba(0,0,0,0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              padding: 16
+            }}
+          >
+            <div className="d-flex justify-content-between align-items-center pb-3 mb-3 border-bottom border-light-subtle">
+              <div className="d-flex align-items-center gap-2">
+                <i className="bi bi-moon-stars-fill text-success fs-5" />
+                <h6 className="fw-bold m-0 text-success">Islamic Hub মেনু</h6>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm btn-light rounded-circle"
+                onClick={() => setSidebarOpen(false)}
+              >
+                <i className="bi bi-x-lg" />
+              </button>
+            </div>
+
+            <div className="d-flex flex-column gap-2 flex-grow-1" style={{ overflowY: "auto" }}>
+
+              {/* Quick Salat Status Widget */}
+              <div style={{ background: 'linear-gradient(135deg, #ECFDF5, #F0FDF4)', borderRadius: 12, padding: '10px 12px', border: '1px solid #A7F3D0' }}>
+                <div style={{ fontSize: 10, fontWeight: 800, color: '#059669', marginBottom: 7, textTransform: 'uppercase' }}>📊 আজকের সালাত</div>
+                <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+                  <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20, fontWeight: 800, color: '#059669' }}>{jamatToday}</div><div style={{ fontSize: 10, color: '#065F46', fontWeight: 700 }}>🕌 জামাত</div></div>
+                  <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20, fontWeight: 800, color: '#2563EB' }}>{aloneToday}</div><div style={{ fontSize: 10, color: '#1E40AF', fontWeight: 700 }}>🧍 একাকী</div></div>
+                  <div style={{ textAlign: 'center' }}><div style={{ fontSize: 20, fontWeight: 800, color: missedToday > 0 ? '#EF4444' : '#94A3B8' }}>{missedToday}</div><div style={{ fontSize: 10, color: missedToday > 0 ? '#B91C1C' : '#94A3B8', fontWeight: 700 }}>❌ মিস</div></div>
+                </div>
+                <div style={{ height: 5, borderRadius: 5, background: '#E2E8F0', overflow: 'hidden', marginTop: 8, display: 'flex' }}>
+                  <div style={{ width: `${(jamatToday / 5) * 100}%`, background: '#10B981' }} />
+                  <div style={{ width: `${(aloneToday / 5) * 100}%`, background: '#3B82F6' }} />
+                  <div style={{ width: `${(missedToday / 5) * 100}%`, background: '#EF4444' }} />
+                </div>
+                <div style={{ fontSize: 10, color: '#64748B', marginTop: 4, textAlign: 'center' }}>
+                  {5 - jamatToday - aloneToday - missedToday > 0
+                    ? `⏳ ${5 - jamatToday - aloneToday - missedToday}টি ওয়াক্ত বাকি`
+                    : '✅ সব ওয়াক্ত রিভিউ সম্পন্ন'}
+                </div>
+              </div>
+
+              {/* Pending Salat Review Alert */}
+              {activePendingWaqts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setSalatPendingModalOpen(true); setSidebarOpen(false); playTone('click'); }}
+                  style={{
+                    padding: '9px 12px', borderRadius: 12, border: '1px solid #FCA5A5',
+                    background: '#FEF2F2', color: '#DC2626', fontWeight: 700, fontSize: 12,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7, textAlign: 'left'
+                  }}
+                >
+                  <i className="bi bi-exclamation-triangle-fill" style={{ fontSize: 14 }} />
+                  <span style={{ flex: 1 }}>{activePendingWaqts.length}টি ওয়াক্ত রিভিউ বাকি</span>
+                  <span className="badge bg-danger text-white" style={{ fontSize: 10 }}>{activePendingWaqts.length}</span>
+                </button>
+              )}
+
+              {/* Nav Tabs */}
+              {[
+                { id: 'daily', label: 'সালাত ও ওয়াক্ত', icon: 'bi-clock-fill', badge: `${jamatToday}/৫` },
+                { id: 'amol', label: 'আমল ও মুহাসাবা', icon: 'bi-check2-circle' },
+                { id: 'qaza', label: 'কাযা ট্র্যাকার', icon: 'bi-arrow-counterclockwise', badge: Object.values(qazaUmri).reduce((a, b) => a + (Number(b) || 0), 0) || null, badgeDanger: true },
+                { id: 'tasbih', label: 'ডিজিটাল তাসবিহ', icon: 'bi-fingerprint' },
+                { id: 'report', label: 'ড্যাশবোর্ড রিপোর্ট', icon: 'bi-bar-chart-fill' }
+              ].map(t => {
+                const isActive = activeTab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveTab(t.id);
+                      setSidebarOpen(false);
+                      playTone('click');
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '12px 14px',
+                      borderRadius: 12,
+                      border: isActive ? '1px solid #10B981' : '1px solid transparent',
+                      background: isActive ? '#ECFDF5' : '#F8FAFC',
+                      color: isActive ? '#065F46' : '#334155',
+                      fontSize: 13.5,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textAlign: 'left'
+                    }}
+                  >
+                    <div className="d-flex align-items-center gap-2">
+                      <i className={`bi ${t.icon}`} style={{ fontSize: 18, color: isActive ? '#059669' : '#64748B' }} />
+                      <span>{t.label}</span>
+                    </div>
+                    {t.badge && (
+                      <span className={`badge rounded-pill ${t.badgeDanger ? 'bg-danger text-white' : 'bg-success-subtle text-success'}`} style={{ fontSize: 10 }}>
+                        {t.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+
+              {/* Recent Activity Log */}
+              {Object.keys(salatHistory).filter(k => Object.values(salatHistory[k] || {}).some(v => getStatus(v))).sort().reverse().slice(0, 3).length > 0 && (
+                <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 10, marginTop: 4 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: '#64748B', marginBottom: 7, textTransform: 'uppercase' }}>🕐 সাম্প্রতিক আমল</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {Object.keys(salatHistory)
+                      .filter(k => Object.values(salatHistory[k] || {}).some(v => getStatus(v)))
+                      .sort().reverse().slice(0, 3)
+                      .map(dKey => {
+                        const day = salatHistory[dKey] || {};
+                        const jCount = Object.values(day).filter(v => getStatus(v) === 'jamat').length;
+                        const aCount = Object.values(day).filter(v => getStatus(v) === 'alone').length;
+                        const mCount = Object.values(day).filter(v => getStatus(v) === 'missed').length;
+                        const isSelected = selectedDate === dKey;
+                        return (
+                          <div key={dKey}
+                            onClick={() => { setSelectedDate(dKey); setActiveTab('daily'); setSidebarOpen(false); playTone('click'); }}
+                            style={{
+                              padding: '6px 9px', borderRadius: 8, cursor: 'pointer', fontSize: 11,
+                              background: isSelected ? '#ECFDF5' : '#F8FAFC',
+                              border: isSelected ? '1px solid #A7F3D0' : '1px solid #E2E8F0',
+                              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                            }}
+                          >
+                            <span style={{ color: '#475569', fontWeight: 700 }}>
+                              {dKey === bd.todayKey ? '📅 আজ' : dKey.slice(5).replace('-', '/')}
+                            </span>
+                            <div style={{ display: 'flex', gap: 5 }}>
+                              {jCount > 0 && <span style={{ color: '#059669', fontWeight: 700 }}>🕌{jCount}</span>}
+                              {aCount > 0 && <span style={{ color: '#2563EB', fontWeight: 700 }}>🧍{aCount}</span>}
+                              {mCount > 0 && <span style={{ color: '#EF4444', fontWeight: 700 }}>❌{mCount}</span>}
+                            </div>
+                          </div>
+                        );
+                      })
+                    }
+                  </div>
+                </div>
+              )}
+
+              {/* Qaza Footer Badge */}
+              {Object.values(qazaUmri).reduce((a, b) => a + (Number(b) || 0), 0) > 0 && (
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab('qaza'); setSidebarOpen(false); playTone('click'); }}
+                  style={{
+                    padding: '8px 10px', borderRadius: 10, background: '#FEF2F2',
+                    border: '1px solid #FECACA', fontSize: 11, color: '#DC2626',
+                    fontWeight: 700, textAlign: 'center', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                  }}
+                >
+                  <i className="bi bi-arrow-counterclockwise" />
+                  মোট কাযা: {Object.values(qazaUmri).reduce((a, b) => a + (Number(b) || 0), 0)} ওয়াক্ত বাকি
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Islamic Settings Modal */}
       {showSettings && (
@@ -1394,6 +2223,68 @@ export default function IslamicPage({ currentUser, onBack }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+            {/* Mandatory Missed Reason Popup Modal */}
+      {selectedMissedWaqt && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.7)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const finalReason = manualMissedReason === '✍️ অন্যান্য...' ? manualCustomReason.trim() : manualMissedReason;
+              if (!finalReason) return alert('অনুগ্রহ করে সালাত মিস হওয়ার কারণ উল্লেখ করুন!');
+              setPrayerStatus(selectedMissedWaqt.id, 'missed', finalReason);
+              setSelectedMissedWaqt(null);
+            }}
+            onClick={e => e.stopPropagation()}
+            style={{ width: '100%', maxWidth: 380, background: '#fff', borderRadius: 18, padding: 20, boxShadow: '0 20px 40px rgba(0,0,0,0.25)' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: '#DC2626' }}>
+              <i className="bi bi-exclamation-octagon-fill fs-5" />
+              <h6 style={{ margin: 0, fontWeight: 800, fontSize: 15 }}>{selectedMissedWaqt.bn} সালাত মিস হওয়ার কারণ *</h6>
+            </div>
+            <p style={{ fontSize: 11.5, color: '#64748B', margin: '0 0 12px' }}>
+              সালাত মিস চিহ্নিত করতে সুনির্দিষ্ট কারণ নির্বাচন করা বাধ্যতামূলক। এটি স্বয়ংক্রিয়ভাবে কাযা উমরিতে যুক্ত হবে।
+            </p>
+            <select
+              value={manualMissedReason}
+              onChange={e => setManualMissedReason(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 10, border: '1px solid #CBD5E1', fontSize: 13, marginBottom: 10, background: '#F8FAFC' }}
+            >
+              <option value="😴 ঘুম থেকে উঠতে পারিনি">😴 ঘুম থেকে উঠতে পারিনি</option>
+              <option value="🏢 কাজে/অফিসে ব্যস্ত ছিলাম">🏢 কাজে/অফিসে ব্যস্ত ছিলাম</option>
+              <option value="🚗 ভ্রমণে/রাস্তায় ছিলাম">🚗 ভ্রমণে/রাস্তায় ছিলাম</option>
+              <option value="🤒 অসুস্থ ছিলাম">🤒 অসুস্থ ছিলাম</option>
+              <option value="😔 অলসতা/গাফলতি">😔 অলসতা/গাফলতি</option>
+              <option value="✍️ অন্যান্য...">✍️ অন্যান্য...</option>
+            </select>
+            {manualMissedReason === '✍️ অন্যান্য...' && (
+              <input
+                type="text"
+                placeholder="মিস হওয়ার কারণ লিখুন..."
+                value={manualCustomReason}
+                onChange={e => setManualCustomReason(e.target.value)}
+                required
+                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #DC2626', fontSize: 13, marginBottom: 12, boxSizing: 'border-box' }}
+              />
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+              <button
+                type="button"
+                onClick={() => setSelectedMissedWaqt(null)}
+                style={{ padding: '8px 14px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#F8FAFC', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+              >
+                বাতিল
+              </button>
+              <button
+                type="submit"
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#DC2626', color: '#fff', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+              >
+                কনফার্ম ও কাযায় যোগ
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
