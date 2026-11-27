@@ -65,8 +65,13 @@ export default function SalatPendingReviewModal({
         return;
       }
       if (r.status === 'missed') {
-        const finalReason = r.reason === '✍️ অন্যান্য...' ? customReasons[w.id]?.trim() : r.reason;
-        if (!finalReason) {
+        if (r.reason === '✍️ অন্যান্য...') {
+          const trimmed = customReasons[w.id]?.trim();
+          if (!trimmed || trimmed.length < 2) {
+            alert(`"${w.bn}" ওয়াক্তের জন্য "অন্যান্য" কারণটি বিস্তারিত লিখুন (বাধ্যতামূলক)!`);
+            return;
+          }
+        } else if (!r.reason) {
           alert(`"${w.bn}" ওয়াক্ত মিস করার কারণ উল্লেখ করা বাধ্যতামূলক!`);
           return;
         }

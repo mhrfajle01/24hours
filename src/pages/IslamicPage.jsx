@@ -3,6 +3,7 @@ import { db } from '../firebase/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import SalatPendingReviewModal from '../components/SalatPendingReviewModal';
 import IslamicReportCharts from '../components/IslamicReportCharts';
+import { sendLocalNotification, requestNotificationPermission } from '../utils/notifications';
 
 const PRAYERS_META = [
   { id: 'fajr', key: 'Fajr', name: 'Fajr', bn: 'ফজর', defaultTime: '05:05', icon: 'bi-sunrise' },
@@ -196,8 +197,41 @@ export default function IslamicPage({ currentUser, onBack }) {
   const [duaToDelete, setDuaToDelete] = useState(null);
   const [newDua, setNewDua] = useState({ title: '', ar: '', bn: '', ref: '', cat: 'hidayat', catLabel: '' });
 
-  const [activeTab, setActiveTab] = useState('daily'); // 'daily' | 'amol' | 'qaza' | 'tasbih' | 'report'
-  const [reportRange, setReportRange] = useState('7'); // '7' | '30' | 'custom' | 'all'
+  const getInitialTab = () => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      return ['daily', 'amol', 'qaza', 'tasbih', 'report'].includes(tab) ? tab : 'daily';
+    } catch {
+      return 'daily';
+    }
+  };
+  const [activeTab, setActiveTabState] = useState(getInitialTab);
+
+  const setActiveTab = (tabId, pushHistory = true) => {
+    setActiveTabState(tabId);
+    if (pushHistory && typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (tabId === 'daily') {
+        url.searchParams.delete('tab');
+      } else {
+        url.searchParams.set('tab', tabId);
+      }
+      window.history.pushState({ tab: tabId }, '', url.toString());
+    }
+  };
+
+  // Browser & Android back button listener
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab') || 'daily';
+      setActiveTabState(tab);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []); // 'daily' | 'amol' | 'qaza' | 'tasbih' | 'report'
+  const [reportRange, setReportRange] = useState('today'); // '7' | '30' | 'custom' | 'all'
   const [reportStartDate, setReportStartDate] = useState('');
   const [reportEndDate, setReportEndDate] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => getBDNow().todayKey);
@@ -226,6 +260,39 @@ export default function IslamicPage({ currentUser, onBack }) {
   const [duaCategory, setDuaCategory] = useState('all'); // 'all' | 'hidayat' | 'relief' | 'forgive' | 'parents'
   const [copiedDua, setCopiedDua] = useState(false);
   const [isMuted, setIsMuted] = useState(() => localStorage.getItem('islamic_sound_muted') === 'true');
+  const [salatNotifEnabled, setSalatNotifEnabled] = useState(() => localStorage.getItem('islamic_notif_enabled') === 'true');
+
+  // Salat Waqt Notification Tracker
+  useEffect(() => {
+    if (!salatNotifEnabled || !timings || typeof window === 'undefined') return;
+
+    const checkAndNotify = () => {
+      const now = new Date();
+      const curH = String(now.getHours()).padStart(2, '0');
+      const curM = String(now.getMinutes()).padStart(2, '0');
+      const curTimeStr = `${curH}:${curM}`;
+
+      PRAYERS_META.forEach(p => {
+        const rawWaqt = timings?.[p.key] ? timings[p.key].split(' ')[0] : p.defaultTime;
+        const notifKey = `notif_sent_${bd.todayKey}_${p.id}`;
+
+        if (curTimeStr === rawWaqt && !localStorage.getItem(notifKey)) {
+          const isFriday = now.getDay() === 5 && p.id === 'dhuhr';
+          const title = isFriday ? "🕌 জুমু'আর ওয়াক্ত শুরু হয়েছে!" : `🕌 ${p.bn} সালাতের ওয়াক্ত হয়েছে`;
+          const body = isFriday 
+            ? "আজ পবিত্র জুমু'আ। মসজিদে যাওয়ার প্রস্তুতি নিন ও সুরা কাহাফ তিলাওয়াত করুন।" 
+            : `${p.bn} সালাতের ওয়াক্ত শুরু হয়েছে (${fmt12h(rawWaqt)})। সময়মতো সালাত আদায় করুন।`;
+
+          sendLocalNotification(title, body);
+          localStorage.setItem(notifKey, 'true');
+        }
+      });
+    };
+
+    checkAndNotify();
+    const interval = setInterval(checkAndNotify, 30000);
+    return () => clearInterval(interval);
+  }, [salatNotifEnabled, timings, bd.todayKey]);
   const [tasbihAnim, setTasbihAnim] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -485,45 +552,30 @@ export default function IslamicPage({ currentUser, onBack }) {
     });
   });
 
-  // Accurate Date Range: Only includes days from the user's earliest logged day up to today
+  // Clean & Robust Date Filter: Generates accurate range for 'today', 'this_month', 7d, 30d, custom
   const getFilteredDates = () => {
+    if (reportRange === 'today') {
+      return [bd.todayKey];
+    }
+
     const today = new Date(bd.todayKey + 'T00:00:00');
-
-    // Find all days that actually have at least one salat or amol logged
-    const loggedDates = Array.from(new Set([...Object.keys(salatHistory), ...Object.keys(amolHistory)])).filter(d => {
-      if (!d || d > bd.todayKey) return false;
-      const s = salatHistory[d];
-      const a = amolHistory[d];
-      const hasSalat = s && Object.values(s).some(v => getStatus(v) !== null && getStatus(v) !== undefined);
-      const hasAmol = a && Object.values(a).some(Boolean);
-      return hasSalat || hasAmol;
-    }).sort();
-
-    // If no past days logged yet, only show today
-    if (loggedDates.length === 0) return [bd.todayKey];
-
-    const earliestLoggedStr = loggedDates[0];
-    const earliestDate = new Date(earliestLoggedStr + 'T00:00:00');
-
     let startDate = new Date(today);
     let endDate = new Date(today);
 
-    if (reportRange === '7') {
+    if (reportRange === 'this_month') {
+      // 1st of current month to today
+      startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+    } else if (reportRange === '7') {
       startDate.setDate(today.getDate() - 6);
-      if (startDate < earliestDate) startDate = new Date(earliestDate);
     } else if (reportRange === '30') {
       startDate.setDate(today.getDate() - 29);
-      if (startDate < earliestDate) startDate = new Date(earliestDate);
     } else if (reportRange === 'custom') {
       if (!reportStartDate || !reportEndDate) return [bd.todayKey];
       startDate = new Date(reportStartDate + 'T00:00:00');
       endDate = new Date(reportEndDate + 'T00:00:00');
-      if (endDate > today) endDate = new Date(today);
-    } else {
-      // 'all'
-      startDate = new Date(earliestDate);
     }
 
+    // Generate date keys
     const res = [];
     let cur = new Date(startDate);
     while (cur <= endDate) {
@@ -657,7 +709,18 @@ export default function IslamicPage({ currentUser, onBack }) {
       {/* Light Theme Sticky Header */}
       <header style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(255,255,255,0.94)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #D1FAE5', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <button onClick={onBack} type="button" style={{ border: '1px solid #D1FAE5', background: '#ECFDF5', color: '#065F46', borderRadius: '50%', width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button 
+            onClick={() => {
+              if (activeTab !== 'daily') {
+                setActiveTab('daily');
+              } else {
+                onBack();
+              }
+            }} 
+            type="button" 
+            style={{ border: '1px solid #D1FAE5', background: '#ECFDF5', color: '#065F46', borderRadius: '50%', width: 36, height: 36, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            title={activeTab !== 'daily' ? 'হোমে ফিরুন' : 'পেছনে যান'}
+          >
             <i className="bi bi-chevron-left" />
           </button>
           <button
@@ -1236,29 +1299,90 @@ export default function IslamicPage({ currentUser, onBack }) {
 
         {activeTab === 'daily' && (
           <>
-            {/* Salat Report Dashboard (Jamat vs Alone) */}
-            <div style={{ background: '#fff', border: '1px solid #E2E8F0', borderRadius: 16, padding: '14px 16px', marginBottom: 14, boxShadow: '0 2px 10px rgba(0,0,0,0.03)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                <span style={{ fontWeight: 800, fontSize: 14, color: '#065F46' }}>📊 সালাত রিপোর্ট ড্যাশবোর্ড</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#64748B' }}>সাপ্তাহিক: 🕌 {weekJamat} | 🧍 {weekAlone}</span>
+            {/* Salat Report Dashboard (Interactive Mini Visualized Card -> Navigates to 'report') */}
+            <div
+              onClick={() => { setActiveTab('report'); playTone('click'); }}
+              style={{
+                background: 'linear-gradient(135deg, #FFFFFF 0%, #F8FAFC 100%)',
+                border: '1px solid #D1FAE5',
+                borderRadius: 16,
+                padding: '14px 16px',
+                marginBottom: 14,
+                boxShadow: '0 4px 15px rgba(5,150,105,0.06)',
+                cursor: 'pointer',
+                transition: 'transform 0.15s ease, box-shadow 0.15s ease'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 16 }}>📊</span>
+                  <span style={{ fontWeight: 800, fontSize: 14, color: '#065F46' }}>সালাত রিপোর্ট ড্যাশবোর্ড</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#ECFDF5', padding: '4px 10px', borderRadius: 20, border: '1px solid #A7F3D0', color: '#059669', fontSize: 11, fontWeight: 700 }}>
+                  <span>পূর্ণাঙ্গ রিপোর্ট</span>
+                  <i className="bi bi-arrow-right" style={{ fontSize: 12 }} />
+                </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
-                <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#059669' }}>{jamatToday}</div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#065F46' }}>🕌 জামাত</div>
+
+              {/* 4 Summary Stats */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 10 }}>
+                <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 10, padding: '7px 4px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: '#059669', lineHeight: 1.1 }}>{jamatToday}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#065F46', marginTop: 2 }}>🕌 জামাত</div>
                 </div>
-                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#2563EB' }}>{aloneToday}</div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#1E40AF' }}>🧍 একাকী</div>
+                <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 10, padding: '7px 4px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: '#2563EB', lineHeight: 1.1 }}>{aloneToday}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#1E40AF', marginTop: 2 }}>🧍 একাকী</div>
                 </div>
-                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: '#64748B' }}>{pendingToday}</div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>⏳ বাকি</div>
+                <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: '7px 4px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: missedToday > 0 ? '#DC2626' : '#94A3B8', lineHeight: 1.1 }}>{missedToday}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: missedToday > 0 ? '#991B1B' : '#94A3B8', marginTop: 2 }}>❌ মিস</div>
+                </div>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10, padding: '7px 4px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: '#64748B', lineHeight: 1.1 }}>{pendingToday}</div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: '#475569', marginTop: 2 }}>⏳ বাকি</div>
                 </div>
               </div>
-              <div style={{ height: 8, borderRadius: 8, background: '#F1F5F9', overflow: 'hidden', display: 'flex' }}>
+
+              {/* Multi-segmented Progress Bar */}
+              <div style={{ height: 6, borderRadius: 6, background: '#E2E8F0', overflow: 'hidden', display: 'flex', marginBottom: 10 }}>
                 <div style={{ width: `${(jamatToday / 5) * 100}%`, background: '#10B981', transition: 'width 0.3s' }} />
                 <div style={{ width: `${(aloneToday / 5) * 100}%`, background: '#3B82F6', transition: 'width 0.3s' }} />
+                <div style={{ width: `${(missedToday / 5) * 100}%`, background: '#EF4444', transition: 'width 0.3s' }} />
+              </div>
+
+              {/* Waqt Mini Visual Badges (Fajr to Isha status) */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4, background: '#F8FAFC', padding: '6px 8px', borderRadius: 10, border: '1px solid #F1F5F9' }}>
+                {PRAYERS_META.map(p => {
+                  const rawVal = todayLog[p.id];
+                  const st = getStatus(rawVal);
+                  const isJumuah = new Date(selectedDate).getDay() === 5 && p.id === 'dhuhr';
+                  const title = isJumuah ? "জুমু'আ" : p.bn;
+                  const bg = st === 'jamat' ? '#ECFDF5' : st === 'alone' ? '#EFF6FF' : st === 'missed' ? '#FEF2F2' : '#FFFFFF';
+                  const border = st === 'jamat' ? '#A7F3D0' : st === 'alone' ? '#BFDBFE' : st === 'missed' ? '#FECACA' : '#E2E8F0';
+                  const color = st === 'jamat' ? '#059669' : st === 'alone' ? '#2563EB' : st === 'missed' ? '#DC2626' : '#94A3B8';
+                  const icon = st === 'jamat' ? '🕌' : st === 'alone' ? '🧍' : st === 'missed' ? '❌' : '⏳';
+
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        flex: 1,
+                        background: bg,
+                        border: `1px solid ${border}`,
+                        borderRadius: 7,
+                        padding: '3px 2px',
+                        textAlign: 'center',
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        color: color
+                      }}
+                    >
+                      <div>{title}</div>
+                      <div style={{ fontSize: 11, marginTop: 1 }}>{icon}</div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1594,10 +1718,11 @@ export default function IslamicPage({ currentUser, onBack }) {
               <span style={{ fontWeight: 800, fontSize: 15, color: '#065F46' }}>📈 আমল ও সালাত অ্যানালিটিক্স</span>
               <div style={{ display: 'flex', gap: 4, background: '#F1F5F9', borderRadius: 8, padding: 3, overflowX: 'auto', maxWidth: '100%' }}>
                 {[
+                  { id: 'today', label: 'আজ' },
                   { id: '7', label: '৭ দিন' },
+                  { id: 'this_month', label: 'চলতি মাস' },
                   { id: '30', label: '৩০ দিন' },
-                  { id: 'custom', label: 'কাস্টম' },
-                  { id: 'all', label: 'সব' }
+                  { id: 'custom', label: 'কাস্টম' }
                 ].map(r => (
                   <button
                     key={r.id}
@@ -2051,6 +2176,41 @@ export default function IslamicPage({ currentUser, onBack }) {
               </div>
             </div>
 
+                        {/* Salat Notification Toggle */}
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 6 }}>🔔 ওয়াক্তের পুশ নোটিফিকেশন</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', borderRadius: 10, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                <div>
+                  <span style={{ fontSize: 13, color: '#1E293B', fontWeight: 600, display: 'block' }}>ওয়াক্ত শুরু ও আযান এলার্ট</span>
+                  <span style={{ fontSize: 10.5, color: '#64748B' }}>ওয়াক্তের সময় অটোমেটিক নোটিফিকেশন আসবে</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const next = !salatNotifEnabled;
+                    if (next) {
+                      await requestNotificationPermission(currentUser?.uid);
+                    }
+                    setSalatNotifEnabled(next);
+                    localStorage.setItem('islamic_notif_enabled', String(next));
+                    playTone('click');
+                  }}
+                  style={{
+                    border: 'none',
+                    borderRadius: 20,
+                    padding: '4px 12px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: salatNotifEnabled ? '#10B981' : '#CBD5E1',
+                    color: '#fff'
+                  }}
+                >
+                  {salatNotifEnabled ? 'ON' : 'OFF'}
+                </button>
+              </div>
+            </div>
+
             {/* Sound & Feedback */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 6 }}>🔊 অডিও ও প্রতিক্রিয়া</label>
@@ -2232,8 +2392,14 @@ export default function IslamicPage({ currentUser, onBack }) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              const finalReason = manualMissedReason === '✍️ অন্যান্য...' ? manualCustomReason.trim() : manualMissedReason;
-              if (!finalReason) return alert('অনুগ্রহ করে সালাত মিস হওয়ার কারণ উল্লেখ করুন!');
+              let finalReason = manualMissedReason;
+              if (manualMissedReason === '✍️ অন্যান্য...') {
+                const trimmed = manualCustomReason.trim();
+                if (!trimmed || trimmed.length < 2) {
+                  return alert('অনুগ্রহ করে সালাত মিস হওয়ার সুনির্দিষ্ট কারণটি লিখুন (বাধ্যতামূলক)!');
+                }
+                finalReason = trimmed;
+              }
               setPrayerStatus(selectedMissedWaqt.id, 'missed', finalReason);
               setSelectedMissedWaqt(null);
             }}
@@ -2262,11 +2428,13 @@ export default function IslamicPage({ currentUser, onBack }) {
             {manualMissedReason === '✍️ অন্যান্য...' && (
               <input
                 type="text"
-                placeholder="মিস হওয়ার কারণ লিখুন..."
+                placeholder="মিস হওয়ার কারণ লিখুন (বাধ্যতামূলক)..."
                 value={manualCustomReason}
                 onChange={e => setManualCustomReason(e.target.value)}
+                autoFocus
                 required
-                style={{ width: '100%', padding: '8px 12px', borderRadius: 8, border: '1px solid #DC2626', fontSize: 13, marginBottom: 12, boxSizing: 'border-box' }}
+                minLength={2}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #DC2626', fontSize: 13, marginBottom: 12, boxSizing: 'border-box', background: '#FEF2F2' }}
               />
             )}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
